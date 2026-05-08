@@ -8,8 +8,7 @@ import (
 )
 
 // Frame is a single demo step: the snapshot to display and how long to hold
-// it before advancing. The very first frame's Hold runs *after* the initial
-// "Loading…" pause so viewers see the loading state before content appears.
+// it before advancing.
 type Frame struct {
 	Snapshot watcher.Snapshot
 	Hold     time.Duration
@@ -18,148 +17,156 @@ type Frame struct {
 // Scenario is a named sequence of frames driven through the real TUI for
 // recording.
 type Scenario struct {
-	Name      string
-	Branch    string
-	InitialDelay time.Duration // hold the "Loading…" state for this long before the first snapshot
-	Frames    []Frame
+	Name         string
+	Branch       string
+	InitialDelay time.Duration // hold the "Loading…" state before the first snapshot
+	Frames       []Frame
 }
 
-// fixed reference time so timestamps in the demo are reproducible across runs.
+// demoBase is the virtual "now" anchor for all times in the scenarios. The
+// playback loop updates the TUI's clock to track demoBase + (real elapsed
+// since playback started), so lead-time timers count up at real-world pace
+// while the data refers to fixed offsets from this anchor.
 var demoBase = time.Date(2026, 5, 9, 9, 0, 0, 0, time.UTC)
 
-func ev(stage, status string, offset time.Duration) clarityrefs.Event {
-	return clarityrefs.Event{Stage: stage, Status: status, Time: demoBase.Add(offset)}
+func at(off time.Duration) time.Time { return demoBase.Add(off) }
+
+func ev(stage, status string, off time.Duration) clarityrefs.Event {
+	return clarityrefs.Event{Stage: stage, Status: status, Time: at(off)}
 }
 
-// happyPath shows the most common arc:
-//   - initial paint with a mix of states (passed / running / failed / no-events)
-//   - a running build transitions to passed
-//   - a brand-new commit lands at the top with build still running
-//   - that build then completes
+// commit is a small constructor to keep scenario data readable.
+func commit(sha, author, subject string, commitOffset time.Duration, events ...clarityrefs.Event) watcher.CommitView {
+	return watcher.CommitView{
+		SHA:     sha,
+		Author:  author,
+		Subject: subject,
+		Time:    at(commitOffset),
+		Events:  events,
+	}
+}
+
+// happyPath walks through every section of the redesigned TUI:
+//   - frame 1: a steady state with NeedsCI, NextDeploy and Deployed all populated
+//   - frame 2: a build completes — a commit moves from NeedsCI to NextDeploy
+//   - frame 3: a deploy starts — the Next deploy header annotates "deploying…"
+//   - frame 4: the deploy completes — the NextDeploy batch fix-forwards into Deployed
 var happyPath = Scenario{
 	Name:         "happy-path",
 	Branch:       "main",
 	InitialDelay: 800 * time.Millisecond,
 	Frames: []Frame{
-		// Frame 1 — first paint
+		// Frame 1 — steady state.
+		// NeedsCI: bob (no events), dave (build started)
+		// NextDeploy: alice, carol (built but not yet deployed)
+		// Deployed: frank (production), grace (older history)
 		{
 			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
-				{SHA: "a1b2c3d", Author: "alice", Subject: "refactor user model",
-					Time: demoBase.Add(-30 * time.Minute),
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -29*time.Minute),
-						ev("deploy", "passed", -28*time.Minute),
-					}},
-				{SHA: "b2c3d4e", Author: "dave", Subject: "update dependencies",
-					Time: demoBase.Add(-12 * time.Minute),
-					Events: []clarityrefs.Event{
-						ev("build", "started", -11*time.Minute),
-					}},
-				{SHA: "c3d4e5f", Author: "eve", Subject: "new search index",
-					Time: demoBase.Add(-25 * time.Minute),
-					Events: []clarityrefs.Event{
-						ev("build", "failed", -24*time.Minute),
-					}},
-				{SHA: "d4e5f6a", Author: "frank", Subject: "tweak homepage",
-					Time: demoBase.Add(-45 * time.Minute),
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -44*time.Minute),
-						ev("deploy", "passed", -43*time.Minute),
-					}},
-				{SHA: "e5f6a7b", Author: "grace", Subject: "wip notes",
-					Time: demoBase.Add(-50 * time.Minute),
-				},
+				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
+				commit("dave02", "dave", "update dependencies", -2*time.Minute,
+					ev("build", "started", -90*time.Second),
+				),
+				commit("alice3", "alice", "refactor user model", -5*time.Minute,
+					ev("build", "passed", -4*time.Minute),
+				),
+				commit("carol4", "carol", "tweak homepage", -10*time.Minute,
+					ev("build", "passed", -9*time.Minute),
+				),
+				commit("frank5", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -5*time.Minute),
+				),
+				commit("grace6", "grace", "improve search index", -1*time.Hour,
+					ev("build", "passed", -59*time.Minute),
+					ev("deploy", "passed", -30*time.Minute),
+				),
+			}},
+			Hold: 2500 * time.Millisecond,
+		},
+
+		// Frame 2 — dave's build passes.
+		// Build line moves to dave; he joins NextDeploy.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
+				commit("dave02", "dave", "update dependencies", -2*time.Minute,
+					ev("build", "started", -90*time.Second),
+					ev("build", "passed", 2*time.Second),
+				),
+				commit("alice3", "alice", "refactor user model", -5*time.Minute,
+					ev("build", "passed", -4*time.Minute),
+				),
+				commit("carol4", "carol", "tweak homepage", -10*time.Minute,
+					ev("build", "passed", -9*time.Minute),
+				),
+				commit("frank5", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -5*time.Minute),
+				),
+				commit("grace6", "grace", "improve search index", -1*time.Hour,
+					ev("build", "passed", -59*time.Minute),
+					ev("deploy", "passed", -30*time.Minute),
+				),
 			}},
 			Hold: 2200 * time.Millisecond,
 		},
 
-		// Frame 2 — dave's build passes
+		// Frame 3 — a deploy kicks off.
+		// dave's commit gets a deploy:started event; the section header annotates "deploying…"
+		// and the entire batch (dave, alice, carol) is implicitly being deployed.
 		{
 			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
-				{SHA: "a1b2c3d", Author: "alice", Subject: "refactor user model",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -29*time.Minute),
-						ev("deploy", "passed", -28*time.Minute),
-					}},
-				{SHA: "b2c3d4e", Author: "dave", Subject: "update dependencies",
-					Events: []clarityrefs.Event{
-						ev("build", "started", -11*time.Minute),
-						ev("build", "passed", -10*time.Minute),
-					}},
-				{SHA: "c3d4e5f", Author: "eve", Subject: "new search index",
-					Events: []clarityrefs.Event{
-						ev("build", "failed", -24*time.Minute),
-					}},
-				{SHA: "d4e5f6a", Author: "frank", Subject: "tweak homepage",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -44*time.Minute),
-						ev("deploy", "passed", -43*time.Minute),
-					}},
-				{SHA: "e5f6a7b", Author: "grace", Subject: "wip notes"},
+				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
+				commit("dave02", "dave", "update dependencies", -2*time.Minute,
+					ev("build", "passed", 2*time.Second),
+					ev("deploy", "started", 4*time.Second),
+				),
+				commit("alice3", "alice", "refactor user model", -5*time.Minute,
+					ev("build", "passed", -4*time.Minute),
+				),
+				commit("carol4", "carol", "tweak homepage", -10*time.Minute,
+					ev("build", "passed", -9*time.Minute),
+				),
+				commit("frank5", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -5*time.Minute),
+				),
+				commit("grace6", "grace", "improve search index", -1*time.Hour,
+					ev("build", "passed", -59*time.Minute),
+					ev("deploy", "passed", -30*time.Minute),
+				),
 			}},
-			Hold: 1800 * time.Millisecond,
+			Hold: 2000 * time.Millisecond,
 		},
 
-		// Frame 3 — new commit lands at the top, build kicking off
+		// Frame 4 — deploy completes.
+		// dave's deploy passes; deploy line moves to dave and the whole NextDeploy
+		// batch (alice, carol) gets fix-forwarded into Deployed at dave's deploy time.
+		// frank stays frozen at his OWN earlier deploy time (own-deploy wins).
 		{
 			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
-				{SHA: "f6a7b8c", Author: "bob", Subject: "add billing endpoint",
-					Events: []clarityrefs.Event{
-						ev("build", "started", 0),
-					}},
-				{SHA: "a1b2c3d", Author: "alice", Subject: "refactor user model",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -29*time.Minute),
-						ev("deploy", "passed", -28*time.Minute),
-					}},
-				{SHA: "b2c3d4e", Author: "dave", Subject: "update dependencies",
-					Events: []clarityrefs.Event{
-						ev("build", "started", -11*time.Minute),
-						ev("build", "passed", -10*time.Minute),
-					}},
-				{SHA: "c3d4e5f", Author: "eve", Subject: "new search index",
-					Events: []clarityrefs.Event{
-						ev("build", "failed", -24*time.Minute),
-					}},
-				{SHA: "d4e5f6a", Author: "frank", Subject: "tweak homepage",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -44*time.Minute),
-						ev("deploy", "passed", -43*time.Minute),
-					}},
+				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
+				commit("dave02", "dave", "update dependencies", -2*time.Minute,
+					ev("build", "passed", 2*time.Second),
+					ev("deploy", "started", 4*time.Second),
+					ev("deploy", "passed", 7*time.Second),
+				),
+				commit("alice3", "alice", "refactor user model", -5*time.Minute,
+					ev("build", "passed", -4*time.Minute),
+				),
+				commit("carol4", "carol", "tweak homepage", -10*time.Minute,
+					ev("build", "passed", -9*time.Minute),
+				),
+				commit("frank5", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -5*time.Minute),
+				),
+				commit("grace6", "grace", "improve search index", -1*time.Hour,
+					ev("build", "passed", -59*time.Minute),
+					ev("deploy", "passed", -30*time.Minute),
+				),
 			}},
 			Hold: 1800 * time.Millisecond,
-		},
-
-		// Frame 4 — bob's build + deploy both pass
-		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
-				{SHA: "f6a7b8c", Author: "bob", Subject: "add billing endpoint",
-					Events: []clarityrefs.Event{
-						ev("build", "started", 0),
-						ev("build", "passed", 30*time.Second),
-						ev("deploy", "passed", 90*time.Second),
-					}},
-				{SHA: "a1b2c3d", Author: "alice", Subject: "refactor user model",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -29*time.Minute),
-						ev("deploy", "passed", -28*time.Minute),
-					}},
-				{SHA: "b2c3d4e", Author: "dave", Subject: "update dependencies",
-					Events: []clarityrefs.Event{
-						ev("build", "started", -11*time.Minute),
-						ev("build", "passed", -10*time.Minute),
-					}},
-				{SHA: "c3d4e5f", Author: "eve", Subject: "new search index",
-					Events: []clarityrefs.Event{
-						ev("build", "failed", -24*time.Minute),
-					}},
-				{SHA: "d4e5f6a", Author: "frank", Subject: "tweak homepage",
-					Events: []clarityrefs.Event{
-						ev("build", "passed", -44*time.Minute),
-						ev("deploy", "passed", -43*time.Minute),
-					}},
-			}},
-			Hold: 1500 * time.Millisecond,
 		},
 	},
 }

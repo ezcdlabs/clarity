@@ -217,7 +217,7 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 			{SHA: "3", Author: "carol", Subject: "third"},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80)
+	out := tui.RenderSnapshot(snap, 80, time.Time{})
 	for _, want := range []string{"alice", "bob", "carol", "first", "second", "third"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
@@ -226,8 +226,128 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 }
 
 func TestRenderSnapshot_EmptyCommits_ProducesNonEmptyOutput(t *testing.T) {
-	out := tui.RenderSnapshot(watcher.Snapshot{}, 80)
+	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{})
 	if out == "" {
 		t.Error("expected some placeholder output for empty snapshot")
+	}
+}
+
+// --- section rendering -------------------------------------------------------
+
+// All commits with no events sit in NeedsCI, so only that section header should appear.
+func TestRenderSnapshot_RendersOnlyNonEmptySections(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "1", Author: "alice", Subject: "wip"},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	if !strings.Contains(out, "On main") {
+		t.Errorf("expected 'On main' header for a NeedsCI commit, got:\n%s", out)
+	}
+	if strings.Contains(out, "Next deploy") {
+		t.Errorf("did not expect 'Next deploy' header for an empty group, got:\n%s", out)
+	}
+	if strings.Contains(out, "Deployed to production") {
+		t.Errorf("did not expect 'Deployed to production' header for an empty group, got:\n%s", out)
+	}
+}
+
+// A snapshot covering all three lifecycle stages should produce all three section headers.
+func TestRenderSnapshot_AllThreeSections(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "d", Author: "dave", Subject: "broken"},                                        // NeedsCI
+			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}}, // NextDeploy
+			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
+				ev("build", "passed", 100), ev("deploy", "passed", 150),
+			}},                                                                                   // Deployed
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	for _, h := range []string{"On main", "Next deploy", "Deployed to production"} {
+		if !strings.Contains(out, h) {
+			t.Errorf("expected section header %q in output:\n%s", h, out)
+		}
+	}
+	for _, name := range []string{"dave", "carol", "bob"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected commit author %q in output:\n%s", name, out)
+		}
+	}
+}
+
+// While a deploy is in flight the Next deploy header is annotated.
+func TestRenderSnapshot_DeployingAnnotatesHeader(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "b", Author: "bob", Subject: "shipping", Events: []clarityrefs.Event{
+				ev("build", "passed", 100), ev("deploy", "started", 200),
+			}},
+			{SHA: "a", Author: "alice", Subject: "live", Events: []clarityrefs.Event{
+				ev("build", "passed", 50), ev("deploy", "passed", 75),
+			}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	if !strings.Contains(strings.ToLower(out), "deploying") {
+		t.Errorf("expected 'deploying' indicator on Next deploy header, got:\n%s", out)
+	}
+}
+
+// A live (not-yet-deployed) commit shows its lead-time timer ticking against now.
+func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
+	commitTime := time.Unix(1000, 0)
+	now := time.Unix(1090, 0) // 1m 30s later
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "a", Author: "alice", Subject: "wip", Time: commitTime,
+				Events: []clarityrefs.Event{ev("build", "started", 50)}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, now)
+	if !strings.Contains(out, "1m 30s") {
+		t.Errorf("expected '1m 30s' lead time in output, got:\n%s", out)
+	}
+}
+
+// A deployed commit shows its lead time frozen at the deploy moment, not now.
+func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
+	commitTime := time.Unix(1000, 0)
+	deployTime := time.Unix(1300, 0) // exactly 5m after commit
+	now := time.Unix(9999, 0)        // long after — must NOT influence frozen value
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "a", Author: "alice", Subject: "shipped", Time: commitTime,
+				Events: []clarityrefs.Event{
+					ev("build", "passed", 100),
+					{Stage: "deploy", Status: "passed", Time: deployTime},
+				}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, now)
+	if !strings.Contains(out, "5m 00s") {
+		t.Errorf("expected '5m 00s' frozen lead time, got:\n%s", out)
+	}
+}
+
+// Sections appear top-to-bottom in lifecycle order: NeedsCI → NextDeploy → Deployed.
+func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "d", Author: "dave", Subject: "broken"},
+			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}},
+			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
+				ev("build", "passed", 100), ev("deploy", "passed", 150),
+			}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	pNeedsCI := strings.Index(out, "On main")
+	pNextDeploy := strings.Index(out, "Next deploy")
+	pDeployed := strings.Index(out, "Deployed to production")
+	if !(pNeedsCI < pNextDeploy && pNextDeploy < pDeployed) {
+		t.Errorf("expected sections in order NeedsCI → NextDeploy → Deployed, got positions %d, %d, %d in:\n%s",
+			pNeedsCI, pNextDeploy, pDeployed, out)
 	}
 }

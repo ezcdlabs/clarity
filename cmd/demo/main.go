@@ -50,9 +50,16 @@ func main() {
 // play runs the scenario through the real TUI. The snapshots channel feeds
 // scripted frames; once the last frame's hold elapses we Send a synthetic
 // "q" key so the alt-screen exits cleanly and the recording terminates.
+//
+// The TUI's clock is anchored at demoBase plus elapsed real time, so
+// lead-time timers tick at real pace while scenario data uses fixed offsets
+// from a stable reference. This is the same trick pushq's demo uses.
 func play(s *Scenario) error {
+	scenarioStart := time.Now()
+	nowFn := func() time.Time { return demoBase.Add(time.Since(scenarioStart)) }
+
 	snapshots := make(chan watcher.Snapshot, 1)
-	p := tui.NewProgram(s.Branch, snapshots)
+	p := tui.NewProgramWithClock(s.Branch, snapshots, nowFn)
 
 	go func() {
 		// Initial loading delay — viewers see the "Loading…" state briefly

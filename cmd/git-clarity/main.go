@@ -50,12 +50,13 @@ func runTUI() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	const branch = "main"
 	snapshots := watcher.Watch(ctx, watcher.Options{
 		RepoPath: repoPath,
 		Remote:   "origin",
-		Branch:   "main",
+		Branch:   branch,
 	})
-	return tui.Run(snapshots)
+	return tui.Run(branch, snapshots)
 }
 
 func runReport(args []string) error {
@@ -66,12 +67,22 @@ func runReport(args []string) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	return report.Run(report.Options{
+	stage, status := args[0], args[1]
+	sha, err := report.Run(report.Options{
 		RepoPath: repoPath,
 		Remote:   "origin",
-		Stage:    args[0],
-		Status:   args[1],
+		Stage:    stage,
+		Status:   status,
 	})
+	if err != nil {
+		return err
+	}
+	short := sha
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	fmt.Printf("wrote event: %s %s %s\n", short, stage, status)
+	return nil
 }
 
 func repoRoot() (string, error) {

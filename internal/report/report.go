@@ -25,13 +25,15 @@ type Options struct {
 	SHA      string    // defaults to env (GITHUB_SHA / CI_COMMIT_SHA), then HEAD
 }
 
-// Run resolves the SHA, attaches CI metadata, and writes one event.
-func Run(opts Options) error {
+// Run resolves the SHA, attaches CI metadata, and writes one event. Returns
+// the SHA the event was attached to so callers (e.g. the binary) can echo it
+// back to the user for confirmation.
+func Run(opts Options) (string, error) {
 	if opts.Stage == "" {
-		return fmt.Errorf("stage is required")
+		return "", fmt.Errorf("stage is required")
 	}
 	if opts.Status == "" {
-		return fmt.Errorf("status is required")
+		return "", fmt.Errorf("status is required")
 	}
 	if opts.Time.IsZero() {
 		opts.Time = time.Now()
@@ -44,7 +46,7 @@ func Run(opts Options) error {
 	if sha == "" {
 		s, err := resolveSHA(opts.RepoPath)
 		if err != nil {
-			return err
+			return "", err
 		}
 		sha = s
 	}
@@ -55,7 +57,10 @@ func Run(opts Options) error {
 		Time:   opts.Time,
 		CI:     ci.Detect(),
 	}
-	return clarityrefs.WriteEvent(opts.RepoPath, opts.Remote, sha, event)
+	if err := clarityrefs.WriteEvent(opts.RepoPath, opts.Remote, sha, event); err != nil {
+		return "", err
+	}
+	return sha, nil
 }
 
 // resolveSHA prefers CI-provided commit SHAs over git HEAD, since CI runners

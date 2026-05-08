@@ -1,4 +1,68 @@
-# Clarity (`git clarity`) — Design Document
+# clarity (`git clarity`)
+
+Commit-centric pipeline status TUI for trunk-based development. Answers "is main green?" at a glance — the most recent commits on main with their per-stage CI status in a live updating view. No server, no database, no proprietary format. Just git refs.
+
+---
+
+## Install
+
+### macOS (Homebrew)
+
+```sh
+brew install ezcdlabs/tap/git-clarity
+```
+
+### Windows (Scoop)
+
+```sh
+scoop bucket add ezcdlabs https://github.com/ezcdlabs/scoop-bucket
+scoop install git-clarity
+```
+
+### macOS / Linux (manual)
+
+Download the latest release from [github.com/ezcdlabs/clarity/releases](https://github.com/ezcdlabs/clarity/releases), extract, and place `git-clarity` somewhere on your `$PATH`:
+
+```sh
+# example — adjust version and platform
+curl -sSL https://github.com/ezcdlabs/clarity/releases/latest/download/git-clarity_linux_amd64.tar.gz \
+  | tar -xz git-clarity && sudo mv git-clarity /usr/local/bin/
+```
+
+Git will then expose it as `git clarity`.
+
+---
+
+## Usage
+
+### Watching: `git clarity`
+
+In any git repository, run:
+
+```sh
+git clarity
+```
+
+This opens an alt-screen TUI showing the most recent commits on `main` with their pipeline status. Press `q` to quit. No setup beyond install — clarity adds the events fetch refspec to your repo's git config the first time it runs.
+
+### Reporting from CI: `git clarity report <stage> <status>`
+
+Inside your pipelines:
+
+```yaml
+- run: git clarity report build started
+- run: ./build.sh
+- run: git clarity report build passed
+- run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
+```
+
+In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are user-defined; statuses are `started`, `passed`, `failed`, or `skipped`.
+
+---
+
+## Design Document
+
+The rest of this document records the design decisions behind clarity. Treat it as a living spec — when an open question is resolved or a new constraint is established, this document is updated before the work is considered done.
 
 ## Problem Statement
 
@@ -334,5 +398,9 @@ for {
 - **Notification hooks** — Slack/Discord/webhook integrations for deploy events
 - **Historical retention / `git clarity gc`** — events can grow unbounded; a pruning command for old events
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
+- **Auto-detect current branch** — the TUI currently hardcodes `main`; defaulting to the current checkout (or accepting `--branch`) is straightforward once the need arises
+- **Stage and status validation** — `git clarity report` currently accepts any string. The README enumerates valid statuses (`started`, `passed`, `failed`, `skipped`) but they aren't enforced. Validation would catch typos in CI configs at the cost of locking in the vocabulary; defer until a stable set is established
+- **Watcher fetch error surfacing** — fetch failures in the polling loop are currently silent; the TUI shows the last successful snapshot with no indication that it has gone stale. A subtle "(stale)" marker on the header would close that loop
 - **JSON output mode** — `git clarity --json` for scripting and piping into other tools
 - **Configuration file** — a `.clarity.json` or `.git/config` section for per-repo settings (poll interval, branch, etc) once there are options worth configuring
+- **Demo gif machinery** — port pushq's `cmd/demo/` + `scripts/record-demo.sh` pattern: a tiny replay binary that drives the TUI's render functions with scripted snapshots, then asciinema → agg → gif. Because the demo invokes the real renderer the recording can never drift from actual behaviour, which makes it cheap to keep up to date for the README and release announcements

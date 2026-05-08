@@ -62,7 +62,7 @@ func TestRun_WritesEventForHEAD(t *testing.T) {
 
 	headBefore := headSHA(t, clone.Path)
 
-	err := report.Run(report.Options{
+	_, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
 		Stage:    "build",
@@ -96,7 +96,7 @@ func TestRun_PrefersGITHUB_SHA_OverHEAD(t *testing.T) {
 	const fakeSHA = "1111111111111111111111111111111111111111"
 	t.Setenv("GITHUB_SHA", fakeSHA)
 
-	if err := report.Run(report.Options{
+	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
 		Stage:    "build",
@@ -132,7 +132,7 @@ func TestRun_FallsBackToCI_COMMIT_SHA_WhenGITHUBNotSet(t *testing.T) {
 	const fakeSHA = "2222222222222222222222222222222222222222"
 	t.Setenv("CI_COMMIT_SHA", fakeSHA)
 
-	if err := report.Run(report.Options{
+	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
 		Stage:    "build",
@@ -165,7 +165,7 @@ func TestRun_AttachesCIMetadata(t *testing.T) {
 	t.Setenv("GITHUB_SERVER_URL", "https://github.com")
 	t.Setenv("GITHUB_REPOSITORY", "ezcdlabs/clarity")
 
-	if err := report.Run(report.Options{
+	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
 		Stage:    "deploy",
@@ -193,7 +193,7 @@ func TestRun_AttachesCIMetadata(t *testing.T) {
 func TestRun_RequiresStage(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
-	err := report.Run(report.Options{
+	_, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Stage:    "",
 		Status:   "passed",
@@ -206,13 +206,61 @@ func TestRun_RequiresStage(t *testing.T) {
 func TestRun_RequiresStatus(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
-	err := report.Run(report.Options{
+	_, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Stage:    "build",
 		Status:   "",
 	})
 	if err == nil {
 		t.Fatal("expected error for empty status")
+	}
+}
+
+func TestRun_ReturnsResolvedSHA(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	want := headSHA(t, clone.Path)
+	got, err := report.Run(report.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Stage:    "build",
+		Status:   "passed",
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if got != want {
+		t.Errorf("expected returned sha=%s, got %s", want, got)
+	}
+}
+
+func TestRun_ReturnsCISHA_WhenSet(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	const fakeSHA = "1111111111111111111111111111111111111111"
+	t.Setenv("GITHUB_SHA", fakeSHA)
+
+	got, err := report.Run(report.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Stage:    "build",
+		Status:   "passed",
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if got != fakeSHA {
+		t.Errorf("expected returned sha=%s, got %s", fakeSHA, got)
 	}
 }
 
@@ -226,7 +274,7 @@ func TestRun_UsesProvidedTime(t *testing.T) {
 
 	want := time.Unix(1744120134, 0)
 
-	if err := report.Run(report.Options{
+	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
 		Stage:    "build",

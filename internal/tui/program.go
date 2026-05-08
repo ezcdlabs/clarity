@@ -74,18 +74,24 @@ func renderFooter() string {
 	return lipgloss.NewStyle().Foreground(colorGray).Render("  press q to quit")
 }
 
-// Run starts the Bubble Tea program in alt-screen mode and forwards every
-// snapshot from the channel into it. Returns when the user quits or the
-// channel is closed.
-func Run(branch string, snapshots <-chan watcher.Snapshot) error {
+// NewProgram constructs a Bubble Tea program in alt-screen mode and starts a
+// goroutine that forwards every snapshot from the channel into it. The
+// returned *tea.Program is ready for callers to invoke .Run() on. Exposed
+// (rather than hidden inside Run) so the demo binary can also Send synthetic
+// messages — e.g. a scripted quit at the end of a recorded scenario.
+func NewProgram(branch string, snapshots <-chan watcher.Snapshot) *tea.Program {
 	p := tea.NewProgram(New(branch), tea.WithAltScreen())
-
 	go func() {
 		for snap := range snapshots {
 			p.Send(SnapshotMsg(snap))
 		}
 	}()
+	return p
+}
 
-	_, err := p.Run()
+// Run starts the Bubble Tea program and blocks until the user quits or the
+// program exits.
+func Run(branch string, snapshots <-chan watcher.Snapshot) error {
+	_, err := NewProgram(branch, snapshots).Run()
 	return err
 }

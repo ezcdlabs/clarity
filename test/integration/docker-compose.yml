@@ -1,0 +1,28 @@
+services:
+  server:
+    build:
+      context: ../..          # repo root so COPY keys/... resolves
+      dockerfile: test/integration/server/Dockerfile
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "22"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  client:
+    build:
+      context: ../..
+      dockerfile: test/integration/client/Dockerfile
+    depends_on:
+      server:
+        condition: service_healthy
+    volumes:
+      - ../..:/workspace       # live mount of the repo root
+    working_dir: /workspace
+    environment:
+      - CLARITY_SSH_SERVER=server
+    # Default command: run the integration tests.
+    # Override with `docker compose run --rm client bash` for a manual shell.
+    command: >
+      go test -v -count=1 -tags integration
+      ./test/integration/...

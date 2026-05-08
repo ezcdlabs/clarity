@@ -1,0 +1,367 @@
+package clarityrefs_test
+
+import (
+	"encoding/json"
+	"os/exec"
+	"regexp"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/gittest"
+)
+
+const fakeSHA = "0123456789abcdef0123456789abcdef01234567"
+const fakeSHA2 = "fedcba9876543210fedcba9876543210fedcba98"
+
+// TestReadEvents_ReturnsEmpty_WhenRefMissing verifies that a fresh repo with no
+// events ref returns no events and no error.
+func TestReadEvents_ReturnsEmpty_WhenRefMissing(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	events, err := clarityrefs.ReadEvents(clone.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents on empty repo should not error, got: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected no events, got %d", len(events))
+	}
+}
+
+// TestReadAllEvents_ReturnsEmpty_WhenRefMissing verifies the same for ReadAllEvents.
+func TestReadAllEvents_ReturnsEmpty_WhenRefMissing(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	events, err := clarityrefs.ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllEvents on empty repo should not error, got: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected empty map, got %d entries", len(events))
+	}
+}
+
+// TestWriteEvent_CreatesFileOnRemote verifies that WriteEvent produces a file
+// on the events ref of the remote.
+func TestWriteEvent_CreatesFileOnRemote(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{
+		Stage:  "build",
+		Status: "passed",
+		Time:   time.Unix(1744120134, 0),
+	}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent failed: %v", err)
+	}
+
+	refs := remote.ListRefs()
+	found := false
+	for _, r := range refs {
+		if r == "refs/clarity/events" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected refs/clarity/events on remote, got: %v", refs)
+	}
+}
+
+// TestWriteEvent_ReadRoundTrip verifies that an event written can be read back
+// with all fields intact.
+func TestWriteEvent_ReadRoundTrip(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{
+		Stage:  "deploy",
+		Status: "passed",
+		Time:   time.Unix(1744120200, 0),
+		CI: map[string]string{
+			"system":  "github-actions",
+			"run_id":  "12345",
+			"run_url": "https://example.test/runs/12345",
+			"actor":   "alice",
+		},
+	}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent failed: %v", err)
+	}
+
+	// Fresh clone — reads the events ref freshly from the remote.
+	reader := remote.NewClone(t)
+	if err := fetchEventsRef(reader.Path); err != nil {
+		t.Fatalf("fetch events ref: %v", err)
+	}
+
+	got, err := clarityrefs.ReadEvents(reader.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents failed: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(got))
+	}
+	if got[0].Stage != ev.Stage || got[0].Status != ev.Status {
+		t.Errorf("expected %+v, got %+v", ev, got[0])
+	}
+	if !got[0].Time.Equal(ev.Time) {
+		t.Errorf("expected time %v, got %v", ev.Time, got[0].Time)
+	}
+	for k, v := range ev.CI {
+		if got[0].CI[k] != v {
+			t.Errorf("CI[%q]: expected %q, got %q", k, v, got[0].CI[k])
+		}
+	}
+}
+
+// TestReadEvents_SortsByTimestamp verifies events for a given SHA are returned
+// in ascending timestamp order regardless of write order.
+func TestReadEvents_SortsByTimestamp(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	// Write out of order.
+	times := []int64{1744120300, 1744120100, 1744120200}
+	for _, ts := range times {
+		ev := clarityrefs.Event{
+			Stage:  "build",
+			Status: "passed",
+			Time:   time.Unix(ts, 0),
+		}
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+			t.Fatalf("WriteEvent: %v", err)
+		}
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	got, err := clarityrefs.ReadEvents(clone.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1].Time.After(got[i].Time) {
+			t.Errorf("events not sorted ascending: index %d (%v) is after index %d (%v)",
+				i-1, got[i-1].Time, i, got[i].Time)
+		}
+	}
+}
+
+// TestReadAllEvents_GroupsBySHA verifies ReadAllEvents returns a map keyed by
+// SHA with all events for each SHA.
+func TestReadAllEvents_GroupsBySHA(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	for _, ev := range []struct {
+		sha   string
+		stage string
+	}{
+		{fakeSHA, "build"},
+		{fakeSHA, "deploy"},
+		{fakeSHA2, "build"},
+	} {
+		e := clarityrefs.Event{Stage: ev.stage, Status: "passed", Time: time.Now()}
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", ev.sha, e); err != nil {
+			t.Fatalf("WriteEvent: %v", err)
+		}
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	all, err := clarityrefs.ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllEvents: %v", err)
+	}
+	if len(all[fakeSHA]) != 2 {
+		t.Errorf("expected 2 events for fakeSHA, got %d", len(all[fakeSHA]))
+	}
+	if len(all[fakeSHA2]) != 1 {
+		t.Errorf("expected 1 event for fakeSHA2, got %d", len(all[fakeSHA2]))
+	}
+}
+
+// TestWriteEvent_FilenameFormat verifies event filenames match
+// "<unix-ts>-<short-id>.json".
+func TestWriteEvent_FilenameFormat(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120134, 0)}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent: %v", err)
+	}
+
+	cmd := exec.Command("git", "ls-tree", "-r", "refs/clarity/events")
+	cmd.Dir = remote.Path
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-tree: %v\n%s", err, out)
+	}
+
+	pattern := regexp.MustCompile(`events/[0-9a-f]{40}/\d+-[0-9a-f]+\.json$`)
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if tab := strings.IndexByte(line, '\t'); tab >= 0 {
+			path := line[tab+1:]
+			if pattern.MatchString(path) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected an event file matching %s, got:\n%s", pattern, out)
+	}
+}
+
+// TestWriteEvent_TreeHasNoFullPathnames verifies the events tree is built with
+// proper nested sub-trees rather than flat entries with slashes — GitHub's
+// receive.fsckObjects rejects the latter ("fullPathname" check).
+func TestWriteEvent_TreeHasNoFullPathnames(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120134, 0)}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent: %v", err)
+	}
+
+	cmd := exec.Command("git", "ls-tree", "refs/clarity/events")
+	cmd.Dir = remote.Path
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-tree: %v\n%s", err, out)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		if tab := strings.IndexByte(line, '\t'); tab >= 0 {
+			name := line[tab+1:]
+			if strings.Contains(name, "/") {
+				t.Errorf("root tree entry %q contains a slash — invalid tree object rejected by GitHub fsck", name)
+			}
+		}
+	}
+}
+
+// TestWriteEvent_ConcurrentWrites_BothLand verifies that two clones writing
+// events simultaneously both end up on the events ref (optimistic FF retry).
+func TestWriteEvent_ConcurrentWrites_BothLand(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	alice := remote.NewClone(t)
+	bob := remote.NewClone(t)
+
+	var wg sync.WaitGroup
+	var aliceErr, bobErr error
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120100, 0)}
+		aliceErr = clarityrefs.WriteEvent(alice.Path, "origin", fakeSHA, ev)
+	}()
+	go func() {
+		defer wg.Done()
+		ev := clarityrefs.Event{Stage: "deploy", Status: "passed", Time: time.Unix(1744120200, 0)}
+		bobErr = clarityrefs.WriteEvent(bob.Path, "origin", fakeSHA, ev)
+	}()
+	wg.Wait()
+
+	if aliceErr != nil {
+		t.Errorf("alice WriteEvent failed: %v", aliceErr)
+	}
+	if bobErr != nil {
+		t.Errorf("bob WriteEvent failed: %v", bobErr)
+	}
+
+	reader := remote.NewClone(t)
+	if err := fetchEventsRef(reader.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	got, err := clarityrefs.ReadEvents(reader.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 events after concurrent writes, got %d: %+v", len(got), got)
+	}
+}
+
+// TestEvent_JSONShape verifies the on-disk JSON shape matches the README:
+// {"stage":..., "status":..., "ts":..., "ci":{...}}
+func TestEvent_JSONShape(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{
+		Stage:  "build",
+		Status: "passed",
+		Time:   time.Unix(1744120134, 0),
+		CI:     map[string]string{"system": "github-actions"},
+	}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent: %v", err)
+	}
+
+	cmd := exec.Command("git", "ls-tree", "-r", "refs/clarity/events")
+	cmd.Dir = remote.Path
+	out, _ := cmd.CombinedOutput()
+	var path string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if tab := strings.IndexByte(line, '\t'); tab >= 0 {
+			p := line[tab+1:]
+			if strings.HasPrefix(p, "events/") && strings.HasSuffix(p, ".json") {
+				path = p
+				break
+			}
+		}
+	}
+	if path == "" {
+		t.Fatal("could not find event file in tree")
+	}
+
+	content, ok := remote.ReadFileAtRef("refs/clarity/events", path)
+	if !ok {
+		t.Fatalf("could not read %s", path)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		t.Fatalf("parse JSON: %v\n%s", err, content)
+	}
+	if parsed["stage"] != "build" {
+		t.Errorf("expected stage=build, got %v", parsed["stage"])
+	}
+	if parsed["status"] != "passed" {
+		t.Errorf("expected status=passed, got %v", parsed["status"])
+	}
+	if ts, ok := parsed["ts"].(float64); !ok || int64(ts) != 1744120134 {
+		t.Errorf("expected ts=1744120134, got %v (%T)", parsed["ts"], parsed["ts"])
+	}
+	ci, _ := parsed["ci"].(map[string]any)
+	if ci == nil || ci["system"] != "github-actions" {
+		t.Errorf("expected ci.system=github-actions, got %v", parsed["ci"])
+	}
+}
+
+// fetchEventsRef pulls the remote events ref into the clone for read-side tests.
+// (The watcher / TUI normally does this via internal/refs.)
+func fetchEventsRef(repoPath string) error {
+	cmd := exec.Command("git", "fetch", "origin", "+refs/clarity/events:refs/clarity/events")
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil && !strings.Contains(string(out), "couldn't find remote ref") {
+		return err
+	}
+	return nil
+}

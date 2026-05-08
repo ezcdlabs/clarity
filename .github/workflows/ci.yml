@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@github.com"
+          git config --global user.name "CI"
+
+      - run: go vet ./...
+      - run: go test ./... -timeout 120s
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run integration tests
+        run: |
+          if [ -f test/integration/docker-compose.yml ]; then
+            docker compose -f test/integration/docker-compose.yml run --rm client
+          else
+            echo "no integration tests yet"
+          fi

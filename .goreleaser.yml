@@ -1,0 +1,89 @@
+version: 2
+
+project_name: git-clarity
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: git-clarity
+    main: ./cmd/git-clarity
+    binary: git-clarity
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: git-clarity
+    builds: [git-clarity]
+    name_template: "git-clarity_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: ezcdlabs
+    name: clarity
+  name_template: "v{{ .Version }}"
+  header: |
+    ## Installation
+
+    Download the binary for your platform below and place `git-clarity` somewhere on your `$PATH`.
+    Git will then expose it as `git clarity`.
+
+    ### macOS / Linux (curl)
+    ```sh
+    # example for linux amd64 — adjust for your platform
+    curl -sSL https://github.com/ezcdlabs/clarity/releases/download/{{ .Tag }}/git-clarity_{{ .Version }}_linux_amd64.tar.gz \
+      | tar -xz git-clarity && sudo mv git-clarity /usr/local/bin/
+    ```
+
+scoops:
+  - name: git-clarity
+    repository:
+      owner: ezcdlabs
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/ezcdlabs/clarity
+    description: Commit-centric pipeline status TUI for trunk-based development via git refs
+    license: MIT
+
+brews:
+  - name: git-clarity
+    repository:
+      owner: ezcdlabs
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/ezcdlabs/clarity
+    description: Commit-centric pipeline status TUI for trunk-based development via git refs
+    license: MIT
+    install: |
+      bin.install "git-clarity"
+    test: |
+      system "#{bin}/git-clarity", "--version"

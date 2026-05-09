@@ -18,7 +18,7 @@ type Frame struct {
 // recording.
 type Scenario struct {
 	Name         string
-	Branch       string
+	Repo         string        // shown in the header (in place of a real repo name)
 	InitialDelay time.Duration // hold the "Loading…" state before the first snapshot
 	Frames       []Frame
 }
@@ -53,7 +53,7 @@ func commit(sha, author, subject string, commitOffset time.Duration, events ...c
 //   - frame 4: the deploy completes — the NextDeploy batch fix-forwards into Deployed
 var happyPath = Scenario{
 	Name:         "happy-path",
-	Branch:       "main",
+	Repo:         "your-app",
 	InitialDelay: 800 * time.Millisecond,
 	Frames: []Frame{
 		// Frame 1 — steady state.
@@ -171,6 +171,72 @@ var happyPath = Scenario{
 	},
 }
 
+// deployFailure shows the "failed deploy → newer deploy starts → merge"
+// transition from the README's TBD model:
+//   - frame 1: alice's deploy is in flight
+//   - frame 2: alice's deploy fails — a "deploy failed" batch appears
+//   - frame 3: bob lands and starts a newer deploy — alice is absorbed into
+//     bob's now-deploying batch (no separate failed group anymore)
+var deployFailure = Scenario{
+	Name:         "deploy-failure",
+	Repo:         "your-app",
+	InitialDelay: 800 * time.Millisecond,
+	Frames: []Frame{
+		// Frame 1 — alice is mid-deploy.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("alice1", "alice", "refactor user model", -3*time.Minute,
+					ev("build", "passed", -150*time.Second),
+					ev("deploy", "started", -30*time.Second),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -8*time.Minute),
+				),
+			}},
+			Hold: 2200 * time.Millisecond,
+		},
+
+		// Frame 2 — alice's deploy fails. Standalone failed batch.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("alice1", "alice", "refactor user model", -3*time.Minute,
+					ev("build", "passed", -150*time.Second),
+					ev("deploy", "started", -30*time.Second),
+					ev("deploy", "failed", 3*time.Second),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -8*time.Minute),
+				),
+			}},
+			Hold: 2400 * time.Millisecond,
+		},
+
+		// Frame 3 — bob lands as the fix-forward and starts deploying. alice's
+		// failed batch is absorbed into bob's "deploying…" batch.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("bob003", "bob", "patch token validation", -10*time.Second,
+					ev("build", "passed", 6*time.Second),
+					ev("deploy", "started", 8*time.Second),
+				),
+				commit("alice1", "alice", "refactor user model", -3*time.Minute,
+					ev("build", "passed", -150*time.Second),
+					ev("deploy", "started", -30*time.Second),
+					ev("deploy", "failed", 3*time.Second),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("build", "passed", -24*time.Minute),
+					ev("deploy", "passed", -8*time.Minute),
+				),
+			}},
+			Hold: 2200 * time.Millisecond,
+		},
+	},
+}
+
 var allScenarios = map[string]*Scenario{
-	"happy-path": &happyPath,
+	"happy-path":     &happyPath,
+	"deploy-failure": &deployFailure,
 }

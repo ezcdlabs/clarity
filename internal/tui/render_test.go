@@ -147,16 +147,6 @@ func TestRenderRow_ShowsAuthorAndSubject(t *testing.T) {
 	}
 }
 
-func TestRenderRow_NoEvents_ShowsNoEventsMarker(t *testing.T) {
-	view := watcher.CommitView{
-		SHA: "abc", Author: "grace", Subject: "wip",
-	}
-	out := tui.RenderRow(view, 80)
-	if !strings.Contains(out, "no events") {
-		t.Errorf("expected 'no events' marker, got: %q", out)
-	}
-}
-
 func TestRenderRow_PassedShowsCheckmark(t *testing.T) {
 	view := watcher.CommitView{
 		SHA: "abc", Author: "alice", Subject: "x",
@@ -179,33 +169,24 @@ func TestRenderRow_FailedShowsCross(t *testing.T) {
 	}
 }
 
-func TestRenderRow_RunningShowsHourglass(t *testing.T) {
+func TestRenderRow_RunningShowsSpinner(t *testing.T) {
 	view := watcher.CommitView{
 		SHA: "abc", Author: "dave", Subject: "x",
 		Events: []clarityrefs.Event{ev("build", "started", 100)},
 	}
 	out := tui.RenderRow(view, 80)
-	if !strings.Contains(out, "⧗") {
-		t.Errorf("expected ⧗ for running: %q", out)
+	hasSpinner := false
+	for _, frame := range tui.SpinnerFrames {
+		if strings.Contains(out, frame) {
+			hasSpinner = true
+			break
+		}
+	}
+	if !hasSpinner {
+		t.Errorf("expected a spinner frame for running build: %q", out)
 	}
 }
 
-func TestRenderRow_StagesListed(t *testing.T) {
-	view := watcher.CommitView{
-		SHA: "abc", Author: "alice", Subject: "x",
-		Events: []clarityrefs.Event{
-			ev("build", "passed", 100),
-			ev("deploy", "passed", 200),
-		},
-	}
-	out := tui.RenderRow(view, 80)
-	if !strings.Contains(out, "build") {
-		t.Errorf("expected stage 'build' in row: %q", out)
-	}
-	if !strings.Contains(out, "deploy") {
-		t.Errorf("expected stage 'deploy' in row: %q", out)
-	}
-}
 
 // --- RenderSnapshot ----------------------------------------------------------
 
@@ -217,7 +198,7 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 			{SHA: "3", Author: "carol", Subject: "third"},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
 	for _, want := range []string{"alice", "bob", "carol", "first", "second", "third"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
@@ -226,7 +207,7 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 }
 
 func TestRenderSnapshot_EmptyCommits_ProducesNonEmptyOutput(t *testing.T) {
-	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{})
+	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{}, 0)
 	if out == "" {
 		t.Error("expected some placeholder output for empty snapshot")
 	}
@@ -234,22 +215,22 @@ func TestRenderSnapshot_EmptyCommits_ProducesNonEmptyOutput(t *testing.T) {
 
 // --- section rendering -------------------------------------------------------
 
-// All commits with no events sit in NeedsCI, so only that section header should appear.
+// All commits with no events sit in HEAD, so only that section header should appear.
 func TestRenderSnapshot_RendersOnlyNonEmptySections(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "1", Author: "alice", Subject: "wip"},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, time.Time{})
-	if !strings.Contains(out, "On main") {
-		t.Errorf("expected 'On main' header for a NeedsCI commit, got:\n%s", out)
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
+	if !strings.Contains(out, "HEAD") {
+		t.Errorf("expected 'HEAD' header for a Head commit, got:\n%s", out)
 	}
-	if strings.Contains(out, "Next deploy") {
-		t.Errorf("did not expect 'Next deploy' header for an empty group, got:\n%s", out)
+	if strings.Contains(out, "CI Passed") {
+		t.Errorf("did not expect 'CI Passed' header for an empty group, got:\n%s", out)
 	}
-	if strings.Contains(out, "Deployed to production") {
-		t.Errorf("did not expect 'Deployed to production' header for an empty group, got:\n%s", out)
+	if strings.Contains(out, "Deployed") {
+		t.Errorf("did not expect 'Deployed' header for an empty group, got:\n%s", out)
 	}
 }
 
@@ -257,15 +238,15 @@ func TestRenderSnapshot_RendersOnlyNonEmptySections(t *testing.T) {
 func TestRenderSnapshot_AllThreeSections(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
-			{SHA: "d", Author: "dave", Subject: "broken"},                                        // NeedsCI
-			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}}, // NextDeploy
+			{SHA: "d", Author: "dave", Subject: "broken"},
+			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}},
 			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
 				ev("build", "passed", 100), ev("deploy", "passed", 150),
-			}},                                                                                   // Deployed
+			}},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, time.Time{})
-	for _, h := range []string{"On main", "Next deploy", "Deployed to production"} {
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
+	for _, h := range []string{"HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, h) {
 			t.Errorf("expected section header %q in output:\n%s", h, out)
 		}
@@ -277,8 +258,8 @@ func TestRenderSnapshot_AllThreeSections(t *testing.T) {
 	}
 }
 
-// While a deploy is in flight the Next deploy header is annotated.
-func TestRenderSnapshot_DeployingAnnotatesHeader(t *testing.T) {
+// While a deploy is in flight the Deployed batch subheader says "deploying…".
+func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "b", Author: "bob", Subject: "shipping", Events: []clarityrefs.Event{
@@ -289,9 +270,55 @@ func TestRenderSnapshot_DeployingAnnotatesHeader(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, time.Time{})
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
 	if !strings.Contains(strings.ToLower(out), "deploying") {
-		t.Errorf("expected 'deploying' indicator on Next deploy header, got:\n%s", out)
+		t.Errorf("expected 'deploying' subheader inside Deployed, got:\n%s", out)
+	}
+}
+
+// A passed deploy and a started deploy should produce two distinct subheaders.
+func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "c", Author: "carol", Subject: "shipping", Events: []clarityrefs.Event{
+				ev("build", "passed", 300), ev("deploy", "started", 350),
+			}},
+			{SHA: "a", Author: "alice", Subject: "live", Events: []clarityrefs.Event{
+				ev("build", "passed", 50), ev("deploy", "passed", 75),
+			}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Unix(400, 0), 0)
+	if !strings.Contains(strings.ToLower(out), "deploying") {
+		t.Errorf("expected 'deploying' for newest batch, got:\n%s", out)
+	}
+	if !strings.Contains(strings.ToLower(out), "deployed") {
+		t.Errorf("expected 'deployed' for older batch, got:\n%s", out)
+	}
+}
+
+// The row format no longer trails with explicit "build" / "deploy" labels —
+// the icon and section convey that.
+func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "a", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
+				ev("build", "passed", 100), ev("deploy", "passed", 150),
+			}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
+	// Each row should not contain the verbatim words "build" or "deploy"
+	// after the subject. We check rows containing the author rather than
+	// the whole output (subheaders may legitimately mention "deploy*").
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "alice") {
+			continue
+		}
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "build") || strings.Contains(lower, "deploy") {
+			t.Errorf("commit row should not mention 'build'/'deploy', got: %q", line)
+		}
 	}
 }
 
@@ -305,7 +332,7 @@ func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
 				Events: []clarityrefs.Event{ev("build", "started", 50)}},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, now)
+	out := tui.RenderSnapshot(snap, 80, now, 0)
 	if !strings.Contains(out, "1m 30s") {
 		t.Errorf("expected '1m 30s' lead time in output, got:\n%s", out)
 	}
@@ -325,13 +352,13 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 				}},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, now)
+	out := tui.RenderSnapshot(snap, 80, now, 0)
 	if !strings.Contains(out, "5m 00s") {
 		t.Errorf("expected '5m 00s' frozen lead time, got:\n%s", out)
 	}
 }
 
-// Sections appear top-to-bottom in lifecycle order: NeedsCI → NextDeploy → Deployed.
+// Sections appear top-to-bottom in lifecycle order: HEAD → CI Passed → Deployed.
 func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
@@ -342,12 +369,12 @@ func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(snap, 80, time.Time{})
-	pNeedsCI := strings.Index(out, "On main")
-	pNextDeploy := strings.Index(out, "Next deploy")
-	pDeployed := strings.Index(out, "Deployed to production")
-	if !(pNeedsCI < pNextDeploy && pNextDeploy < pDeployed) {
-		t.Errorf("expected sections in order NeedsCI → NextDeploy → Deployed, got positions %d, %d, %d in:\n%s",
-			pNeedsCI, pNextDeploy, pDeployed, out)
+	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
+	pHead := strings.Index(out, "HEAD")
+	pCI := strings.Index(out, "CI Passed")
+	pDeployed := strings.Index(out, "Deployed")
+	if !(pHead < pCI && pCI < pDeployed) {
+		t.Errorf("expected sections in order HEAD → CI Passed → Deployed, got positions %d, %d, %d in:\n%s",
+			pHead, pCI, pDeployed, out)
 	}
 }

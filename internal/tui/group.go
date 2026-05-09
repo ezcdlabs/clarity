@@ -9,92 +9,147 @@ import (
 
 // Groupings buckets a snapshot's commits into the trunk-based-development
 // lifecycle stages. Within each bucket commits keep their original git-log
-// order (newest-first); only the SECTION a commit falls in changes as
-// supersedence moves the build and deploy lines.
+// order (newest-first); only the SECTION (or batch) a commit falls in
+// changes as supersedence moves the build and deploy lines.
 type Groupings struct {
-	NeedsCI    []watcher.CommitView
-	NextDeploy []watcher.CommitView
-	// Deploying is true when a NextDeploy commit has deploy:started without
-	// a corresponding completion — i.e. a deploy is currently in flight.
-	Deploying bool
-	Deployed  []watcher.CommitView
+	// Head: landed on main but not yet passed CI.
+	Head []watcher.CommitView
+	// CIPassed: built green, no deploy event of any kind yet.
+	CIPassed []watcher.CommitView
+	// Deployed is split into batches — one per distinct deploy attempt.
+	// A batch with status "started" is currently deploying; "passed" is a
+	// completed deploy; "failed" is a deploy that failed and has no newer
+	// attempt to fix-forward it (otherwise it would have been merged into
+	// the newer batch).
+	Deployed []DeployBatch
 
 	// indices into the original commits slice; -1 if absent.
-	buildLine  int
-	deployLine int
+	buildLine          int // newest commit with build:passed
+	deployPassedLine   int // newest commit with deploy:passed (used for stale-stage check)
+	deployBoundaryLine int // newest commit with ANY deploy event (used for section boundary)
 
-	// deployedAt[i] is the deploy time at which commit i entered production —
-	// either its own deploy:passed, or the deploy:passed of a newer commit
-	// (fix-forward). Zero when commit i has not yet been deployed.
+	// deployedAt[i] is the deploy time at which commit i first reached
+	// production — its own deploy:passed time, or the oldest newer commit's
+	// deploy:passed time if fix-forwarded. Zero when commit i has not yet
+	// been deployed.
 	deployedAt []time.Time
 }
 
-// GroupCommits classifies commits (newest-first) into lifecycle groups using
-// fix-forward semantics:
-//   - a commit is "deployed" the moment any newer commit has deployed;
-//   - a failed build is only globally red if no newer commit has built green.
-//
-// If deploys exist without any explicit passing build event, the deploy line
-// also acts as the build line — successful deployment implies a successful
-// build, even if the build event itself wasn't reported.
+// DeployBatch is a subgroup within Deployed: one deploy attempt's commits
+// plus the status and time of the deploy event that anchors it.
+type DeployBatch struct {
+	Status  string // "started" | "passed" | "failed"
+	Time    time.Time
+	Commits []watcher.CommitView
+}
+
+// GroupCommits classifies commits (newest-first) into lifecycle groups. The
+// Deployed section subgroups its commits into batches per deploy attempt;
+// failed deploys with a newer attempt are merged into that newer batch.
 func GroupCommits(commits []watcher.CommitView) Groupings {
 	g := Groupings{
-		buildLine:  -1,
-		deployLine: -1,
-		deployedAt: make([]time.Time, len(commits)),
+		buildLine:          -1,
+		deployPassedLine:   -1,
+		deployBoundaryLine: -1,
+		deployedAt:         make([]time.Time, len(commits)),
 	}
 
-	// Walk newest → oldest. Each commit's deployedAt carries the time at
-	// which it FIRST entered production:
-	//   - if it has its own deploy:passed, that's the freeze point;
-	//   - otherwise it's fix-forwarded by the OLDEST newer commit that has a
-	//     deploy:passed (i.e. the most recently observed one as we walk
-	//     newest → oldest).
-	// This preserves "as soon as any later commit has been deployed" — a
-	// commit's freeze time never moves forward just because something newer
-	// deploys later.
-	var lastSeenDeploy time.Time
+	// Pass 1 — compute the three lines and per-commit deployedAt.
+	var lastSeenDeployPassed time.Time
 	for i, c := range commits {
-		var ownDeploy time.Time
+		var ownDeployPassed time.Time
+		var hasAnyDeploy bool
 		for _, e := range c.Events {
-			if e.Stage == "deploy" && e.Status == "passed" && e.Time.After(ownDeploy) {
-				ownDeploy = e.Time
+			if e.Stage != "deploy" {
+				continue
+			}
+			hasAnyDeploy = true
+			if e.Status == "passed" && e.Time.After(ownDeployPassed) {
+				ownDeployPassed = e.Time
 			}
 		}
-		if !ownDeploy.IsZero() {
-			g.deployedAt[i] = ownDeploy
-			lastSeenDeploy = ownDeploy
-		} else if !lastSeenDeploy.IsZero() {
-			g.deployedAt[i] = lastSeenDeploy
+		if !ownDeployPassed.IsZero() {
+			g.deployedAt[i] = ownDeployPassed
+			lastSeenDeployPassed = ownDeployPassed
+		} else if !lastSeenDeployPassed.IsZero() {
+			g.deployedAt[i] = lastSeenDeployPassed
 		}
 		latest := latestPerStage(c.Events)
 		if g.buildLine == -1 && latest["build"] == "passed" {
 			g.buildLine = i
 		}
-		if g.deployLine == -1 && latest["deploy"] == "passed" {
-			g.deployLine = i
+		if g.deployPassedLine == -1 && latest["deploy"] == "passed" {
+			g.deployPassedLine = i
+		}
+		if g.deployBoundaryLine == -1 && hasAnyDeploy {
+			g.deployBoundaryLine = i
 		}
 	}
 
+	// effectiveBuildLine: a deploy event implies a passing build, even if no
+	// build event was reported. Treat the deploy boundary as the build line
+	// when no real build:passed exists.
 	effectiveBuildLine := g.buildLine
-	if effectiveBuildLine == -1 && g.deployLine != -1 {
-		effectiveBuildLine = g.deployLine
+	if effectiveBuildLine == -1 && g.deployBoundaryLine != -1 {
+		effectiveBuildLine = g.deployBoundaryLine
 	}
 
+	// Pass 2 — classify into Head / CIPassed / a "deployed range" that
+	// will be subdivided into batches.
+	var deployedRange []watcher.CommitView
 	for i, c := range commits {
 		switch {
-		case g.deployLine != -1 && i >= g.deployLine:
-			g.Deployed = append(g.Deployed, c)
+		case g.deployBoundaryLine != -1 && i >= g.deployBoundaryLine:
+			deployedRange = append(deployedRange, c)
 		case effectiveBuildLine != -1 && i >= effectiveBuildLine:
-			g.NextDeploy = append(g.NextDeploy, c)
-			if latestPerStage(c.Events)["deploy"] == "started" {
-				g.Deploying = true
-			}
+			g.CIPassed = append(g.CIPassed, c)
 		default:
-			g.NeedsCI = append(g.NeedsCI, c)
+			g.Head = append(g.Head, c)
 		}
 	}
+
+	// Pass 3 — split deployedRange into batches with the failed-merge rule.
+	g.Deployed = computeBatches(deployedRange)
+
 	return g
+}
+
+// computeBatches walks the Deployed range newest → oldest. A commit with a
+// non-failed deploy event opens a new batch; a commit with no deploy event
+// joins the current (newer) batch; a commit with a failed deploy joins the
+// current batch (i.e. is fix-forwarded), unless there is no newer batch yet,
+// in which case it starts its own visible "failed" batch.
+func computeBatches(commits []watcher.CommitView) []DeployBatch {
+	var batches []DeployBatch
+	var current *DeployBatch
+	for _, c := range commits {
+		latestEvent, hasDeploy := latestDeployEvent(c.Events)
+		if !hasDeploy {
+			if current != nil {
+				current.Commits = append(current.Commits, c)
+			}
+			continue
+		}
+		// A failed deploy fix-forwards into a newer non-failed batch (started
+		// or passed). Two failures in a row are independent failures — they
+		// stay as separate visible groups.
+		if latestEvent.Status == "failed" && current != nil && current.Status != "failed" {
+			current.Commits = append(current.Commits, c)
+			continue
+		}
+		if current != nil {
+			batches = append(batches, *current)
+		}
+		current = &DeployBatch{
+			Status:  latestEvent.Status,
+			Time:    latestEvent.Time,
+			Commits: []watcher.CommitView{c},
+		}
+	}
+	if current != nil {
+		batches = append(batches, *current)
+	}
+	return batches
 }
 
 // LeadTime returns the elapsed time from the commit's authoring to either
@@ -111,16 +166,42 @@ func (g Groupings) LeadTime(index int, commitTime, now time.Time) (time.Duration
 }
 
 // IsStaleStage reports whether commit[index]'s status for the given stage
-// has been superseded by a newer commit's success on that same stage. The
-// rendering layer dims stale stage icons so they read as settled history.
+// has been superseded by a newer commit's success on that same stage.
 func (g Groupings) IsStaleStage(index int, stage string) bool {
 	switch stage {
 	case "build":
 		return g.buildLine != -1 && index > g.buildLine
 	case "deploy":
-		return g.deployLine != -1 && index > g.deployLine
+		return g.deployPassedLine != -1 && index > g.deployPassedLine
 	}
 	return false
+}
+
+// totalDeployed sums all commits across Deployed batches. Useful for
+// summary checks where batch shape doesn't matter.
+func (g Groupings) totalDeployed() int {
+	n := 0
+	for _, b := range g.Deployed {
+		n += len(b.Commits)
+	}
+	return n
+}
+
+// latestDeployEvent returns the newest deploy event on the commit, or false
+// when there are none.
+func latestDeployEvent(events []clarityrefs.Event) (clarityrefs.Event, bool) {
+	var latest clarityrefs.Event
+	found := false
+	for _, e := range events {
+		if e.Stage != "deploy" {
+			continue
+		}
+		if !found || e.Time.After(latest.Time) {
+			latest = e
+			found = true
+		}
+	}
+	return latest, found
 }
 
 func latestPerStage(events []clarityrefs.Event) map[string]string {

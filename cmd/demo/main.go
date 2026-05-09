@@ -59,7 +59,7 @@ func play(s *Scenario) error {
 	nowFn := func() time.Time { return demoBase.Add(time.Since(scenarioStart)) }
 
 	snapshots := make(chan watcher.Snapshot, 1)
-	p := tui.NewProgramWithClock(s.Branch, snapshots, nowFn)
+	p := tui.NewProgramWithClock(s.Repo, snapshots, nowFn)
 
 	go func() {
 		// Initial loading delay — viewers see the "Loading…" state briefly

@@ -10,8 +10,12 @@ import (
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
+func newModel(repo string) tui.Model {
+	return tui.New(repo).WithSize(120, 40)
+}
+
 func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
-	m := tui.New("main")
+	m := newModel("clarity")
 	out := m.View()
 	if !strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("expected a loading indicator before any snapshot, got:\n%s", out)
@@ -22,7 +26,7 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 }
 
 func TestModel_AfterEmptySnapshot_ShowsNoCommitsState(t *testing.T) {
-	m, _ := tui.New("main").Update(tui.SnapshotMsg(watcher.Snapshot{}))
+	m, _ := newModel("clarity").Update(tui.SnapshotMsg(watcher.Snapshot{}))
 	out := m.View()
 	if !strings.Contains(out, "no commits yet") {
 		t.Errorf("expected 'no commits yet' after an empty snapshot, got:\n%s", out)
@@ -39,7 +43,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 				Events: []clarityrefs.Event{{Stage: "build", Status: "passed", Time: time.Unix(100, 0)}}},
 		},
 	}
-	m, _ := tui.New("main").Update(tui.SnapshotMsg(snap))
+	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
 	out := m.View()
 	if !strings.Contains(out, "alice") {
 		t.Errorf("expected commit author rendered, got:\n%s", out)
@@ -49,18 +53,45 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 	}
 }
 
-func TestModel_HeaderShowsBranch(t *testing.T) {
-	m := tui.New("trunk")
+// The header shows the repository name (not the branch).
+func TestModel_HeaderShowsRepoName(t *testing.T) {
+	m := newModel("my-cool-repo")
 	out := m.View()
-	if !strings.Contains(out, "trunk") {
-		t.Errorf("expected branch name in header, got:\n%s", out)
+	if !strings.Contains(out, "my-cool-repo") {
+		t.Errorf("expected repo name in header, got:\n%s", out)
 	}
 }
 
-func TestModel_FooterShowsQuitHint(t *testing.T) {
-	m := tui.New("main")
+// The header shows pipeline status badges for build and deploy.
+func TestModel_HeaderShowsBuildAndDeployBadges(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "1", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
+				{Stage: "build", Status: "passed", Time: time.Unix(100, 0)},
+				{Stage: "deploy", Status: "passed", Time: time.Unix(150, 0)},
+			}},
+		},
+	}
+	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
+	out := m.View()
+	if !strings.Contains(strings.ToLower(out), "build") {
+		t.Errorf("expected 'build' badge in header, got:\n%s", out)
+	}
+	if !strings.Contains(strings.ToLower(out), "deploy") {
+		t.Errorf("expected 'deploy' badge in header, got:\n%s", out)
+	}
+}
+
+// The "q to quit" hint sits in the top-right of the header line.
+func TestModel_QuitHint_OnHeaderLine_RightAligned(t *testing.T) {
+	m := newModel("clarity")
 	out := m.View()
 	if !strings.Contains(strings.ToLower(out), "q") {
-		t.Errorf("expected quit hint mentioning 'q' somewhere, got:\n%s", out)
+		t.Errorf("expected quit hint, got:\n%s", out)
+	}
+	// Quit hint must appear on the first line (the header), not below.
+	firstLine := strings.SplitN(out, "\n", 2)[0]
+	if !strings.Contains(strings.ToLower(firstLine), "q") {
+		t.Errorf("expected quit hint on the header line, got first line:\n%q", firstLine)
 	}
 }

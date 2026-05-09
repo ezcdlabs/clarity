@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ezcdlabs/clarity/internal/gitenv"
@@ -56,7 +57,7 @@ func runTUI() error {
 		Remote:   "origin",
 		Branch:   branch,
 	})
-	return tui.Run(branch, snapshots)
+	return tui.Run(filepath.Base(repoPath), snapshots)
 }
 
 func runReport(args []string) error {

@@ -65,7 +65,7 @@ func TestRun_WritesEventForHEAD(t *testing.T) {
 	_, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 	})
 	if err != nil {
@@ -80,7 +80,7 @@ func TestRun_WritesEventForHEAD(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 event for HEAD, got %d", len(got))
 	}
-	if got[0].Stage != "build" || got[0].Status != "passed" {
+	if got[0].Stage != "ci" || got[0].Status != "passed" {
 		t.Errorf("unexpected event: %+v", got[0])
 	}
 }
@@ -99,7 +99,7 @@ func TestRun_PrefersGITHUB_SHA_OverHEAD(t *testing.T) {
 	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 	}); err != nil {
 		t.Fatalf("Run failed: %v", err)
@@ -135,7 +135,7 @@ func TestRun_FallsBackToCI_COMMIT_SHA_WhenGITHUBNotSet(t *testing.T) {
 	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 	}); err != nil {
 		t.Fatalf("Run failed: %v", err)
@@ -208,11 +208,60 @@ func TestRun_RequiresStatus(t *testing.T) {
 	clone := remote.NewClone(t)
 	_, err := report.Run(report.Options{
 		RepoPath: clone.Path,
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "",
 	})
 	if err == nil {
 		t.Fatal("expected error for empty status")
+	}
+}
+
+func TestRun_RejectsUnknownStage(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	for _, bad := range []string{"build", "test", "lint", "release", "Deploy" /* case sensitive */} {
+		_, err := report.Run(report.Options{
+			RepoPath: clone.Path,
+			Stage:    bad,
+			Status:   "passed",
+		})
+		if err == nil {
+			t.Errorf("expected stage %q to be rejected", bad)
+		}
+	}
+}
+
+func TestRun_AcceptsValidStages(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+	for _, ok := range []string{"ci", "deploy"} {
+		if _, err := report.Run(report.Options{
+			RepoPath: clone.Path,
+			Remote:   "origin",
+			Stage:    ok,
+			Status:   "passed",
+		}); err != nil {
+			t.Errorf("stage %q should be accepted, got: %v", ok, err)
+		}
+	}
+}
+
+func TestRun_RejectsUnknownStatus(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	for _, bad := range []string{"green", "red", "ok", "Passed" /* case sensitive */} {
+		_, err := report.Run(report.Options{
+			RepoPath: clone.Path,
+			Stage:    "ci",
+			Status:   bad,
+		})
+		if err == nil {
+			t.Errorf("expected status %q to be rejected", bad)
+		}
 	}
 }
 
@@ -228,7 +277,7 @@ func TestRun_ReturnsResolvedSHA(t *testing.T) {
 	got, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 	})
 	if err != nil {
@@ -253,7 +302,7 @@ func TestRun_ReturnsCISHA_WhenSet(t *testing.T) {
 	got, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 	})
 	if err != nil {
@@ -277,7 +326,7 @@ func TestRun_UsesProvidedTime(t *testing.T) {
 	if _, err := report.Run(report.Options{
 		RepoPath: clone.Path,
 		Remote:   "origin",
-		Stage:    "build",
+		Stage:    "ci",
 		Status:   "passed",
 		Time:     want,
 	}); err != nil {

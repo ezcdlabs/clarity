@@ -142,15 +142,15 @@ func TestRemote_ReadFileAtRef(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
 
-	clone.WriteFile("events/abc123/test.json", `{"stage":"build","status":"passed"}`)
-	clone.CommitAll("report: abc123 build passed")
+	clone.WriteFile("events/abc123/test.json", `{"stage":"ci","status":"passed"}`)
+	clone.CommitAll("report: abc123 ci passed")
 	clone.PushRef("HEAD", "refs/clarity/events")
 
 	content, ok := remote.ReadFileAtRef("refs/clarity/events", "events/abc123/test.json")
 	if !ok {
 		t.Fatal("expected file to exist at ref")
 	}
-	if content != `{"stage":"build","status":"passed"}` {
+	if content != `{"stage":"ci","status":"passed"}` {
 		t.Fatalf("unexpected content: %q", content)
 	}
 }

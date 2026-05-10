@@ -107,11 +107,11 @@ func (m Model) View() string {
 func renderHeader(repoName string, snap watcher.Snapshot, width int) string {
 	title := lipgloss.NewStyle().Bold(true).Render(repoName)
 
-	build := badge("build", currentStageStatus(snap.Commits, "build"))
+	ci := badge("ci", currentStageStatus(snap.Commits, "ci"))
 	deploy := badge("deploy", currentStageStatus(snap.Commits, "deploy"))
 	dot := lipgloss.NewStyle().Foreground(colorGray).Render("·")
 
-	left := strings.Join([]string{title, dot, build, dot, deploy}, "  ")
+	left := strings.Join([]string{title, dot, ci, dot, deploy}, "  ")
 	right := lipgloss.NewStyle().Foreground(colorGray).Render("press q to quit")
 
 	if width <= 0 {

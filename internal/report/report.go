@@ -25,6 +25,23 @@ type Options struct {
 	SHA      string    // defaults to env (GITHUB_SHA / CI_COMMIT_SHA), then HEAD
 }
 
+// validStages is the closed set of stage names clarity recognises. Trunk-based
+// development cares about exactly two state transitions — code passes CI, and
+// code reaches production — so the report subcommand rejects anything else
+// rather than letting custom stage names drift into the events ref.
+var validStages = map[string]bool{
+	"ci":     true,
+	"deploy": true,
+}
+
+// validStatuses is the closed set of statuses recognised per stage.
+var validStatuses = map[string]bool{
+	"started": true,
+	"passed":  true,
+	"failed":  true,
+	"skipped": true,
+}
+
 // Run resolves the SHA, attaches CI metadata, and writes one event. Returns
 // the SHA the event was attached to so callers (e.g. the binary) can echo it
 // back to the user for confirmation.
@@ -32,8 +49,14 @@ func Run(opts Options) (string, error) {
 	if opts.Stage == "" {
 		return "", fmt.Errorf("stage is required")
 	}
+	if !validStages[opts.Stage] {
+		return "", fmt.Errorf("stage must be 'ci' or 'deploy', got %q", opts.Stage)
+	}
 	if opts.Status == "" {
 		return "", fmt.Errorf("status is required")
+	}
+	if !validStatuses[opts.Status] {
+		return "", fmt.Errorf("status must be 'started', 'passed', 'failed' or 'skipped', got %q", opts.Status)
 	}
 	if opts.Time.IsZero() {
 		opts.Time = time.Now()

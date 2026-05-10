@@ -24,7 +24,7 @@ type Groupings struct {
 	Deployed []DeployBatch
 
 	// indices into the original commits slice; -1 if absent.
-	buildLine          int // newest commit with build:passed
+	ciLine          int // newest commit with build:passed
 	deployPassedLine   int // newest commit with deploy:passed (used for stale-stage check)
 	deployBoundaryLine int // newest commit with ANY deploy event (used for section boundary)
 
@@ -48,7 +48,7 @@ type DeployBatch struct {
 // failed deploys with a newer attempt are merged into that newer batch.
 func GroupCommits(commits []watcher.CommitView) Groupings {
 	g := Groupings{
-		buildLine:          -1,
+		ciLine:          -1,
 		deployPassedLine:   -1,
 		deployBoundaryLine: -1,
 		deployedAt:         make([]time.Time, len(commits)),
@@ -75,8 +75,8 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 			g.deployedAt[i] = lastSeenDeployPassed
 		}
 		latest := latestPerStage(c.Events)
-		if g.buildLine == -1 && latest["build"] == "passed" {
-			g.buildLine = i
+		if g.ciLine == -1 && latest["ci"] == "passed" {
+			g.ciLine = i
 		}
 		if g.deployPassedLine == -1 && latest["deploy"] == "passed" {
 			g.deployPassedLine = i
@@ -86,12 +86,12 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 		}
 	}
 
-	// effectiveBuildLine: a deploy event implies a passing build, even if no
+	// effectiveCILine: a deploy event implies a passing build, even if no
 	// build event was reported. Treat the deploy boundary as the build line
 	// when no real build:passed exists.
-	effectiveBuildLine := g.buildLine
-	if effectiveBuildLine == -1 && g.deployBoundaryLine != -1 {
-		effectiveBuildLine = g.deployBoundaryLine
+	effectiveCILine := g.ciLine
+	if effectiveCILine == -1 && g.deployBoundaryLine != -1 {
+		effectiveCILine = g.deployBoundaryLine
 	}
 
 	// Pass 2 — classify into Head / CIPassed / a "deployed range" that
@@ -101,7 +101,7 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 		switch {
 		case g.deployBoundaryLine != -1 && i >= g.deployBoundaryLine:
 			deployedRange = append(deployedRange, c)
-		case effectiveBuildLine != -1 && i >= effectiveBuildLine:
+		case effectiveCILine != -1 && i >= effectiveCILine:
 			g.CIPassed = append(g.CIPassed, c)
 		default:
 			g.Head = append(g.Head, c)
@@ -169,8 +169,8 @@ func (g Groupings) LeadTime(index int, commitTime, now time.Time) (time.Duration
 // has been superseded by a newer commit's success on that same stage.
 func (g Groupings) IsStaleStage(index int, stage string) bool {
 	switch stage {
-	case "build":
-		return g.buildLine != -1 && index > g.buildLine
+	case "ci":
+		return g.ciLine != -1 && index > g.ciLine
 	case "deploy":
 		return g.deployPassedLine != -1 && index > g.deployPassedLine
 	}

@@ -29,58 +29,58 @@ func TestOverallStatus_TableDriven(t *testing.T) {
 		},
 		{
 			name:   "single passed",
-			events: []clarityrefs.Event{ev("build", "passed", 100)},
+			events: []clarityrefs.Event{ev("ci", "passed", 100)},
 			want:   "passed",
 		},
 		{
 			name:   "single failed",
-			events: []clarityrefs.Event{ev("build", "failed", 100)},
+			events: []clarityrefs.Event{ev("ci", "failed", 100)},
 			want:   "failed",
 		},
 		{
 			name:   "single started — running",
-			events: []clarityrefs.Event{ev("build", "started", 100)},
+			events: []clarityrefs.Event{ev("ci", "started", 100)},
 			want:   "running",
 		},
 		{
 			name: "all passed",
 			events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "passed", 200),
+				ev("ci", "passed", 100), ev("deploy", "passed", 200),
 			},
 			want: "passed",
 		},
 		{
 			name: "any failed beats running",
 			events: []clarityrefs.Event{
-				ev("build", "failed", 100), ev("deploy", "started", 200),
+				ev("ci", "failed", 100), ev("deploy", "started", 200),
 			},
 			want: "failed",
 		},
 		{
 			name: "running beats not-yet-completed others",
 			events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "started", 200),
+				ev("ci", "passed", 100), ev("deploy", "started", 200),
 			},
 			want: "running",
 		},
 		{
 			name: "skipped counts as terminal-ok",
 			events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "skipped", 200),
+				ev("ci", "passed", 100), ev("deploy", "skipped", 200),
 			},
 			want: "passed",
 		},
 		{
 			name: "later passed overrides earlier failed (collapse)",
 			events: []clarityrefs.Event{
-				ev("build", "failed", 100), ev("build", "passed", 200),
+				ev("ci", "failed", 100), ev("ci", "passed", 200),
 			},
 			want: "passed",
 		},
 		{
 			name: "later started overrides earlier passed (retry)",
 			events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("build", "started", 200),
+				ev("ci", "passed", 100), ev("ci", "started", 200),
 			},
 			want: "running",
 		},
@@ -99,8 +99,8 @@ func TestOverallStatus_TableDriven(t *testing.T) {
 
 func TestCollapseStages_LatestEventPerStage(t *testing.T) {
 	events := []clarityrefs.Event{
-		ev("build", "started", 100),
-		ev("build", "passed", 200),
+		ev("ci", "started", 100),
+		ev("ci", "passed", 200),
 		ev("deploy", "started", 300),
 	}
 	got := tui.CollapseStages(events)
@@ -112,8 +112,8 @@ func TestCollapseStages_LatestEventPerStage(t *testing.T) {
 	for _, s := range got {
 		byStage[s.Stage] = s.Status
 	}
-	if byStage["build"] != "passed" {
-		t.Errorf("build: expected passed (latest), got %q", byStage["build"])
+	if byStage["ci"] != "passed" {
+		t.Errorf("ci: expected passed (latest), got %q", byStage["ci"])
 	}
 	if byStage["deploy"] != "started" {
 		t.Errorf("deploy: expected started, got %q", byStage["deploy"])
@@ -121,14 +121,14 @@ func TestCollapseStages_LatestEventPerStage(t *testing.T) {
 }
 
 func TestCollapseStages_PreservesEventOrder(t *testing.T) {
-	// build seen first, deploy seen later → returned in chronological order.
+	// ci seen first, deploy seen later → returned in chronological order.
 	events := []clarityrefs.Event{
-		ev("build", "passed", 100),
+		ev("ci", "passed", 100),
 		ev("deploy", "passed", 200),
 	}
 	got := tui.CollapseStages(events)
-	if got[0].Stage != "build" || got[1].Stage != "deploy" {
-		t.Errorf("expected [build, deploy] order, got %v", got)
+	if got[0].Stage != "ci" || got[1].Stage != "deploy" {
+		t.Errorf("expected [ci, deploy] order, got %v", got)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestRenderRow_ShowsAuthorAndSubject(t *testing.T) {
 func TestRenderRow_PassedShowsCheckmark(t *testing.T) {
 	view := watcher.CommitView{
 		SHA: "abc", Author: "alice", Subject: "x",
-		Events: []clarityrefs.Event{ev("build", "passed", 100)},
+		Events: []clarityrefs.Event{ev("ci", "passed", 100)},
 	}
 	out := tui.RenderRow(view, 80)
 	if !strings.Contains(out, "✓") {
@@ -161,7 +161,7 @@ func TestRenderRow_PassedShowsCheckmark(t *testing.T) {
 func TestRenderRow_FailedShowsCross(t *testing.T) {
 	view := watcher.CommitView{
 		SHA: "abc", Author: "eve", Subject: "x",
-		Events: []clarityrefs.Event{ev("build", "failed", 100)},
+		Events: []clarityrefs.Event{ev("ci", "failed", 100)},
 	}
 	out := tui.RenderRow(view, 80)
 	if !strings.Contains(out, "✗") {
@@ -172,7 +172,7 @@ func TestRenderRow_FailedShowsCross(t *testing.T) {
 func TestRenderRow_RunningShowsSpinner(t *testing.T) {
 	view := watcher.CommitView{
 		SHA: "abc", Author: "dave", Subject: "x",
-		Events: []clarityrefs.Event{ev("build", "started", 100)},
+		Events: []clarityrefs.Event{ev("ci", "started", 100)},
 	}
 	out := tui.RenderRow(view, 80)
 	hasSpinner := false
@@ -183,7 +183,7 @@ func TestRenderRow_RunningShowsSpinner(t *testing.T) {
 		}
 	}
 	if !hasSpinner {
-		t.Errorf("expected a spinner frame for running build: %q", out)
+		t.Errorf("expected a spinner frame for running ci: %q", out)
 	}
 }
 
@@ -239,9 +239,9 @@ func TestRenderSnapshot_AllThreeSections(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "d", Author: "dave", Subject: "broken"},
-			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}},
+			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("ci", "passed", 200)}},
 			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "passed", 150),
+				ev("ci", "passed", 100), ev("deploy", "passed", 150),
 			}},
 		},
 	}
@@ -263,10 +263,10 @@ func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "b", Author: "bob", Subject: "shipping", Events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "started", 200),
+				ev("ci", "passed", 100), ev("deploy", "started", 200),
 			}},
 			{SHA: "a", Author: "alice", Subject: "live", Events: []clarityrefs.Event{
-				ev("build", "passed", 50), ev("deploy", "passed", 75),
+				ev("ci", "passed", 50), ev("deploy", "passed", 75),
 			}},
 		},
 	}
@@ -281,10 +281,10 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "c", Author: "carol", Subject: "shipping", Events: []clarityrefs.Event{
-				ev("build", "passed", 300), ev("deploy", "started", 350),
+				ev("ci", "passed", 300), ev("deploy", "started", 350),
 			}},
 			{SHA: "a", Author: "alice", Subject: "live", Events: []clarityrefs.Event{
-				ev("build", "passed", 50), ev("deploy", "passed", 75),
+				ev("ci", "passed", 50), ev("deploy", "passed", 75),
 			}},
 		},
 	}
@@ -297,18 +297,18 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 	}
 }
 
-// The row format no longer trails with explicit "build" / "deploy" labels —
+// The row format no longer trails with explicit "ci" / "deploy" labels —
 // the icon and section convey that.
 func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "a", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "passed", 150),
+				ev("ci", "passed", 100), ev("deploy", "passed", 150),
 			}},
 		},
 	}
 	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
-	// Each row should not contain the verbatim words "build" or "deploy"
+	// Each row should not contain the verbatim words "ci" or "deploy"
 	// after the subject. We check rows containing the author rather than
 	// the whole output (subheaders may legitimately mention "deploy*").
 	for _, line := range strings.Split(out, "\n") {
@@ -316,8 +316,8 @@ func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
 			continue
 		}
 		lower := strings.ToLower(line)
-		if strings.Contains(lower, "build") || strings.Contains(lower, "deploy") {
-			t.Errorf("commit row should not mention 'build'/'deploy', got: %q", line)
+		if strings.Contains(lower, "ci") || strings.Contains(lower, "deploy") {
+			t.Errorf("commit row should not mention 'ci'/'deploy', got: %q", line)
 		}
 	}
 }
@@ -329,7 +329,7 @@ func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "a", Author: "alice", Subject: "wip", Time: commitTime,
-				Events: []clarityrefs.Event{ev("build", "started", 50)}},
+				Events: []clarityrefs.Event{ev("ci", "started", 50)}},
 		},
 	}
 	out := tui.RenderSnapshot(snap, 80, now, 0)
@@ -347,7 +347,7 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 		Commits: []watcher.CommitView{
 			{SHA: "a", Author: "alice", Subject: "shipped", Time: commitTime,
 				Events: []clarityrefs.Event{
-					ev("build", "passed", 100),
+					ev("ci", "passed", 100),
 					{Stage: "deploy", Status: "passed", Time: deployTime},
 				}},
 		},
@@ -363,9 +363,9 @@ func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "d", Author: "dave", Subject: "broken"},
-			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("build", "passed", 200)}},
+			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("ci", "passed", 200)}},
 			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
-				ev("build", "passed", 100), ev("deploy", "passed", 150),
+				ev("ci", "passed", 100), ev("deploy", "passed", 150),
 			}},
 		},
 	}

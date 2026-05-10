@@ -124,7 +124,7 @@ func TestWatch_EventsRefChange_EmitsNewSnapshot(t *testing.T) {
 	waitForTimer(t, fake)
 
 	// Write an event to the remote events ref — branch tip is unchanged.
-	ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120134, 0)}
+	ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)}
 	if err := clarityrefs.WriteEvent(clone.Path, "origin", committedSHA, ev); err != nil {
 		t.Fatalf("WriteEvent: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestWatch_EventsRefChange_EmitsNewSnapshot(t *testing.T) {
 	snap := waitForSnapshot(t, ch)
 	var found bool
 	for _, c := range snap.Commits {
-		if c.SHA == committedSHA && len(c.Events) >= 1 && c.Events[0].Stage == "build" {
+		if c.SHA == committedSHA && len(c.Events) >= 1 && c.Events[0].Stage == "ci" {
 			found = true
 			break
 		}

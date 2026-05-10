@@ -201,7 +201,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int) string {
 // sits in, so it isn't rendered explicitly. When width > 0 the timer is
 // right-aligned to that column.
 func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, width int, now time.Time, spinnerIdx int) string {
-	icon := buildIcon(view.Events, group, index, spinnerIdx)
+	icon := ciIcon(view.Events, group, index, spinnerIdx)
 	author := lipgloss.NewStyle().Foreground(colorGray).Render(view.Author)
 	subject := view.Subject
 	left := fmt.Sprintf("  %s  %s  %s", icon, author, subject)
@@ -230,12 +230,12 @@ func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, widt
 	return left + strings.Repeat(" ", pad) + timer
 }
 
-// buildIcon returns the icon representing the commit's build/CI status.
+// ciIcon returns the icon representing the commit's build/CI status.
 // An in-flight build animates the shared spinner; stale builds (older than
 // a newer commit's build:passed) render in muted gray.
-func buildIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx int) string {
-	status := buildStatus(events)
-	stale := group != nil && group.IsStaleStage(index, "build")
+func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx int) string {
+	status := ciStatus(events)
+	stale := group != nil && group.IsStaleStage(index, "ci")
 
 	color := colorGray
 	glyph := "·"
@@ -261,12 +261,12 @@ func buildIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerI
 	return lipgloss.NewStyle().Foreground(color).Render(glyph)
 }
 
-// buildStatus returns the latest build event's status, or "" if there are none.
-func buildStatus(events []clarityrefs.Event) string {
+// ciStatus returns the latest build event's status, or "" if there are none.
+func ciStatus(events []clarityrefs.Event) string {
 	var latest clarityrefs.Event
 	found := false
 	for _, e := range events {
-		if e.Stage != "build" {
+		if e.Stage != "ci" {
 			continue
 		}
 		if !found || e.Time.After(latest.Time) {

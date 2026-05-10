@@ -52,7 +52,7 @@ func TestWriteEvent_CreatesFileOnRemote(t *testing.T) {
 	clone := remote.NewClone(t)
 
 	ev := clarityrefs.Event{
-		Stage:  "build",
+		Stage:  "ci",
 		Status: "passed",
 		Time:   time.Unix(1744120134, 0),
 	}
@@ -129,7 +129,7 @@ func TestReadEvents_SortsByTimestamp(t *testing.T) {
 	times := []int64{1744120300, 1744120100, 1744120200}
 	for _, ts := range times {
 		ev := clarityrefs.Event{
-			Stage:  "build",
+			Stage:  "ci",
 			Status: "passed",
 			Time:   time.Unix(ts, 0),
 		}
@@ -166,9 +166,9 @@ func TestReadAllEvents_GroupsBySHA(t *testing.T) {
 		sha   string
 		stage string
 	}{
-		{fakeSHA, "build"},
+		{fakeSHA, "ci"},
 		{fakeSHA, "deploy"},
-		{fakeSHA2, "build"},
+		{fakeSHA2, "ci"},
 	} {
 		e := clarityrefs.Event{Stage: ev.stage, Status: "passed", Time: time.Now()}
 		if err := clarityrefs.WriteEvent(clone.Path, "origin", ev.sha, e); err != nil {
@@ -197,7 +197,7 @@ func TestWriteEvent_FilenameFormat(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
 
-	ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120134, 0)}
+	ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)}
 	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
 		t.Fatalf("WriteEvent: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestWriteEvent_TreeHasNoFullPathnames(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
 
-	ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120134, 0)}
+	ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)}
 	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
 		t.Fatalf("WriteEvent: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestWriteEvent_ConcurrentWrites_BothLand(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Unix(1744120100, 0)}
+		ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Unix(1744120100, 0)}
 		aliceErr = clarityrefs.WriteEvent(alice.Path, "origin", fakeSHA, ev)
 	}()
 	go func() {
@@ -304,7 +304,7 @@ func TestEvent_JSONShape(t *testing.T) {
 	clone := remote.NewClone(t)
 
 	ev := clarityrefs.Event{
-		Stage:  "build",
+		Stage:  "ci",
 		Status: "passed",
 		Time:   time.Unix(1744120134, 0),
 		CI:     map[string]string{"system": "github-actions"},
@@ -339,8 +339,8 @@ func TestEvent_JSONShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 		t.Fatalf("parse JSON: %v\n%s", err, content)
 	}
-	if parsed["stage"] != "build" {
-		t.Errorf("expected stage=build, got %v", parsed["stage"])
+	if parsed["stage"] != "ci" {
+		t.Errorf("expected stage=ci, got %v", parsed["stage"])
 	}
 	if parsed["status"] != "passed" {
 		t.Errorf("expected status=passed, got %v", parsed["status"])

@@ -50,13 +50,13 @@ This opens an alt-screen TUI showing the most recent commits on `main` with thei
 Inside your pipelines:
 
 ```yaml
-- run: git clarity report build started
+- run: git clarity report ci started
 - run: ./build.sh
-- run: git clarity report build passed
+- run: git clarity report ci passed
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
-In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are user-defined; statuses are `started`, `passed`, `failed`, or `skipped`.
+In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, `failed`, or `skipped`.
 
 ---
 
@@ -116,11 +116,11 @@ The git history is already the canonical timeline of what happened. Clarity adds
 ```
 git log:               clarity events (refs/clarity/events):
 
-abc123  add billing    events/abc123/...build-passed.json
+abc123  add billing    events/abc123/...ci-passed.json
                        events/abc123/...deploy-started.json
-def456  fix auth       events/def456/...build-passed.json
+def456  fix auth       events/def456/...ci-passed.json
                        events/def456/...deploy-passed.json
-ghi789  update deps    events/ghi789/...build-failed.json
+ghi789  update deps    events/ghi789/...ci-failed.json
 ```
 
 Rendering is just a `git log` walk with events loaded from the ref and joined onto each commit. The output is the answer to "what's happening with my code right now."
@@ -139,9 +139,9 @@ git clarity              # opens the TUI in the current repo
 The same binary is also used inside CI to report events:
 
 ```yaml
-- run: git clarity report build started
+- run: git clarity report ci started
 - run: ./build.sh
-- run: git clarity report build passed
+- run: git clarity report ci passed
 - run: ./deploy.sh
 - run: git clarity report deploy passed
 ```
@@ -189,7 +189,7 @@ Timestamp first for natural sort order. Short UUID suffix for uniqueness when mu
 
 ```json
 {
-  "stage": "build",
+  "stage": "ci",
   "status": "passed",
   "ts": 1744120134,
   "ci": {
@@ -207,7 +207,7 @@ The optional **`ci` block** is opaque metadata captured from the environment whe
 
 Statuses per stage: `started`, `passed`, `failed`, `skipped`.
 
-Stages are user-defined. Common values: `build`, `test`, `deploy`. Clarity does not enforce a fixed pipeline shape — it renders whatever stages are reported.
+Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based development cares about exactly three things, latest HEAD, latest green CI, and latest production deploy, and that maps onto two state transitions. A "test" or "lint" or "integration" stage is not a separate lifecycle position; it's part of CI that either passes or doesn't. Adding more stages would dilute the "is HEAD green?" question this tool exists to answer. The `git clarity report` command rejects any other stage name with an error rather than letting custom names drift in.
 
 ### Why per-file events on a custom ref
 
@@ -242,13 +242,19 @@ This is a one-time, automatic step.
 A live updating terminal view of the most recent commits on the current branch (default: `main`), with pipeline stages and statuses rendered per commit.
 
 ```
-┌─ clarity ────────────────────────────────────────────┐
-│  ✓ alice   refactor user model    build · deploy     │
-│  ⧗ dave    update dependencies    build...           │
-│  ✗ eve     new search index       build failed       │
-│  ✓ frank   tweak homepage         build · deploy     │
-│  · grace   wip notes              (no events)        │
-└──────────────────────────────────────────────────────┘
+your-app · ci: ✓ · deploy: ✓                                   press q to quit
+
+HEAD
+  · grace   wip notes                                              30s
+
+CI Passed
+  ✓ dave    update dependencies                                  4m 12s
+
+Deployed
+  deploying…
+  ✓ alice   refactor user model                                  6m 30s
+  deployed 5m ago
+  ✓ frank   tweak homepage                                      24m 10s
 ```
 
 Updates live as the underlying refs change. Polls the remote every 5 seconds (configurable) using git's lightweight `info/refs` endpoint to check whether the events ref or branch tip has moved, and only does a full fetch when SHAs differ.
@@ -270,24 +276,25 @@ git clarity report <stage> <status>
 Examples:
 
 ```yaml
-- run: git clarity report build started
+- run: git clarity report ci started
 - run: ./build.sh
-- run: git clarity report build passed
+- run: git clarity report ci passed
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
 ### What it does
 
-1. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
-2. Builds the event JSON (core fields + auto-detected `ci` block)
-3. Generates a unique filename: `<unix-ts>-<short-uuid>.json`
-4. Optimistic push loop:
+1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else
+2. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
+3. Builds the event JSON (core fields + auto-detected `ci` metadata block)
+4. Generates a unique filename: `<unix-ts>-<short-uuid>.json`
+5. Optimistic push loop:
    a. Fetch `refs/clarity/events`
    b. Add the event file under `events/<sha>/<filename>`
    c. Commit with message `report: <sha> <stage> <status>`
    d. Push the ref
    e. If rejected (not fast-forward): fetch, replay commit, retry
-5. Exit
+6. Exit
 
 ### Authentication in CI
 

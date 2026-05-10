@@ -33,8 +33,8 @@ func TestGroupCommits_Empty(t *testing.T) {
 func TestGroupCommits_NoBuildLine_AllInHead(t *testing.T) {
 	commits := []watcher.CommitView{
 		cv("c"),
-		cv("b", ev("build", "started", 100)),
-		cv("a", ev("build", "failed", 50)),
+		cv("b", ev("ci", "started", 100)),
+		cv("a", ev("ci", "failed", 50)),
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Head) != 3 {
@@ -49,9 +49,9 @@ func TestGroupCommits_NoBuildLine_AllInHead(t *testing.T) {
 // without any deploy event sit in CI Passed.
 func TestGroupCommits_BuildPassedAboveDeployLine(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("c", ev("build", "passed", 300)),
-		cv("b", ev("build", "passed", 200), ev("deploy", "passed", 250)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),
+		cv("c", ev("ci", "passed", 300)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "passed", 250)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Head) != 0 {
@@ -69,8 +69,8 @@ func TestGroupCommits_BuildPassedAboveDeployLine(t *testing.T) {
 // includes "currently being deployed".
 func TestGroupCommits_DeployStartedMakesItDeployed(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("b", ev("build", "passed", 200), ev("deploy", "started", 280)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "started", 280)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
 	if totalDeployed(got) != 2 {
@@ -86,9 +86,9 @@ func TestGroupCommits_DeployStartedMakesItDeployed(t *testing.T) {
 // A passed deploy and a started deploy are SEPARATE batches.
 func TestGroupCommits_DeployBatches_DistinctAttempts(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("c", ev("build", "passed", 300), ev("deploy", "started", 350)), // started
-		cv("b", ev("build", "passed", 200)),                                // belongs to c's batch
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),   // passed (older)
+		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)), // started
+		cv("b", ev("ci", "passed", 200)),                                // belongs to c's batch
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // passed (older)
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Deployed) != 2 {
@@ -111,8 +111,8 @@ func TestGroupCommits_DeployBatches_DistinctAttempts(t *testing.T) {
 // A failed deploy with NO newer batch stands alone as its own group.
 func TestGroupCommits_FailedDeploy_NoNewerAttempt_StandsAlone(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("b", ev("build", "passed", 200), ev("deploy", "failed", 250)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 250)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Deployed) != 2 {
@@ -128,9 +128,9 @@ func TestGroupCommits_FailedDeploy_NoNewerAttempt_StandsAlone(t *testing.T) {
 // subgroup is rendered.
 func TestGroupCommits_FailedDeploy_NewerStarted_Merged(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("c", ev("build", "passed", 300), ev("deploy", "started", 350)),
-		cv("b", ev("build", "passed", 200), ev("deploy", "failed", 220)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),
+		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 220)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Deployed) != 2 {
@@ -148,8 +148,8 @@ func TestGroupCommits_FailedDeploy_NewerStarted_Merged(t *testing.T) {
 // (The merge rule only kicks in when a newer non-failed attempt exists.)
 func TestGroupCommits_TwoFailedDeploys_NoNewer_StaySeparate(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("b", ev("build", "passed", 200), ev("deploy", "failed", 250)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "failed", 150)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 250)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "failed", 150)),
 	}
 	got := tui.GroupCommits(commits)
 	if len(got.Deployed) != 2 {
@@ -157,13 +157,13 @@ func TestGroupCommits_TwoFailedDeploys_NoNewer_StaySeparate(t *testing.T) {
 	}
 }
 
-// --- Stale stage rule (build only) -------------------------------------------
+// --- Stale stage rule (ci only) ----------------------------------------------
 
 func TestIsStaleStage(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("c", ev("build", "passed", 300)),
-		cv("b", ev("build", "failed", 200)),
-		cv("a", ev("build", "passed", 100), ev("deploy", "passed", 150)),
+		cv("c", ev("ci", "passed", 300)),
+		cv("b", ev("ci", "failed", 200)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	g := tui.GroupCommits(commits)
 
@@ -173,9 +173,9 @@ func TestIsStaleStage(t *testing.T) {
 		stage string
 		want  bool
 	}{
-		{"c is build line — not stale", 0, "build", false},
-		{"b is older than build line — stale", 1, "build", true},
-		{"a is older than build line — stale", 2, "build", true},
+		{"c is ci line — not stale", 0, "ci", false},
+		{"b is older than ci line — stale", 1, "ci", true},
+		{"a is older than ci line — stale", 2, "ci", true},
 		{"a is the only deploy:passed — not stale", 2, "deploy", false},
 	}
 	for _, c := range cases {
@@ -194,7 +194,7 @@ func TestLeadTime_NotDeployed_LiveAgainstNow(t *testing.T) {
 	commitTime := time.Unix(1000, 0)
 	now := time.Unix(1090, 0)
 	commits := []watcher.CommitView{
-		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{ev("build", "started", 50)}},
+		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{ev("ci", "started", 50)}},
 	}
 	g := tui.GroupCommits(commits)
 	d, frozen, ok := g.LeadTime(0, commitTime, now)
@@ -216,7 +216,7 @@ func TestLeadTime_DeployStarted_StillLive(t *testing.T) {
 	now := time.Unix(1090, 0)
 	commits := []watcher.CommitView{
 		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{
-			ev("build", "passed", 50),
+			ev("ci", "passed", 50),
 			{Stage: "deploy", Status: "started", Time: time.Unix(1080, 0)},
 		}},
 	}
@@ -236,7 +236,7 @@ func TestLeadTime_Deployed_FrozenAtDeployTime(t *testing.T) {
 	now := time.Unix(9000, 0)
 	commits := []watcher.CommitView{
 		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{
-			ev("build", "passed", 100),
+			ev("ci", "passed", 100),
 			{Stage: "deploy", Status: "passed", Time: deployTime},
 		}},
 	}

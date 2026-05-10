@@ -104,7 +104,7 @@ func TestBuildSnapshot_JoinsEventsToCommitsBySHA(t *testing.T) {
 	headSHA := strings.TrimSpace(string(out))
 
 	ev := clarityrefs.Event{
-		Stage: "build", Status: "passed",
+		Stage: "ci", Status: "passed",
 		Time: time.Unix(1744120134, 0),
 	}
 	if err := clarityrefs.WriteEvent(clone.Path, "origin", headSHA, ev); err != nil {
@@ -123,7 +123,7 @@ func TestBuildSnapshot_JoinsEventsToCommitsBySHA(t *testing.T) {
 			found = true
 			if len(c.Events) != 1 {
 				t.Errorf("expected 1 event for HEAD, got %d", len(c.Events))
-			} else if c.Events[0].Stage != "build" || c.Events[0].Status != "passed" {
+			} else if c.Events[0].Stage != "ci" || c.Events[0].Status != "passed" {
 				t.Errorf("unexpected event payload: %+v", c.Events[0])
 			}
 		}

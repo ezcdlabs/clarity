@@ -73,7 +73,7 @@ func TestSSHWriteEvent_LandsOnEventsRef(t *testing.T) {
 	// don't conflict.
 	uniqueSHA := fmt.Sprintf("%040x", time.Now().UnixNano())[:40]
 	ev := clarityrefs.Event{
-		Stage:  "build",
+		Stage:  "ci",
 		Status: "passed",
 		Time:   time.Now(),
 	}
@@ -90,7 +90,7 @@ func TestSSHWriteEvent_LandsOnEventsRef(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(got))
 	}
-	if got[0].Stage != "build" || got[0].Status != "passed" {
+	if got[0].Stage != "ci" || got[0].Status != "passed" {
 		t.Errorf("unexpected event: %+v", got[0])
 	}
 }
@@ -110,7 +110,7 @@ func TestSSHConcurrentWriters_BothLand(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		ev := clarityrefs.Event{Stage: "build", Status: "passed", Time: time.Now()}
+		ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Now()}
 		err1 = clarityrefs.WriteEvent(clone1, "origin", uniqueSHA, ev)
 	}()
 	go func() {

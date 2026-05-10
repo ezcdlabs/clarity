@@ -40,7 +40,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "1", Author: "alice", Subject: "first commit",
-				Events: []clarityrefs.Event{{Stage: "build", Status: "passed", Time: time.Unix(100, 0)}}},
+				Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 		},
 	}
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
@@ -62,20 +62,20 @@ func TestModel_HeaderShowsRepoName(t *testing.T) {
 	}
 }
 
-// The header shows pipeline status badges for build and deploy.
-func TestModel_HeaderShowsBuildAndDeployBadges(t *testing.T) {
+// The header shows pipeline status badges for CI and deploy.
+func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "1", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
-				{Stage: "build", Status: "passed", Time: time.Unix(100, 0)},
+				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
 				{Stage: "deploy", Status: "passed", Time: time.Unix(150, 0)},
 			}},
 		},
 	}
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
 	out := m.View()
-	if !strings.Contains(strings.ToLower(out), "build") {
-		t.Errorf("expected 'build' badge in header, got:\n%s", out)
+	if !strings.Contains(strings.ToLower(out), "ci") {
+		t.Errorf("expected 'ci' badge in header, got:\n%s", out)
 	}
 	if !strings.Contains(strings.ToLower(out), "deploy") {
 		t.Errorf("expected 'deploy' badge in header, got:\n%s", out)

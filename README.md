@@ -62,30 +62,40 @@ In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional se
 
 For GitHub Actions specifically there is a setup action that handles installation and (optionally) the report call in one step. Pin the action ref to a release and you get the matching binary automatically — no separate `version:` input needed in the common case.
 
+The job needs `contents: write` on the `GITHUB_TOKEN` because clarity reports by pushing an event to `refs/clarity/events`. The default token permissions vary by org and repo; declaring it explicitly makes the workflow portable.
+
 Install only, then report manually:
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: ezcdlabs/clarity@v0.1.0
-- run: ./build.sh && git clarity report ci passed
+permissions:
+  contents: write
+
+steps:
+  - uses: actions/checkout@v4
+  - uses: ezcdlabs/clarity@v0.1.0
+  - run: ./build.sh && git clarity report ci passed
 ```
 
 Install and report in one step:
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: ezcdlabs/clarity@v0.1.0
-  with:
-    stage: ci
-    status: started
+permissions:
+  contents: write
 
-- run: ./build.sh
+steps:
+  - uses: actions/checkout@v4
+  - uses: ezcdlabs/clarity@v0.1.0
+    with:
+      stage: ci
+      status: started
 
-- if: always()
-  uses: ezcdlabs/clarity@v0.1.0
-  with:
-    stage: ci
-    status: ${{ job.status == 'success' && 'passed' || 'failed' }}
+  - run: ./build.sh
+
+  - if: always()
+    uses: ezcdlabs/clarity@v0.1.0
+    with:
+      stage: ci
+      status: ${{ job.status == 'success' && 'passed' || 'failed' }}
 ```
 
 Inputs:

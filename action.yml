@@ -1,5 +1,5 @@
 name: 'Setup clarity'
-description: 'Install git-clarity and optionally report a pipeline event to refs/clarity/events.'
+description: 'Install git-clarity and optionally report a pipeline event to refs/clarity/events. The job needs `permissions: contents: write` for the report call to succeed (clarity pushes to a git ref).'
 author: 'EzcdLabs'
 
 branding:

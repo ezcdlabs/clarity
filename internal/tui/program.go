@@ -129,28 +129,37 @@ func badge(label, status string) string {
 	return lipgloss.NewStyle().Foreground(colorGray).Render(label+":") + " " + iconForStatus(status)
 }
 
+// iconForStatus colours the binary header badge: green ✓ when the pipeline
+// is known-good, red ✗ when known-broken, gray · when there's no resolved
+// data yet. The header is a summary — it gets the coloured tick that the
+// per-row icons deliberately don't, so it can answer "is the pipeline
+// green?" at a glance. Transient/started events are not reflected here;
+// see currentStageStatus.
 func iconForStatus(status string) string {
 	switch status {
 	case "passed":
 		return lipgloss.NewStyle().Foreground(colorGreen).Render("✓")
 	case "failed":
 		return lipgloss.NewStyle().Foreground(colorRed).Render("✗")
-	case "started":
-		return lipgloss.NewStyle().Foreground(colorAmber).Render("⧗")
 	default:
 		return lipgloss.NewStyle().Foreground(colorGray).Render("·")
 	}
 }
 
-// currentStageStatus returns the status of the latest event for the given
-// stage anywhere in the snapshot, or "" if there are none. This is the
-// "current pipeline state" used in the header badges.
+// currentStageStatus returns the latest *resolved* (passed or failed) event
+// status for the given stage anywhere in the snapshot, or "" if no resolved
+// events exist. "started" and "skipped" events are intentionally ignored so
+// the header badge holds its colour through transient retries instead of
+// flickering to neutral every time a build kicks off.
 func currentStageStatus(commits []watcher.CommitView, stage string) string {
 	var latest clarityrefs.Event
 	found := false
 	for _, c := range commits {
 		for _, e := range c.Events {
 			if e.Stage != stage {
+				continue
+			}
+			if e.Status != "passed" && e.Status != "failed" {
 				continue
 			}
 			if !found || e.Time.After(latest.Time) {

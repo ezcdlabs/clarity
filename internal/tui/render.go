@@ -84,10 +84,17 @@ func OverallStatus(events []clarityrefs.Event) string {
 
 // --- rendering ---------------------------------------------------------------
 
+// The palette is deliberately minimal: gray is the neutral foreground for
+// everything routine; red is the only "something is broken" colour; green is
+// reserved for the *summary* badges in the header where a binary "is the
+// pipeline green?" answer earns its colour; yellow and blue are lifecycle
+// accents on the section dividers (see renderSectionDivider).
+//
+// Per-row status icons carry their meaning via shape (✓ / ✗ / spinner / ·),
+// not hue — colour reinforces only the cases where the user needs to notice.
 var (
-	colorGreen = lipgloss.Color("2")
 	colorRed   = lipgloss.Color("1")
-	colorAmber = lipgloss.Color("3")
+	colorGreen = lipgloss.Color("2")
 	colorGray  = lipgloss.Color("8")
 	colorBlue  = lipgloss.Color("12")
 )
@@ -202,7 +209,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int) string {
 	style := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
 	switch b.Status {
 	case "started":
-		spin := lipgloss.NewStyle().Foreground(colorAmber).Render(spinnerFrame(spinnerIdx))
+		spin := lipgloss.NewStyle().Foreground(colorGray).Render(spinnerFrame(spinnerIdx))
 		return "  " + spin + " " + style.Render("deploying…") + "\n"
 	case "passed":
 		ago := ""
@@ -261,9 +268,12 @@ func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, widt
 	return left + strings.Repeat(" ", pad) + timer
 }
 
-// ciIcon returns the icon representing the commit's build/CI status.
-// An in-flight build animates the shared spinner; stale builds (older than
-// a newer commit's build:passed) render in muted gray.
+// ciIcon returns the icon representing the commit's build/CI status. The
+// palette deliberately reserves red for *broken* state — a failed build
+// that hasn't been fix-forwarded yet — so red carries genuine signal value
+// rather than annotating routine output. Passed/started/idle all render in
+// neutral gray; their meaning is carried by the icon shape (✓ / spinner /
+// ·) and the section the row sits in.
 func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx int) string {
 	status := ciStatus(events)
 	stale := group != nil && group.IsStaleStage(index, "ci")
@@ -273,9 +283,6 @@ func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx 
 	switch status {
 	case "passed":
 		glyph = "✓"
-		if !stale {
-			color = colorGreen
-		}
 	case "failed":
 		glyph = "✗"
 		if !stale {
@@ -283,9 +290,6 @@ func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx 
 		}
 	case "started":
 		glyph = spinnerFrame(spinnerIdx)
-		if !stale {
-			color = colorAmber
-		}
 	case "skipped":
 		glyph = "·"
 	}

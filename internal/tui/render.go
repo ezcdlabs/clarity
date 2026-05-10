@@ -220,9 +220,13 @@ func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, widt
 	timer := ""
 	if group != nil {
 		if d, frozen, ok := group.LeadTime(index, view.Time, now); ok {
-			color := colorBlue
+			// Gray while ticking; blue once the deploy that pushed this
+			// commit to production fires, so the lead-time "blooms" blue
+			// exactly when it freezes — matching the Deployed section's
+			// brand colour.
+			color := colorGray
 			if frozen {
-				color = colorGray
+				color = colorBlue
 			}
 			timer = lipgloss.NewStyle().Foreground(color).Render(formatElapsed(d))
 		}

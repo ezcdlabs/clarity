@@ -236,7 +236,130 @@ var deployFailure = Scenario{
 	},
 }
 
+// ciFailure shows the "CI breaks then a newer commit fix-forwards it"
+// transition. This is the core TBD signal the tool is designed to surface:
+//   - frame 1: steady state, everything green
+//   - frame 2: bob lands at HEAD, his CI starts (header stays green —
+//     only resolved events drive the badge)
+//   - frame 3: bob's CI fails — header badge flips red, his row in HEAD
+//     shows a red ✗
+//   - frame 4: dave lands a fix on top, his CI starts (header still red,
+//     newest resolved event is bob's failure)
+//   - frame 5: dave's CI passes — header back to green; bob's red ✗
+//     becomes stale (a newer commit passed) and dims to gray as both
+//     dave and bob move into CI Passed under the new build line
+var ciFailure = Scenario{
+	Name:         "ci-failure",
+	Repo:         "your-app",
+	InitialDelay: 800 * time.Millisecond,
+	Frames: []Frame{
+		// Frame 1 — steady state, header green/green.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("alice1", "alice", "refactor user model", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+					ev("deploy", "passed", -3*time.Minute),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -15*time.Minute),
+				),
+			}},
+			Hold: 2200 * time.Millisecond,
+		},
+
+		// Frame 2 — bob lands at HEAD, CI starts. Header stays green
+		// because the LATEST RESOLVED ci event is still alice's pass.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
+					ev("ci", "started", -15*time.Second),
+				),
+				commit("alice1", "alice", "refactor user model", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+					ev("deploy", "passed", -3*time.Minute),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -15*time.Minute),
+				),
+			}},
+			Hold: 2000 * time.Millisecond,
+		},
+
+		// Frame 3 — bob's CI FAILS. Header badge flips red. Bob's row
+		// in HEAD picks up the red ✗ icon.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
+					ev("ci", "started", -15*time.Second),
+					ev("ci", "failed", 5*time.Second),
+				),
+				commit("alice1", "alice", "refactor user model", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+					ev("deploy", "passed", -3*time.Minute),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -15*time.Minute),
+				),
+			}},
+			Hold: 2500 * time.Millisecond,
+		},
+
+		// Frame 4 — dave lands a fix on top. His CI is started; bob is
+		// still failed. Header stays red — newest resolved is bob's fail.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("dave04", "dave", "fix the billing bug", 8*time.Second,
+					ev("ci", "started", 10*time.Second),
+				),
+				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
+					ev("ci", "started", -15*time.Second),
+					ev("ci", "failed", 5*time.Second),
+				),
+				commit("alice1", "alice", "refactor user model", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+					ev("deploy", "passed", -3*time.Minute),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -15*time.Minute),
+				),
+			}},
+			Hold: 1800 * time.Millisecond,
+		},
+
+		// Frame 5 — dave's CI PASSES. Header back to green. dave becomes
+		// the new build line; bob (older than dave) is fix-forwarded out
+		// of HEAD into CI Passed. Bob's individual ci event is still
+		// "failed" but stale, so his row icon dims to gray ✗.
+		{
+			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+				commit("dave04", "dave", "fix the billing bug", 8*time.Second,
+					ev("ci", "started", 10*time.Second),
+					ev("ci", "passed", 20*time.Second),
+				),
+				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
+					ev("ci", "started", -15*time.Second),
+					ev("ci", "failed", 5*time.Second),
+				),
+				commit("alice1", "alice", "refactor user model", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+					ev("deploy", "passed", -3*time.Minute),
+				),
+				commit("frank2", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -15*time.Minute),
+				),
+			}},
+			Hold: 2500 * time.Millisecond,
+		},
+	},
+}
+
 var allScenarios = map[string]*Scenario{
 	"happy-path":     &happyPath,
 	"deploy-failure": &deployFailure,
+	"ci-failure":     &ciFailure,
 }

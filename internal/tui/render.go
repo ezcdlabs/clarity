@@ -93,10 +93,11 @@ func OverallStatus(events []clarityrefs.Event) string {
 // Per-row status icons carry their meaning via shape (✓ / ✗ / spinner / ·),
 // not hue — colour reinforces only the cases where the user needs to notice.
 var (
-	colorRed   = lipgloss.Color("1")
-	colorGreen = lipgloss.Color("2")
-	colorGray  = lipgloss.Color("8")
-	colorBlue  = lipgloss.Color("12")
+	colorRed    = lipgloss.Color("1")
+	colorGreen  = lipgloss.Color("2")
+	colorGray   = lipgloss.Color("8")
+	colorBlue   = lipgloss.Color("12")
+	colorYellow = lipgloss.AdaptiveColor{Light: "3", Dark: "11"} // CI Passed divider accent
 )
 
 // SpinnerFrames is the same braille animation pushq uses for its spinner —
@@ -138,8 +139,8 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 
 	var b strings.Builder
-	writeFlat := func(title string, commits []watcher.CommitView) {
-		b.WriteString(renderSectionDivider(title, width))
+	writeFlat := func(title string, color lipgloss.TerminalColor, commits []watcher.CommitView) {
+		b.WriteString(renderSectionDivider(title, color, width))
 		for _, c := range commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -147,11 +148,12 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 		b.WriteString("\n")
 	}
 
-	writeFlat("HEAD", g.Head)
+	// HEAD: no lifecycle tint — just-landed commits are visually "neutral".
+	writeFlat("HEAD", nil, g.Head)
 
-	// CI Passed: idle (bare) commits at the top, then in-flight deploy
-	// batches (deploying… or stuck-failed) at the bottom.
-	b.WriteString(renderSectionDivider("CI Passed", width))
+	// CI Passed: yellow lifecycle accent. Idle commits at the top, then
+	// in-flight deploy batches (deploying… or stuck-failed) at the bottom.
+	b.WriteString(renderSectionDivider("CI Passed", colorYellow, width))
 	for _, c := range g.CIPassed {
 		b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 		b.WriteString("\n")
@@ -165,8 +167,8 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 	b.WriteString("\n")
 
-	// Deployed: only completed (deploy:passed) batches.
-	b.WriteString(renderSectionDivider("Deployed", width))
+	// Deployed: blue lifecycle accent. Only completed (deploy:passed) batches.
+	b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
 	for _, batch := range g.Deployed {
 		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
 		for _, c := range batch.Commits {
@@ -187,12 +189,20 @@ const rowAuthorColumn = 5
 // renderSectionDivider produces a horizontal-rule-with-inline-label line:
 // gray dashes leading up to the author column, then the bold label, then a
 // space and gray dashes filling to the terminal width. The label sits at
-// the same left edge as the rows beneath it.
-func renderSectionDivider(label string, width int) string {
+// the same left edge as the rows beneath it. When color is non-nil the
+// label is tinted (used for the lifecycle accents — yellow on CI Passed,
+// blue on Deployed); HEAD passes nil so the label stays in the default
+// foreground for a "neutral / just landed" feel that works on both light
+// and dark terminals without an AdaptiveColor dance.
+func renderSectionDivider(label string, color lipgloss.TerminalColor, width int) string {
 	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
 	leading := dashStyle.Render(strings.Repeat("─", rowAuthorColumn))
 	spacedLabel := label + " "
-	boldLabel := lipgloss.NewStyle().Bold(true).Render(spacedLabel)
+	labelStyle := lipgloss.NewStyle().Bold(true)
+	if color != nil {
+		labelStyle = labelStyle.Foreground(color)
+	}
+	boldLabel := labelStyle.Render(spacedLabel)
 
 	used := rowAuthorColumn + lipgloss.Width(spacedLabel)
 	if width <= used {
@@ -212,11 +222,15 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int) string {
 		spin := lipgloss.NewStyle().Foreground(colorGray).Render(spinnerFrame(spinnerIdx))
 		return "  " + spin + " " + style.Render("deploying…") + "\n"
 	case "passed":
+		// Tinted blue to echo the Deployed section's lifecycle accent —
+		// the "this batch is settled, in production" subheader carries the
+		// same colour as the section divider above it.
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
 			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
 		}
-		return style.Render("  deployed"+ago) + "\n"
+		return lipgloss.NewStyle().Foreground(colorBlue).Italic(true).
+			Render("  deployed"+ago) + "\n"
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {

@@ -135,12 +135,22 @@ func (m Model) View() string {
 }
 
 // renderHeader builds the top line: repo name (bold) + build/deploy status
-// badges on the left, "press q to quit" right-aligned to width.
+// badges on the left, "press q to quit" right-aligned to width. When any
+// badge has resolved to failed, the repo name flips bold red — a focused
+// alarm in the top-left where the eye naturally lands first, without
+// recolouring the rest of the header.
 func renderHeader(repoName string, snap watcher.Snapshot, width int) string {
-	title := lipgloss.NewStyle().Bold(true).Render(repoName)
+	ciStatus := currentStageStatus(snap.Commits, "ci")
+	deployStatus := currentStageStatus(snap.Commits, "deploy")
 
-	ci := badge("ci", currentStageStatus(snap.Commits, "ci"))
-	deploy := badge("deploy", currentStageStatus(snap.Commits, "deploy"))
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	if ciStatus == "failed" || deployStatus == "failed" {
+		titleStyle = titleStyle.Foreground(colorRed)
+	}
+	title := titleStyle.Render(repoName)
+
+	ci := badge("ci", ciStatus)
+	deploy := badge("deploy", deployStatus)
 	dot := lipgloss.NewStyle().Foreground(colorGray).Render("·")
 
 	left := strings.Join([]string{title, dot, ci, dot, deploy}, "  ")

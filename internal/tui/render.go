@@ -112,20 +112,18 @@ func RenderRow(view watcher.CommitView, width int) string {
 }
 
 // RenderSnapshot renders the snapshot grouped by lifecycle stage:
-// HEAD → CI Passed → Deployed (with per-batch subheaders). Empty sections
-// are hidden so the active drama is concentrated. Stale build icons (where
-// a newer commit has already passed) render in muted gray. A right-aligned
-// lead-time timer ticks on each row in blue while the commit is still in
-// flight, and freezes in gray once it reaches production.
+// HEAD → CI Passed → Deployed (with per-batch subheaders). All three section
+// dividers are persistent, even when their section has no commits — the
+// dividers act as a structural frame for the lifecycle, not a list of
+// only-currently-active groups. Stale build icons (where a newer commit has
+// already passed) render in muted gray. A right-aligned lead-time timer ticks
+// on each row in blue while the commit is still in flight, and freezes in
+// gray once it reaches production.
 //
 // now drives the live half of the timer; pass time.Time{} for tests that
 // don't care about timer values (timers won't render for commits with no
 // Time set anyway).
 func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx int) string {
-	if len(snap.Commits) == 0 {
-		return "  (no commits yet)\n"
-	}
-
 	g := GroupCommits(snap.Commits)
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
@@ -134,10 +132,7 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 
 	var b strings.Builder
 	writeFlat := func(title string, commits []watcher.CommitView) {
-		if len(commits) == 0 {
-			return
-		}
-		b.WriteString(renderSectionHeader(title))
+		b.WriteString(renderSectionDivider(title, width))
 		for _, c := range commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -148,23 +143,39 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	writeFlat("HEAD", g.Head)
 	writeFlat("CI Passed", g.CIPassed)
 
-	if len(g.Deployed) > 0 {
-		b.WriteString(renderSectionHeader("Deployed"))
-		for _, batch := range g.Deployed {
-			b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
-			for _, c := range batch.Commits {
-				b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
-				b.WriteString("\n")
-			}
+	b.WriteString(renderSectionDivider("Deployed", width))
+	for _, batch := range g.Deployed {
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
+		for _, c := range batch.Commits {
+			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
 		}
+		b.WriteString("\n")
 	}
 
 	return b.String()
 }
 
-func renderSectionHeader(title string) string {
-	return lipgloss.NewStyle().Bold(true).Render(title) + "\n"
+// rowAuthorColumn is the visible column at which renderRowInGroup places the
+// author name (after "  <icon>  "). Section dividers indent their label to
+// the same column so that label and author texts share a left edge.
+const rowAuthorColumn = 5
+
+// renderSectionDivider produces a horizontal-rule-with-inline-label line:
+// gray dashes leading up to the author column, then the bold label, then a
+// space and gray dashes filling to the terminal width. The label sits at
+// the same left edge as the rows beneath it.
+func renderSectionDivider(label string, width int) string {
+	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
+	leading := dashStyle.Render(strings.Repeat("─", rowAuthorColumn))
+	spacedLabel := label + " "
+	boldLabel := lipgloss.NewStyle().Bold(true).Render(spacedLabel)
+
+	used := rowAuthorColumn + lipgloss.Width(spacedLabel)
+	if width <= used {
+		return leading + boldLabel + "\n"
+	}
+	return leading + boldLabel + dashStyle.Render(strings.Repeat("─", width-used)) + "\n"
 }
 
 // renderBatchSubheader produces a one-line subheader inside the Deployed

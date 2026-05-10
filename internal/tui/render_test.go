@@ -206,31 +206,33 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 	}
 }
 
-func TestRenderSnapshot_EmptyCommits_ProducesNonEmptyOutput(t *testing.T) {
-	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{}, 0)
-	if out == "" {
-		t.Error("expected some placeholder output for empty snapshot")
-	}
-}
-
 // --- section rendering -------------------------------------------------------
 
-// All commits with no events sit in HEAD, so only that section header should appear.
-func TestRenderSnapshot_RendersOnlyNonEmptySections(t *testing.T) {
+// All three section dividers are persistent — even when their section has no
+// commits — so the layout reads as a structural frame rather than a list of
+// only-currently-active groups.
+func TestRenderSnapshot_AllThreeDividersAlwaysRender(t *testing.T) {
+	// Only HEAD has content; CI Passed and Deployed are both empty.
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{
 			{SHA: "1", Author: "alice", Subject: "wip"},
 		},
 	}
 	out := tui.RenderSnapshot(snap, 80, time.Time{}, 0)
-	if !strings.Contains(out, "HEAD") {
-		t.Errorf("expected 'HEAD' header for a Head commit, got:\n%s", out)
+	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("expected divider %q always present, got:\n%s", label, out)
+		}
 	}
-	if strings.Contains(out, "CI Passed") {
-		t.Errorf("did not expect 'CI Passed' header for an empty group, got:\n%s", out)
-	}
-	if strings.Contains(out, "Deployed") {
-		t.Errorf("did not expect 'Deployed' header for an empty group, got:\n%s", out)
+}
+
+// Even with zero commits at all, the structural frame stays in place.
+func TestRenderSnapshot_EmptySnapshot_StillShowsDividers(t *testing.T) {
+	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{}, 0)
+	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("expected divider %q in empty render, got:\n%s", label, out)
+		}
 	}
 }
 

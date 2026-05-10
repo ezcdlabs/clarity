@@ -25,14 +25,18 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 	}
 }
 
-func TestModel_AfterEmptySnapshot_ShowsNoCommitsState(t *testing.T) {
+// After the first snapshot arrives — even an empty one — the loading
+// placeholder is gone and the structural dividers take over instead.
+func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(watcher.Snapshot{}))
 	out := m.View()
-	if !strings.Contains(out, "no commits yet") {
-		t.Errorf("expected 'no commits yet' after an empty snapshot, got:\n%s", out)
-	}
 	if strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("should no longer show loading once a snapshot has arrived, got:\n%s", out)
+	}
+	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
+		if !strings.Contains(out, label) {
+			t.Errorf("expected divider %q after empty snapshot, got:\n%s", label, out)
+		}
 	}
 }
 

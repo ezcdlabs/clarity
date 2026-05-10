@@ -58,6 +58,44 @@ Inside your pipelines:
 
 In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, `failed`, or `skipped`.
 
+### Reporting from GitHub Actions: `ezcdlabs/clarity`
+
+For GitHub Actions specifically there is a setup action that handles installation and (optionally) the report call in one step. Pin the action ref to a release and you get the matching binary automatically — no separate `version:` input needed in the common case.
+
+Install only, then report manually:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: ezcdlabs/clarity@v0.1.0
+- run: ./build.sh && git clarity report ci passed
+```
+
+Install and report in one step:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: ezcdlabs/clarity@v0.1.0
+  with:
+    stage: ci
+    status: started
+
+- run: ./build.sh
+
+- if: always()
+  uses: ezcdlabs/clarity@v0.1.0
+  with:
+    stage: ci
+    status: ${{ job.status == 'success' && 'passed' || 'failed' }}
+```
+
+Inputs:
+
+- `version` — explicit version override (e.g. `v0.1.0`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
+- `stage` — pipeline stage to report (`ci` or `deploy`). When combined with `status`, the action runs `git clarity report <stage> <status>` after install.
+- `status` — status to report (`started` / `passed` / `failed` / `skipped`).
+
+`actions/checkout` must run first so the action has a repository to push events from.
+
 ---
 
 ## Design Document

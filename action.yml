@@ -1,0 +1,36 @@
+name: 'Setup clarity'
+description: 'Install git-clarity and optionally report a pipeline event to refs/clarity/events.'
+author: 'EzcdLabs'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  version:
+    description: 'Explicit clarity version to install (e.g. v0.1.0). Defaults to the action ref if it looks like a semver tag, otherwise the latest GitHub release.'
+    required: false
+    default: ''
+  stage:
+    description: 'Pipeline stage to report. Either `ci` or `deploy` — clarity is deliberately limited to those two stages. When combined with status, the action also runs `git clarity report <stage> <status>` after installing.'
+    required: false
+    default: ''
+  status:
+    description: 'Status to report (started, passed, failed, skipped). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install git-clarity
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/action-install.sh"
+
+    - name: Report event
+      if: ${{ inputs.stage != '' && inputs.status != '' }}
+      shell: bash
+      run: git clarity report "${{ inputs.stage }}" "${{ inputs.status }}"

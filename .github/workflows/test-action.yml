@@ -1,0 +1,56 @@
+name: Test action
+
+# Self-test for action.yml: installs git-clarity on a Linux/macOS/Windows
+# matrix using the local copy of the action and asserts the binary is on
+# PATH afterwards. Runs on PRs that touch the action surface so we catch
+# install-script regressions before they reach users.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'action.yml'
+      - 'scripts/action-install.sh'
+      - '.github/workflows/test-action.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'action.yml'
+      - 'scripts/action-install.sh'
+      - '.github/workflows/test-action.yml'
+  workflow_dispatch: # so we can re-run on demand without touching files
+
+jobs:
+  install:
+    name: Install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup clarity (default version resolution)
+        uses: ./
+        with:
+          version: v0.1.0
+
+      - name: Verify on PATH
+        shell: bash
+        run: |
+          which git-clarity
+          git-clarity --version
+
+  install-latest:
+    name: Install (latest, ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup clarity with version=latest
+        uses: ./
+        with:
+          version: latest
+      - name: Verify
+        shell: bash
+        run: git-clarity --version

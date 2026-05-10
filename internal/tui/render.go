@@ -141,8 +141,24 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 
 	writeFlat("HEAD", g.Head)
-	writeFlat("CI Passed", g.CIPassed)
 
+	// CI Passed: idle (bare) commits at the top, then in-flight deploy
+	// batches (deploying… or stuck-failed) at the bottom.
+	b.WriteString(renderSectionDivider("CI Passed", width))
+	for _, c := range g.CIPassed {
+		b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
+		b.WriteString("\n")
+	}
+	for _, batch := range g.InFlight {
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
+		for _, c := range batch.Commits {
+			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\n")
+
+	// Deployed: only completed (deploy:passed) batches.
 	b.WriteString(renderSectionDivider("Deployed", width))
 	for _, batch := range g.Deployed {
 		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))

@@ -22,6 +22,15 @@ func totalDeployed(g tui.Groupings) int {
 	return n
 }
 
+// totalInFlight sums all commits across in-flight batches.
+func totalInFlight(g tui.Groupings) int {
+	n := 0
+	for _, b := range g.InFlight {
+		n += len(b.Commits)
+	}
+	return n
+}
+
 func TestGroupCommits_Empty(t *testing.T) {
 	got := tui.GroupCommits(nil)
 	if len(got.Head) != 0 || len(got.CIPassed) != 0 || len(got.Deployed) != 0 {
@@ -65,95 +74,122 @@ func TestGroupCommits_BuildPassedAboveDeployLine(t *testing.T) {
 	}
 }
 
-// Commits with deploy:started belong in Deployed (not CIPassed) — Deployed
-// includes "currently being deployed".
-func TestGroupCommits_DeployStartedMakesItDeployed(t *testing.T) {
+// Commits with deploy:started belong in InFlight (bottom of CI Passed) —
+// Deployed is only for completed (deploy:passed) batches.
+func TestGroupCommits_DeployStarted_GoesToInFlight(t *testing.T) {
 	commits := []watcher.CommitView{
 		cv("b", ev("ci", "passed", 200), ev("deploy", "started", 280)),
 		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
-	if totalDeployed(got) != 2 {
-		t.Errorf("expected both b and a in Deployed, got %d", totalDeployed(got))
+	if totalDeployed(got) != 1 || got.Deployed[0].Commits[0].SHA != "a" {
+		t.Errorf("expected only 'a' in Deployed, got %+v", got.Deployed)
+	}
+	if totalInFlight(got) != 1 || got.InFlight[0].Commits[0].SHA != "b" {
+		t.Errorf("expected only 'b' in InFlight, got %+v", got.InFlight)
+	}
+	if got.InFlight[0].Status != "started" {
+		t.Errorf("expected in-flight batch status=started, got %q", got.InFlight[0].Status)
 	}
 	if len(got.CIPassed) != 0 {
-		t.Errorf("expected CIPassed empty (b's deploy:started moves it into Deployed), got %+v", got.CIPassed)
+		t.Errorf("expected CIPassed empty (b is in an in-flight batch), got %+v", got.CIPassed)
+	}
+}
+
+// Idle CI-passed commits (no deploy event) at the top of the section
+// coexist with an in-flight batch at the bottom.
+func TestGroupCommits_IdleAboveInFlight(t *testing.T) {
+	commits := []watcher.CommitView{
+		cv("d", ev("ci", "passed", 400)),                                // idle, newer
+		cv("c", ev("ci", "passed", 300)),                                // idle, newer
+		cv("b", ev("ci", "passed", 200), ev("deploy", "started", 280)),  // in-flight anchor
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // already deployed
+	}
+	got := tui.GroupCommits(commits)
+	if len(got.CIPassed) != 2 || got.CIPassed[0].SHA != "d" || got.CIPassed[1].SHA != "c" {
+		t.Errorf("expected idle [d, c] in CIPassed, got %+v", commitSHAs(got.CIPassed))
+	}
+	if totalInFlight(got) != 1 || got.InFlight[0].Commits[0].SHA != "b" {
+		t.Errorf("expected 'b' in InFlight, got %+v", got.InFlight)
+	}
+	if totalDeployed(got) != 1 || got.Deployed[0].Commits[0].SHA != "a" {
+		t.Errorf("expected 'a' in Deployed, got %+v", got.Deployed)
 	}
 }
 
 // --- DeployBatch shape -------------------------------------------------------
 
-// A passed deploy and a started deploy are SEPARATE batches.
-func TestGroupCommits_DeployBatches_DistinctAttempts(t *testing.T) {
+// A passed deploy and a started deploy go to DIFFERENT sections now —
+// started is in-flight (bottom of CI Passed), passed is in Deployed.
+func TestGroupCommits_StartedAndPassed_DifferentSections(t *testing.T) {
 	commits := []watcher.CommitView{
-		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)), // started
-		cv("b", ev("ci", "passed", 200)),                                // belongs to c's batch
-		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // passed (older)
+		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)), // started → InFlight
+		cv("b", ev("ci", "passed", 200)),                                // belongs to c's in-flight batch
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // passed → Deployed
 	}
 	got := tui.GroupCommits(commits)
-	if len(got.Deployed) != 2 {
-		t.Fatalf("expected 2 batches (one started, one passed), got %d", len(got.Deployed))
+	if len(got.InFlight) != 1 || got.InFlight[0].Status != "started" {
+		t.Fatalf("expected one started batch in InFlight, got %+v", got.InFlight)
 	}
-	if got.Deployed[0].Status != "started" {
-		t.Errorf("expected newest batch status=started, got %q", got.Deployed[0].Status)
+	if len(got.InFlight[0].Commits) != 2 ||
+		got.InFlight[0].Commits[0].SHA != "c" || got.InFlight[0].Commits[1].SHA != "b" {
+		t.Errorf("expected in-flight batch [c, b], got %+v", commitSHAs(got.InFlight[0].Commits))
 	}
-	if len(got.Deployed[0].Commits) != 2 || got.Deployed[0].Commits[0].SHA != "c" || got.Deployed[0].Commits[1].SHA != "b" {
-		t.Errorf("expected newest batch [c, b], got %+v", commitSHAs(got.Deployed[0].Commits))
-	}
-	if got.Deployed[1].Status != "passed" {
-		t.Errorf("expected older batch status=passed, got %q", got.Deployed[1].Status)
-	}
-	if len(got.Deployed[1].Commits) != 1 || got.Deployed[1].Commits[0].SHA != "a" {
-		t.Errorf("expected older batch [a], got %+v", commitSHAs(got.Deployed[1].Commits))
+	if len(got.Deployed) != 1 || got.Deployed[0].Status != "passed" ||
+		got.Deployed[0].Commits[0].SHA != "a" {
+		t.Errorf("expected one passed batch [a] in Deployed, got %+v", got.Deployed)
 	}
 }
 
-// A failed deploy with NO newer batch stands alone as its own group.
-func TestGroupCommits_FailedDeploy_NoNewerAttempt_StandsAlone(t *testing.T) {
+// A failed deploy with NO newer batch stands alone as its own InFlight group.
+func TestGroupCommits_FailedDeploy_NoNewerAttempt_StandsAloneInFlight(t *testing.T) {
 	commits := []watcher.CommitView{
 		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 250)),
 		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
-	if len(got.Deployed) != 2 {
-		t.Fatalf("expected 2 batches (one failed standalone, one passed), got %d", len(got.Deployed))
+	if len(got.InFlight) != 1 || got.InFlight[0].Status != "failed" {
+		t.Fatalf("expected a standalone failed batch in InFlight, got %+v", got.InFlight)
 	}
-	if got.Deployed[0].Status != "failed" {
-		t.Errorf("expected newest batch status=failed, got %q", got.Deployed[0].Status)
+	if len(got.Deployed) != 1 || got.Deployed[0].Status != "passed" {
+		t.Fatalf("expected a passed batch in Deployed, got %+v", got.Deployed)
 	}
 }
 
-// A failed deploy followed by a NEWER deploy (started OR passed) gets MERGED
-// into the newer batch — its commits are absorbed and no separate "failed"
-// subgroup is rendered.
-func TestGroupCommits_FailedDeploy_NewerStarted_Merged(t *testing.T) {
+// A failed deploy followed by a NEWER non-failed deploy gets MERGED into the
+// newer batch — its commits are absorbed.
+func TestGroupCommits_FailedDeploy_NewerStarted_MergedIntoInFlight(t *testing.T) {
 	commits := []watcher.CommitView{
 		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)),
 		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 220)),
 		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
 	}
 	got := tui.GroupCommits(commits)
-	if len(got.Deployed) != 2 {
-		t.Fatalf("expected 2 batches (started absorbing failed, then passed), got %d", len(got.Deployed))
+	if len(got.InFlight) != 1 || got.InFlight[0].Status != "started" {
+		t.Fatalf("expected one merged started batch in InFlight, got %+v", got.InFlight)
 	}
-	if got.Deployed[0].Status != "started" {
-		t.Errorf("expected newest batch status=started, got %q", got.Deployed[0].Status)
+	if len(got.InFlight[0].Commits) != 2 ||
+		got.InFlight[0].Commits[0].SHA != "c" || got.InFlight[0].Commits[1].SHA != "b" {
+		t.Errorf("expected merged in-flight [c, b], got %+v", commitSHAs(got.InFlight[0].Commits))
 	}
-	if len(got.Deployed[0].Commits) != 2 || got.Deployed[0].Commits[0].SHA != "c" || got.Deployed[0].Commits[1].SHA != "b" {
-		t.Errorf("expected merged batch [c, b] (b absorbed), got %+v", commitSHAs(got.Deployed[0].Commits))
+	if len(got.Deployed) != 1 || got.Deployed[0].Status != "passed" {
+		t.Errorf("expected one passed batch in Deployed, got %+v", got.Deployed)
 	}
 }
 
-// Multiple consecutive failed deploys with no newer attempt stay separate.
-// (The merge rule only kicks in when a newer non-failed attempt exists.)
-func TestGroupCommits_TwoFailedDeploys_NoNewer_StaySeparate(t *testing.T) {
+// Multiple consecutive failed deploys with no newer attempt stay separate in
+// the InFlight section.
+func TestGroupCommits_TwoFailedDeploys_NoNewer_StaySeparateInFlight(t *testing.T) {
 	commits := []watcher.CommitView{
 		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 250)),
 		cv("a", ev("ci", "passed", 100), ev("deploy", "failed", 150)),
 	}
 	got := tui.GroupCommits(commits)
-	if len(got.Deployed) != 2 {
-		t.Fatalf("expected 2 separate failed batches, got %d", len(got.Deployed))
+	if len(got.InFlight) != 2 {
+		t.Fatalf("expected 2 separate failed batches in InFlight, got %d", len(got.InFlight))
+	}
+	if len(got.Deployed) != 0 {
+		t.Errorf("expected empty Deployed (no deploy:passed), got %+v", got.Deployed)
 	}
 }
 

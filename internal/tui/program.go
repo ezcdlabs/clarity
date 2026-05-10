@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ezcdlabs/clarity/clarityrefs"
@@ -14,14 +15,19 @@ import (
 // snapshot.
 type SnapshotMsg watcher.Snapshot
 
-// tickMsg fires once per second to drive the live half of the lead-time timer.
+// tickMsg fires often enough to keep the spinner animating and the lead-time
+// timers updating.
 type tickMsg time.Time
+
+// headerHeight is the number of rows the fixed header occupies above the
+// scrollable body: one line of badges plus one blank separator line.
+const headerHeight = 2
 
 // Model is the Bubble Tea state — the latest snapshot, terminal dimensions,
 // the repository name (for the header), a flag for whether we've received
-// any snapshot yet (so the first paint can show "Loading…" instead of the
-// genuine "no commits" state), and a clock function used to drive timer
-// updates.
+// any snapshot yet (so the first paint can show a spinner-and-"Loading"
+// state instead of the genuine "no commits" state), a clock function for
+// timer updates, and a scrollable viewport holding the body.
 type Model struct {
 	snap       watcher.Snapshot
 	width      int
@@ -30,11 +36,16 @@ type Model struct {
 	received   bool
 	nowFn      func() time.Time
 	spinnerIdx int
+	viewport   viewport.Model
 }
 
 // New constructs a Model for the given repository name using the real clock.
 func New(repoName string) Model {
-	return Model{repoName: repoName, nowFn: time.Now}
+	return Model{
+		repoName: repoName,
+		nowFn:    time.Now,
+		viewport: viewport.New(0, 0),
+	}
 }
 
 // WithClock returns a copy of m with the clock function replaced. Used by
@@ -44,11 +55,15 @@ func (m Model) WithClock(nowFn func() time.Time) Model {
 	return m
 }
 
-// WithSize returns a copy of m with the terminal dimensions set explicitly.
-// Used by tests to render at a known width without relying on a tea.WindowSizeMsg.
+// WithSize returns a copy of m with the terminal dimensions set explicitly
+// (and the viewport sized accordingly). Used by tests to render at a known
+// width without relying on a tea.WindowSizeMsg from a real terminal.
 func (m Model) WithSize(width, height int) Model {
 	m.width = width
 	m.height = height
+	m.viewport.Width = width
+	m.viewport.Height = max(0, height-headerHeight)
+	m.viewport.SetContent(m.renderBody())
 	return m
 }
 
@@ -64,41 +79,58 @@ func tickEvery() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
+		// fall through to viewport for scroll keys (up/down/pgup/pgdn/k/j/g/G)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewport.Width = msg.Width
+		m.viewport.Height = max(0, msg.Height-headerHeight)
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
 	case SnapshotMsg:
 		m.snap = watcher.Snapshot(msg)
 		m.received = true
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
 	case tickMsg:
 		m.spinnerIdx++
+		m.viewport.SetContent(m.renderBody())
 		return m, tickEvery()
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
+}
+
+// renderBody returns the body content the viewport scrolls over. The header
+// stays fixed above and is rendered separately by View().
+func (m Model) renderBody() string {
+	if !m.received {
+		spin := lipgloss.NewStyle().Foreground(colorBlue).Render(spinnerFrame(m.spinnerIdx))
+		return "  " + spin + " Loading\n"
+	}
+	now := time.Now()
+	if m.nowFn != nil {
+		now = m.nowFn()
+	}
+	return RenderSnapshot(m.snap, m.width, now, m.spinnerIdx)
 }
 
 func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(renderHeader(m.repoName, m.snap, m.width))
 	b.WriteString("\n\n")
-
-	if !m.received {
-		spin := lipgloss.NewStyle().Foreground(colorBlue).Render(spinnerFrame(m.spinnerIdx))
-		b.WriteString("  " + spin + " Loading\n")
-	} else {
-		now := time.Now()
-		if m.nowFn != nil {
-			now = m.nowFn()
-		}
-		b.WriteString(RenderSnapshot(m.snap, m.width, now, m.spinnerIdx))
-	}
-
+	b.WriteString(m.viewport.View())
 	return b.String()
 }
 

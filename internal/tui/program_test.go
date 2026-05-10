@@ -1,10 +1,12 @@
 package tui_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/tui"
 	"github.com/ezcdlabs/clarity/internal/watcher"
@@ -84,6 +86,51 @@ func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 	if !strings.Contains(strings.ToLower(out), "deploy") {
 		t.Errorf("expected 'deploy' badge in header, got:\n%s", out)
 	}
+}
+
+// When the body content exceeds the viewport height, the visible View() is
+// clipped — and scrolling down reveals different content.
+func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
+	// Build a snapshot with 30 commits — far more than our small terminal.
+	var commits []watcher.CommitView
+	for i := 0; i < 30; i++ {
+		commits = append(commits, watcher.CommitView{
+			SHA:     pad("sha", i),
+			Author:  pad("auth", i),
+			Subject: pad("subj", i),
+			Time:    time.Unix(int64(1_000_000+i), 0),
+		})
+	}
+	snap := watcher.Snapshot{Commits: commits}
+
+	// Tiny terminal — 10 rows total, leaving ~8 for the body.
+	m := tui.New("clarity").WithSize(80, 10)
+	m2, _ := m.Update(tui.SnapshotMsg(snap))
+	beforeScroll := m2.View()
+
+	// We can't fit all 30 authors in 10 rows, so some must be missing.
+	missing := 0
+	for i := 0; i < 30; i++ {
+		if !strings.Contains(beforeScroll, pad("auth", i)) {
+			missing++
+		}
+	}
+	if missing == 0 {
+		t.Errorf("expected some commits to be clipped off-screen, but all rendered")
+	}
+
+	// Scroll down with PgDn; the visible content should change.
+	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	afterScroll := m3.View()
+	if beforeScroll == afterScroll {
+		t.Errorf("expected View() to change after PgDn scroll")
+	}
+}
+
+// pad makes a unique string of the form "<prefix>-NNN" so we can search for
+// individual commit identifiers without collision.
+func pad(prefix string, n int) string {
+	return fmt.Sprintf("%s-%03d", prefix, n)
 }
 
 // The "q to quit" hint sits in the top-right of the header line.

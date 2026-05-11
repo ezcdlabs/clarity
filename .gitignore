@@ -27,3 +27,9 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Local-only demo artifacts (the .gif IS committed because the README
+# renders it inline; the .mp4 is regenerable for Discord/Slack sharing,
+# and per-frame PNGs are explicitly opt-in via FRAMES=1).
+/assets/*.mp4
+/assets/*.frames/

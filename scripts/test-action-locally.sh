@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./scripts/test-action-locally.sh              # installs latest
-#   ./scripts/test-action-locally.sh v0.1.0       # installs v0.1.0
+#   ./scripts/test-action-locally.sh v0.1.1       # installs v0.1.1
 #
 # Requires: bash, curl, tar; gh CLI optional (used only for "latest" resolution).
 

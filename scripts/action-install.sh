@@ -10,7 +10,7 @@
 #   GITHUB_PATH       file path; this script appends the install dir to it
 #
 # Optional:
-#   INPUT_VERSION       explicit version override (e.g. v0.1.0)
+#   INPUT_VERSION       explicit version override (e.g. v0.1.1)
 #   GITHUB_ACTION_REF   ref the action was invoked at (used as default version
 #                       when it looks like a semver tag)
 #   GH_TOKEN            GitHub token; only needed for "latest" resolution to

@@ -1,5 +1,7 @@
 # clarity (`git clarity`)
 
+![demo](assets/happy-path.gif)
+
 Commit-centric pipeline status TUI for trunk-based development. Answers "is main green?" at a glance — the most recent commits on main with their per-stage CI status in a live updating view. No server, no database, no proprietary format. Just git refs.
 
 ---

@@ -159,7 +159,9 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 		b.WriteString("\n")
 	}
 	for _, batch := range g.InFlight {
-		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
+		// In-flight batches are never "live on production" — they're still
+		// deploying or stuck-failed. isLive only applies to passed batches.
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, false))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -168,9 +170,11 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	b.WriteString("\n")
 
 	// Deployed: blue lifecycle accent. Only completed (deploy:passed) batches.
+	// The first batch (newest passing deploy) is THE currently-live state in
+	// production; subsequent batches are settled history.
 	b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
-	for _, batch := range g.Deployed {
-		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx))
+	for i, batch := range g.Deployed {
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -214,21 +218,28 @@ func renderSectionDivider(label string, color lipgloss.TerminalColor, width int)
 // renderBatchSubheader produces a one-line subheader inside the Deployed
 // section: "deploying…" (with spinner) for in-flight batches, "deployed Xm
 // ago" for completed batches, or "deploy failed Xm ago" for stuck-failed
-// batches.
-func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int) string {
+// batches. When isLive is true (the topmost passed batch — i.e. what's
+// currently running in production), the passed subheader is escalated to
+// bold and prefixed with "live on production ·" so the reader can tell
+// at a glance which batch is the present state vs. settled history.
+func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive bool) string {
 	style := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
 	switch b.Status {
 	case "started":
 		spin := lipgloss.NewStyle().Foreground(colorGray).Render(spinnerFrame(spinnerIdx))
 		return "  " + spin + " " + style.Render("deploying…") + "\n"
 	case "passed":
-		// Tinted blue to echo the Deployed section's lifecycle accent —
-		// the "this batch is settled, in production" subheader carries the
-		// same colour as the section divider above it.
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
 			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
 		}
+		if isLive {
+			// The currently-live batch is the present state, not a past
+			// event — bold blue with the "live on production" anchor.
+			return lipgloss.NewStyle().Foreground(colorBlue).Bold(true).
+				Render("  live on production · deployed"+ago) + "\n"
+		}
+		// Older deployed batches are settled history: italic blue.
 		return lipgloss.NewStyle().Foreground(colorBlue).Italic(true).
 			Render("  deployed"+ago) + "\n"
 	case "failed":

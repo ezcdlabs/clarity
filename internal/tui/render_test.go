@@ -299,6 +299,31 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 	}
 }
 
+// The topmost passed batch in Deployed gets a "live on production" prefix
+// to distinguish "what's running right now" from settled deploy history.
+// Older batches keep the plain "deployed Xm ago" label.
+func TestRenderSnapshot_TopDeployedBatch_IsMarkedLive(t *testing.T) {
+	snap := watcher.Snapshot{
+		Commits: []watcher.CommitView{
+			{SHA: "b", Author: "bob", Subject: "fresh ship", Events: []clarityrefs.Event{
+				ev("ci", "passed", 300), ev("deploy", "passed", 350),
+			}},
+			{SHA: "a", Author: "alice", Subject: "older ship", Events: []clarityrefs.Event{
+				ev("ci", "passed", 50), ev("deploy", "passed", 75),
+			}},
+		},
+	}
+	out := tui.RenderSnapshot(snap, 80, time.Unix(400, 0), 0)
+
+	if !strings.Contains(out, "live on production") {
+		t.Errorf("expected 'live on production' on the topmost batch, got:\n%s", out)
+	}
+	// The label should appear exactly once — only the freshest batch is live.
+	if n := strings.Count(out, "live on production"); n != 1 {
+		t.Errorf("expected exactly 1 'live on production' marker, got %d:\n%s", n, out)
+	}
+}
+
 // The row format no longer trails with explicit "ci" / "deploy" labels —
 // the icon and section convey that.
 func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {

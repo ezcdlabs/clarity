@@ -14,10 +14,20 @@ import (
 const ClarityFetchRefspec = "+refs/clarity/events:refs/clarity/events"
 
 // EnsureClarityFetchRefspec adds ClarityFetchRefspec to remote.<remote>.fetch
-// in the repository's git config if it isn't already present. Idempotent.
+// in the repository's git config if it isn't already present and the remote
+// has actually published a refs/clarity/events ref. We gate on the remote
+// having the ref because `git fetch` (no args) aborts the entire command
+// when any configured refspec fails with "couldn't find remote ref" — so
+// adding the refspec to a brand-new repo where nobody has run `git clarity
+// report` yet would break the user's plain `git fetch`. Once events appear
+// on the remote, a subsequent `git clarity` launch re-runs this check and
+// the refspec gets added. Idempotent in both directions.
 func EnsureClarityFetchRefspec(repoPath, remote string) error {
-	key := "remote." + remote + ".fetch"
+	if !remoteHasEventsRef(repoPath, remote) {
+		return nil
+	}
 
+	key := "remote." + remote + ".fetch"
 	existing, err := gitConfigGetAll(repoPath, key)
 	if err != nil {
 		return err
@@ -28,6 +38,20 @@ func EnsureClarityFetchRefspec(repoPath, remote string) error {
 		}
 	}
 	return git(repoPath, "config", "--add", key, ClarityFetchRefspec)
+}
+
+// remoteHasEventsRef reports whether the remote currently publishes
+// refs/clarity/events. Errors (network, auth, unreachable host) collapse
+// to "no" — the TUI continues to launch and re-checks on its next run.
+func remoteHasEventsRef(repoPath, remote string) bool {
+	cmd := exec.Command("git", "ls-remote", remote, "refs/clarity/events")
+	cmd.Dir = repoPath
+	cmd.Env = gitenv.Clean()
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
 }
 
 // gitConfigGetAll returns every value associated with key, or an empty slice

@@ -9,6 +9,17 @@ import (
 	"github.com/ezcdlabs/clarity/internal/refs"
 )
 
+// seedEventsRef pushes an empty commit onto refs/clarity/events on the remote
+// so EnsureClarityFetchRefspec's "is the events ref published?" gate returns
+// true. Without this, the bootstrap correctly skips itself for tests that
+// just want to exercise the add-the-refspec path.
+func seedEventsRef(t *testing.T, c *gittest.Clone) {
+	t.Helper()
+	c.WriteFile(".clarity-seed", "")
+	c.CommitAll("seed clarity events ref")
+	c.PushRef("HEAD", "refs/clarity/events")
+}
+
 func gitConfigGetAll(t *testing.T, repoPath, key string) []string {
 	t.Helper()
 	cmd := exec.Command("git", "config", "--get-all", key)
@@ -30,9 +41,31 @@ func gitConfigGetAll(t *testing.T, repoPath, key string) []string {
 	return lines
 }
 
+// Regression: running EnsureClarityFetchRefspec against a remote with no
+// events ref yet (e.g. a fresh repo where nobody has called `git clarity
+// report` ever) must not break a subsequent plain `git fetch`. The old
+// behaviour added the refspec unconditionally, and `git fetch` aborts the
+// whole command when any configured refspec fails with "couldn't find
+// remote ref".
+func TestEnsureClarityFetchRefspec_DoesNotBreakGitFetch_WhenNoEventsRef(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	if err := refs.EnsureClarityFetchRefspec(clone.Path, "origin"); err != nil {
+		t.Fatalf("EnsureClarityFetchRefspec: %v", err)
+	}
+
+	cmd := exec.Command("git", "fetch", "origin")
+	cmd.Dir = clone.Path
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git fetch failed after bootstrap (the bug):\n%s", out)
+	}
+}
+
 func TestEnsureClarityFetchRefspec_AddsWhenMissing(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
+	seedEventsRef(t, clone)
 
 	if err := refs.EnsureClarityFetchRefspec(clone.Path, "origin"); err != nil {
 		t.Fatalf("EnsureClarityFetchRefspec: %v", err)
@@ -54,6 +87,7 @@ func TestEnsureClarityFetchRefspec_AddsWhenMissing(t *testing.T) {
 func TestEnsureClarityFetchRefspec_NoOpWhenAlreadyPresent(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
+	seedEventsRef(t, clone)
 
 	// First call adds the refspec.
 	if err := refs.EnsureClarityFetchRefspec(clone.Path, "origin"); err != nil {
@@ -80,6 +114,7 @@ func TestEnsureClarityFetchRefspec_NoOpWhenAlreadyPresent(t *testing.T) {
 func TestEnsureClarityFetchRefspec_PreservesExistingRefspecs(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
+	seedEventsRef(t, clone)
 
 	// The clone already has a default fetch refspec from `git clone`. Verify
 	// EnsureClarityFetchRefspec doesn't clobber it.

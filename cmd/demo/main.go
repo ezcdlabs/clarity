@@ -17,7 +17,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ezcdlabs/clarity/internal/tui"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
@@ -72,7 +72,9 @@ func play(s *Scenario) error {
 		close(snapshots)
 		// Synthetic quit — Bubble Tea's alt-screen would otherwise stay
 		// resident, leaving the recording hanging on the last frame.
-		p.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+		// v2: KeyMsg is an interface; synthesize a 'q' press via KeyPressMsg
+		// (Code is a rune, Text is the textual form for String() matching).
+		p.Send(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	}()
 
 	_, err := p.Run()

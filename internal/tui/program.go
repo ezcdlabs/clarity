@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
@@ -44,7 +44,7 @@ func New(repoName string) Model {
 	return Model{
 		repoName: repoName,
 		nowFn:    time.Now,
-		viewport: viewport.New(0, 0),
+		viewport: viewport.New(),
 	}
 }
 
@@ -61,8 +61,8 @@ func (m Model) WithClock(nowFn func() time.Time) Model {
 func (m Model) WithSize(width, height int) Model {
 	m.width = width
 	m.height = height
-	m.viewport.Width = width
-	m.viewport.Height = max(0, height-headerHeight)
+	m.viewport.SetWidth(width)
+	m.viewport.SetHeight(max(0, height-headerHeight))
 	m.viewport.SetContent(m.renderBody())
 	return m
 }
@@ -82,7 +82,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -91,8 +91,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
-		m.viewport.Height = max(0, msg.Height-headerHeight)
+		m.viewport.SetWidth(msg.Width)
+		m.viewport.SetHeight(max(0, msg.Height-headerHeight))
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
 	case SnapshotMsg:
@@ -126,12 +126,17 @@ func (m Model) renderBody() string {
 	return RenderSnapshot(m.snap, m.width, now, m.spinnerIdx)
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	var b strings.Builder
 	b.WriteString(renderHeader(m.repoName, m.snap, m.width))
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
-	return b.String()
+	v := tea.NewView(b.String())
+	// AltScreen replaces the v1 `tea.WithAltScreen` program option — v2 made
+	// terminal features declarative (set on the View each frame) rather than
+	// imperative (set once at NewProgram).
+	v.AltScreen = true
+	return v
 }
 
 // renderHeader builds the top line: repo name (bold) + build/deploy status
@@ -237,7 +242,15 @@ func newProgram(repoName string, snapshots <-chan watcher.Snapshot, nowFn func()
 	if nowFn != nil {
 		m = m.WithClock(nowFn)
 	}
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Force the lazy background-color detection to fire BEFORE bubbletea
+	// claims stdin. Without this, the first divider render triggers the
+	// query while bubbletea is also reading stdin, the response gets lost,
+	// and lazyAdaptive falls back to its dark default — light-terminal
+	// users get bright yellow instead of the dim yellow v1 picked for them.
+	detectDarkBackground()
+	// AltScreen is now declared on the View itself (see Model.View), so we
+	// don't pass it as a program option anymore.
+	p := tea.NewProgram(m)
 	go func() {
 		for snap := range snapshots {
 			p.Send(SnapshotMsg(snap))

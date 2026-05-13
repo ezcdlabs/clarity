@@ -5,11 +5,14 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
@@ -97,8 +100,45 @@ var (
 	colorGreen  = lipgloss.Color("2")
 	colorGray   = lipgloss.Color("8")
 	colorBlue   = lipgloss.Color("12")
-	colorYellow = lipgloss.AdaptiveColor{Light: "3", Dark: "11"} // CI Passed divider accent
+	// colorYellowLight / colorYellowDark are the two raw ANSI yellows the CI
+	// Passed divider accent picks between. They're plain ANSI basic colors
+	// (not wrapped) so lipgloss emits an SGR escape that the terminal themes
+	// — wrapping them in an image/color.Color adapter forces a truecolor RGB
+	// encoding and locks the yellow to a fixed shade across every theme.
+	// colorYellow() picks one of them at call time, lazily detecting bg.
+	colorYellowLight = lipgloss.Color("3")
+	colorYellowDark  = lipgloss.Color("11")
 )
+
+// detectDarkBackground caches whether the terminal has a dark background.
+// Detection runs at most once per process, lazily on first call — never at
+// package init — so non-TUI subcommands that transitively import this
+// package don't leak OSC 11 escape sequences at startup. The TUI invokes
+// this once from newProgram before bubbletea claims stdin, so the response
+// can be read cleanly. HasDarkBackground defaults to true on error or
+// non-TTY contexts, which is safe in tests and pipelines.
+var (
+	hasDarkBg     bool
+	hasDarkBgOnce sync.Once
+)
+
+func detectDarkBackground() bool {
+	hasDarkBgOnce.Do(func() {
+		hasDarkBg = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	})
+	return hasDarkBg
+}
+
+// colorYellow returns the adaptive yellow for the CI Passed divider. We
+// return the raw lipgloss.Color (an ansi.BasicColor underneath) rather than
+// wrapping in an image/color.Color adapter so lipgloss emits a themable SGR
+// escape — wrapping forces truecolor RGB and locks the color to one shade.
+func colorYellow() color.Color {
+	if detectDarkBackground() {
+		return colorYellowDark
+	}
+	return colorYellowLight
+}
 
 // SpinnerFrames is the same braille animation pushq uses for its spinner —
 // works in any terminal that can render those code points.
@@ -139,7 +179,7 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 
 	var b strings.Builder
-	writeFlat := func(title string, color lipgloss.TerminalColor, commits []watcher.CommitView) {
+	writeFlat := func(title string, color color.Color, commits []watcher.CommitView) {
 		b.WriteString(renderSectionDivider(title, color, width))
 		for _, c := range commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
@@ -153,7 +193,7 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 
 	// CI Passed: yellow lifecycle accent. Idle commits at the top, then
 	// in-flight deploy batches (deploying… or stuck-failed) at the bottom.
-	b.WriteString(renderSectionDivider("CI Passed", colorYellow, width))
+	b.WriteString(renderSectionDivider("CI Passed", colorYellow(), width))
 	for _, c := range g.CIPassed {
 		b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 		b.WriteString("\n")
@@ -198,7 +238,7 @@ const rowAuthorColumn = 5
 // blue on Deployed); HEAD passes nil so the label stays in the default
 // foreground for a "neutral / just landed" feel that works on both light
 // and dark terminals without an AdaptiveColor dance.
-func renderSectionDivider(label string, color lipgloss.TerminalColor, width int) string {
+func renderSectionDivider(label string, color color.Color, width int) string {
 	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
 	leading := dashStyle.Render(strings.Repeat("─", rowAuthorColumn))
 	spacedLabel := label + " "

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/tui"
 	"github.com/ezcdlabs/clarity/internal/watcher"
@@ -18,7 +18,7 @@ func newModel(repo string) tui.Model {
 
 func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 	m := newModel("clarity")
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("expected a loading indicator before any snapshot, got:\n%s", out)
 	}
@@ -31,7 +31,7 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 // placeholder is gone and the structural dividers take over instead.
 func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(watcher.Snapshot{}))
-	out := m.View()
+	out := m.View().Content
 	if strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("should no longer show loading once a snapshot has arrived, got:\n%s", out)
 	}
@@ -50,7 +50,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 		},
 	}
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "alice") {
 		t.Errorf("expected commit author rendered, got:\n%s", out)
 	}
@@ -62,7 +62,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 // The header shows the repository name (not the branch).
 func TestModel_HeaderShowsRepoName(t *testing.T) {
 	m := newModel("my-cool-repo")
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(out, "my-cool-repo") {
 		t.Errorf("expected repo name in header, got:\n%s", out)
 	}
@@ -79,7 +79,7 @@ func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 		},
 	}
 	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(strings.ToLower(out), "ci") {
 		t.Errorf("expected 'ci' badge in header, got:\n%s", out)
 	}
@@ -106,7 +106,7 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 	// Tiny terminal — 10 rows total, leaving ~8 for the body.
 	m := tui.New("clarity").WithSize(80, 10)
 	m2, _ := m.Update(tui.SnapshotMsg(snap))
-	beforeScroll := m2.View()
+	beforeScroll := m2.View().Content
 
 	// We can't fit all 30 authors in 10 rows, so some must be missing.
 	missing := 0
@@ -120,8 +120,8 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 	}
 
 	// Scroll down with PgDn; the visible content should change.
-	m3, _ := m2.Update(tea.KeyMsg{Type: tea.KeyPgDown})
-	afterScroll := m3.View()
+	m3, _ := m2.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	afterScroll := m3.View().Content
 	if beforeScroll == afterScroll {
 		t.Errorf("expected View() to change after PgDn scroll")
 	}
@@ -136,7 +136,7 @@ func pad(prefix string, n int) string {
 // The "q to quit" hint sits in the top-right of the header line.
 func TestModel_QuitHint_OnHeaderLine_RightAligned(t *testing.T) {
 	m := newModel("clarity")
-	out := m.View()
+	out := m.View().Content
 	if !strings.Contains(strings.ToLower(out), "q") {
 		t.Errorf("expected quit hint, got:\n%s", out)
 	}

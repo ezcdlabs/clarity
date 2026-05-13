@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -64,6 +66,9 @@ func runTUI() error {
 }
 
 func runReport(args []string) error {
+	if isBatchInvocation(args) {
+		return runReportBatch(args)
+	}
 	opts, err := parseReportArgs(args)
 	if err != nil {
 		return err
@@ -84,6 +89,94 @@ func runReport(args []string) error {
 	}
 	fmt.Printf("wrote event: %s %s %s\n", short, opts.Stage, opts.Status)
 	return nil
+}
+
+// runReportBatch reads JSON Lines from stdin and writes the whole batch in a
+// single commit + push. Each line is one event: {"sha","at","stage","status"}.
+// The amortised round-trip is the point — a 200-event backfill becomes ~one
+// push instead of 200.
+func runReportBatch(args []string) error {
+	fs := flag.NewFlagSet("report --batch", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	batch := fs.Bool("batch", false, "read events from stdin as JSON Lines")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("usage: git clarity report --batch < events.jsonl: %w", err)
+	}
+	if !*batch || len(fs.Args()) != 0 {
+		return fmt.Errorf("usage: git clarity report --batch < events.jsonl")
+	}
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	events, err := readBatchEvents(os.Stdin)
+	if err != nil {
+		return err
+	}
+	if err := report.RunBatch(report.BatchOptions{
+		RepoPath: repoPath,
+		Remote:   "origin",
+	}, events); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %d events\n", len(events))
+	return nil
+}
+
+func isBatchInvocation(args []string) bool {
+	for _, a := range args {
+		if a == "--batch" {
+			return true
+		}
+	}
+	return false
+}
+
+func readBatchEvents(r io.Reader) ([]report.BatchEvent, error) {
+	var events []report.BatchEvent
+	sc := bufio.NewScanner(r)
+	// Bump the scanner buffer in case future event payloads grow past the
+	// default 64KB line limit; current backfill lines are ~150 bytes.
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	lineNum := 0
+	for sc.Scan() {
+		lineNum++
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		ev, err := parseBatchLine(line)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", lineNum, err)
+		}
+		events = append(events, ev)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("read stdin: %w", err)
+	}
+	return events, nil
+}
+
+func parseBatchLine(line string) (report.BatchEvent, error) {
+	var raw struct {
+		SHA    string `json:"sha"`
+		At     string `json:"at"`
+		Stage  string `json:"stage"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		return report.BatchEvent{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339, raw.At)
+	if err != nil {
+		return report.BatchEvent{}, fmt.Errorf("invalid 'at' (want RFC3339): %w", err)
+	}
+	return report.BatchEvent{
+		SHA:    raw.SHA,
+		Time:   t,
+		Stage:  raw.Stage,
+		Status: raw.Status,
+	}, nil
 }
 
 // parseReportArgs parses CLI args for `git clarity report` into report.Options.

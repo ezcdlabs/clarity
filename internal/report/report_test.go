@@ -348,6 +348,99 @@ func TestRun_OptionsSHA_BeatsGITHUB_SHA(t *testing.T) {
 	}
 }
 
+func TestRunBatch_WritesAllEventsInOneCommit(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	events := []report.BatchEvent{
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120000, 0), Stage: "ci", Status: "started"},
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120134, 0), Stage: "ci", Status: "passed"},
+		{SHA: "2222222222222222222222222222222222222222", Time: time.Unix(1744120300, 0), Stage: "deploy", Status: "passed"},
+	}
+
+	if err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, events); err != nil {
+		t.Fatalf("RunBatch failed: %v", err)
+	}
+
+	commits := remote.LogBranch("refs/clarity/events")
+	if len(commits) != 1 {
+		t.Fatalf("batch should produce exactly 1 commit, got %d", len(commits))
+	}
+
+	fetchEventsRef(t, clone.Path)
+	for _, ev := range events {
+		got, err := clarityrefs.ReadEvents(clone.Path, ev.SHA)
+		if err != nil {
+			t.Fatalf("ReadEvents(%s): %v", ev.SHA, err)
+		}
+		if len(got) == 0 {
+			t.Errorf("no events written for %s", ev.SHA)
+		}
+	}
+}
+
+func TestRunBatch_RejectsInvalidStage(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, []report.BatchEvent{
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120000, 0), Stage: "build", Status: "passed"},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid stage 'build'")
+	}
+}
+
+func TestRunBatch_RejectsInvalidStatus(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, []report.BatchEvent{
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120000, 0), Stage: "ci", Status: "green"},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid status 'green'")
+	}
+}
+
+func TestRunBatch_RejectsMissingSHA(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, []report.BatchEvent{
+		{Time: time.Unix(1744120000, 0), Stage: "ci", Status: "passed"},
+	})
+	if err == nil {
+		t.Fatal("expected error for missing SHA")
+	}
+}
+
+func TestRunBatch_EmptyBatchIsNoop(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	if err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, nil); err != nil {
+		t.Fatalf("empty RunBatch should not error: %v", err)
+	}
+	for _, r := range remote.ListRefs() {
+		if r == "refs/clarity/events" {
+			t.Errorf("empty batch should not create events ref")
+		}
+	}
+}
+
 func TestRun_UsesProvidedTime(t *testing.T) {
 	clearEnv(t)
 	remote := gittest.NewRemote(t)

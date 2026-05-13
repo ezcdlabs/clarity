@@ -223,6 +223,68 @@ func TestReadAllEvents_GroupsBySHA(t *testing.T) {
 	}
 }
 
+// TestWriteEvents_BatchesIntoSingleCommit verifies that WriteEvents writes an
+// arbitrary number of events spanning multiple commit SHAs in a SINGLE commit
+// + push on the events ref. This is the property that lets the backfill
+// generator amortise the fetch/push round-trip cost across many events.
+func TestWriteEvents_BatchesIntoSingleCommit(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	batch := map[string][]clarityrefs.Event{
+		fakeSHA: {
+			{Stage: "ci", Status: "started", Time: time.Unix(1744120000, 0)},
+			{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)},
+		},
+		fakeSHA2: {
+			{Stage: "ci", Status: "passed", Time: time.Unix(1744120200, 0)},
+			{Stage: "deploy", Status: "passed", Time: time.Unix(1744120300, 0)},
+		},
+	}
+
+	if err := clarityrefs.WriteEvents(clone.Path, "origin", batch); err != nil {
+		t.Fatalf("WriteEvents failed: %v", err)
+	}
+
+	// Exactly one commit should land on the events ref — the whole point of
+	// the batch primitive is to amortise the push round-trip.
+	commits := remote.LogBranch("refs/clarity/events")
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit on events ref, got %d", len(commits))
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	all, err := clarityrefs.ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllEvents: %v", err)
+	}
+	if len(all[fakeSHA]) != 2 {
+		t.Errorf("expected 2 events for fakeSHA, got %d", len(all[fakeSHA]))
+	}
+	if len(all[fakeSHA2]) != 2 {
+		t.Errorf("expected 2 events for fakeSHA2, got %d", len(all[fakeSHA2]))
+	}
+}
+
+// TestWriteEvents_EmptyBatchIsNoop verifies that WriteEvents with no events
+// does nothing and does not error — important for callers that may filter
+// down to an empty input.
+func TestWriteEvents_EmptyBatchIsNoop(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	if err := clarityrefs.WriteEvents(clone.Path, "origin", nil); err != nil {
+		t.Fatalf("WriteEvents(nil) should not error, got: %v", err)
+	}
+	for _, r := range remote.ListRefs() {
+		if r == "refs/clarity/events" {
+			t.Errorf("empty batch should not create the events ref, but it exists")
+		}
+	}
+}
+
 // TestWriteEvent_FilenameFormat verifies event filenames match
 // "<unix-ts>-<short-id>.json".
 func TestWriteEvent_FilenameFormat(t *testing.T) {

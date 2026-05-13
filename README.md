@@ -363,7 +363,23 @@ Two optional flags let a caller override the SHA and timestamp clarity would oth
 
 The primitive use case is **backfilling history** when adopting clarity on an existing repo. A migration script (e.g. one that queries the GitHub Actions API for past workflow runs) shells out to `git clarity report` once per historical run, passing `--sha` and `--at` to recreate events for commits clarity wasn't installed on at the time.
 
-Backfilled events use the same JSON schema and the same ref as live ones — the TUI cannot distinguish them. Note that backfill produces only the terminal status per stage (no `started` events) since that's what after-the-fact APIs typically expose.
+Backfilled events use the same JSON schema and the same ref as live ones — the TUI cannot distinguish them.
+
+### Batch mode for backfill
+
+For large backfills (hundreds of historical events) the per-event push round-trip dominates wall-clock time. `--batch` flips `report` into a stdin-driven mode that does **one** fetch + **one** push for the whole stream:
+
+```
+git clarity report --batch < events.jsonl
+```
+
+Each line is a JSON object with all four fields:
+
+```json
+{"sha":"abc1234...","at":"2024-04-08T15:48:54Z","stage":"ci","status":"passed"}
+```
+
+Blank lines are skipped; the first malformed line aborts with a `line N: ...` error. A batch lands on `refs/clarity/events` as a single commit with message `report: batch of N events`. Backfill events in batch mode do not get CI metadata auto-attached — the local env doesn't describe the historical pipeline that produced them. Live reporting should continue to use the single-event form so each event lands as its own audit-able commit.
 
 ---
 

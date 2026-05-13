@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,5 +103,83 @@ func TestParseReportArgs_RejectsUnknownFlag(t *testing.T) {
 	_, err := parseReportArgs([]string{"--bogus", "x", "ci", "passed"})
 	if err == nil {
 		t.Fatal("expected error for unknown flag")
+	}
+}
+
+func TestParseBatchLine_HappyPath(t *testing.T) {
+	const line = `{"sha":"abc1234567890abc1234567890abc1234567890a","at":"2024-04-08T15:48:54Z","stage":"ci","status":"passed"}`
+	ev, err := parseBatchLine(line)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.SHA != "abc1234567890abc1234567890abc1234567890a" {
+		t.Errorf("SHA: got %q", ev.SHA)
+	}
+	want, _ := time.Parse(time.RFC3339, "2024-04-08T15:48:54Z")
+	if !ev.Time.Equal(want) {
+		t.Errorf("Time: got %v, want %v", ev.Time, want)
+	}
+	if ev.Stage != "ci" || ev.Status != "passed" {
+		t.Errorf("stage/status: got %q/%q", ev.Stage, ev.Status)
+	}
+}
+
+func TestParseBatchLine_RejectsBadJSON(t *testing.T) {
+	if _, err := parseBatchLine("not json"); err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestParseBatchLine_RejectsBadTimestamp(t *testing.T) {
+	const line = `{"sha":"abc","at":"yesterday","stage":"ci","status":"passed"}`
+	if _, err := parseBatchLine(line); err == nil {
+		t.Fatal("expected error for invalid 'at' timestamp")
+	}
+}
+
+func TestReadBatchEvents_SkipsBlankLines(t *testing.T) {
+	input := strings.Join([]string{
+		`{"sha":"a","at":"2024-04-08T15:48:54Z","stage":"ci","status":"started"}`,
+		``,
+		`   `,
+		`{"sha":"b","at":"2024-04-08T15:49:54Z","stage":"ci","status":"passed"}`,
+	}, "\n")
+	events, err := readBatchEvents(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 2 {
+		t.Errorf("expected 2 events (blank lines skipped), got %d", len(events))
+	}
+}
+
+func TestReadBatchEvents_ReportsLineNumberOnError(t *testing.T) {
+	input := strings.Join([]string{
+		`{"sha":"a","at":"2024-04-08T15:48:54Z","stage":"ci","status":"started"}`,
+		`bogus`,
+	}, "\n")
+	_, err := readBatchEvents(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error on malformed line 2")
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("error should mention line 2, got: %v", err)
+	}
+}
+
+func TestIsBatchInvocation(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--batch"}, true},
+		{[]string{"ci", "passed"}, false},
+		{[]string{"--sha", "abc", "ci", "passed"}, false},
+		{[]string{"--batch", "extra"}, true},
+		{nil, false},
+	} {
+		if got := isBatchInvocation(tc.args); got != tc.want {
+			t.Errorf("isBatchInvocation(%v) = %v, want %v", tc.args, got, tc.want)
+		}
 	}
 }

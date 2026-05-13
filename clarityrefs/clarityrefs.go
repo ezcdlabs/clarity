@@ -168,6 +168,52 @@ func WriteEvent(repoPath, remote, sha string, event Event) error {
 	}, message)
 }
 
+// WriteEvents appends a batch of events to the events ref in ONE commit and
+// ONE push, amortising the fetch/push round-trip across the whole batch.
+// Intended for backfill / migration paths where N events are known up-front;
+// live reporting should keep using WriteEvent so each event lands as its own
+// audit-able commit. A nil or empty batch is a no-op.
+func WriteEvents(repoPath, remote string, eventsBySHA map[string][]Event) error {
+	if len(eventsBySHA) == 0 {
+		return nil
+	}
+	if remote == "" {
+		remote = "origin"
+	}
+
+	type prepared struct {
+		path string
+		data []byte
+	}
+	var prep []prepared
+	total := 0
+	for sha, events := range eventsBySHA {
+		for _, ev := range events {
+			suffix, err := shortID()
+			if err != nil {
+				return fmt.Errorf("generate event id: %w", err)
+			}
+			filename := fmt.Sprintf("%d-%s.json", ev.Time.Unix(), suffix)
+			data, err := ev.marshal()
+			if err != nil {
+				return err
+			}
+			prep = append(prep, prepared{
+				path: "events/" + sha + "/" + filename,
+				data: data,
+			})
+			total++
+		}
+	}
+
+	message := fmt.Sprintf("report: batch of %d events", total)
+	return updateEventsRef(repoPath, remote, func(files map[string][]byte) {
+		for _, p := range prep {
+			files[p.path] = p.data
+		}
+	}, message)
+}
+
 // --- internal: optimistic push loop ------------------------------------------
 
 func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), message string) error {

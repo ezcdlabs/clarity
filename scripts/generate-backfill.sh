@@ -270,6 +270,13 @@ cat <<'BODY'
 # single fetch + commit + push — amortising the per-event round-trip that
 # would otherwise dominate runtime.
 #
+# Per run, the terminal status is the gate: if the chosen "completed" job set
+# has no aggregatable conclusion (e.g. all jobs are still in_progress, were
+# cancelled-before-start, or have neutral/action_required outcomes), we skip
+# BOTH the started and the terminal event. Emitting a lone "started" without
+# a paired terminal leaves clarity stuck rendering the run as "deploying…"
+# (or "building…") forever.
+#
 # Pass --dry-run to print the JSONL stream instead of pushing it.
 #
 # Requires: gh (authenticated), jq, git-clarity on PATH.
@@ -319,25 +326,30 @@ backfill_stage() {
     | while read -r run_id; do
         jobs_json="$(gh api "/repos/$REPO/actions/runs/$run_id/jobs")"
 
+        # Terminal first — it's the gate. No aggregatable terminal status
+        # means we don't emit the started event either; otherwise we'd leave
+        # clarity stuck showing this run as in-flight indefinitely.
+        end_match="$(echo "$jobs_json" | jq -c --argjson set "$end_set" \
+            '[.jobs[] | select(.name as $n | $set | index($n))]')"
+        if [ "$(echo "$end_match" | jq 'length')" = "0" ]; then
+            continue
+        fi
+        end_sha="$(echo "$end_match" | jq -r '.[0].head_sha')"
+        end_at="$(echo "$end_match" | jq -r 'map(.completed_at) | max')"
+        conclusions="$(echo "$end_match" | jq -r '[.[].conclusion // "null"] | join(",")')"
+        status="$(aggregate_status "$conclusions")"
+        if [ -z "$status" ]; then
+            continue
+        fi
+
         start_match="$(echo "$jobs_json" | jq -c --argjson set "$start_set" \
             '[.jobs[] | select(.name as $n | $set | index($n))]')"
         if [ "$(echo "$start_match" | jq 'length')" != "0" ]; then
-            sha="$(echo "$start_match" | jq -r '.[0].head_sha')"
-            at="$(echo "$start_match" | jq -r 'map(.started_at) | min')"
-            emit_event "$sha" "$at" "$stage" started
+            start_sha="$(echo "$start_match" | jq -r '.[0].head_sha')"
+            start_at="$(echo "$start_match" | jq -r 'map(.started_at) | min')"
+            emit_event "$start_sha" "$start_at" "$stage" started
         fi
-
-        end_match="$(echo "$jobs_json" | jq -c --argjson set "$end_set" \
-            '[.jobs[] | select(.name as $n | $set | index($n))]')"
-        if [ "$(echo "$end_match" | jq 'length')" != "0" ]; then
-            sha="$(echo "$end_match" | jq -r '.[0].head_sha')"
-            at="$(echo "$end_match" | jq -r 'map(.completed_at) | max')"
-            conclusions="$(echo "$end_match" | jq -r '[.[].conclusion // "null"] | join(",")')"
-            status="$(aggregate_status "$conclusions")"
-            if [ -n "$status" ]; then
-                emit_event "$sha" "$at" "$stage" "$status"
-            fi
-        fi
+        emit_event "$end_sha" "$end_at" "$stage" "$status"
     done
 }
 

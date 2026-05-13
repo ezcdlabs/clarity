@@ -320,7 +320,7 @@ Uses whatever git auth the user already has configured (SSH agent, git credentia
 Used inside pipelines, not by end users:
 
 ```
-git clarity report <stage> <status>
+git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>
 ```
 
 Examples:
@@ -353,6 +353,17 @@ Uses whatever git credentials are already available to the CI runner. In GitHub 
 ### Concurrency
 
 Two pipeline jobs reporting simultaneously cannot corrupt each other's data because they write different files. The only contention is the fast-forward push race on `refs/clarity/events`, handled by the same retry loop pattern pushq uses for its state branch.
+
+### Explicit overrides for migration
+
+Two optional flags let a caller override the SHA and timestamp clarity would otherwise infer:
+
+- `--sha <sha>` — write the event under this commit SHA instead of resolving from `GITHUB_SHA` / `CI_COMMIT_SHA` / `HEAD`. Highest precedence — beats env vars.
+- `--at <rfc3339>` — record this timestamp in the event instead of `time.Now()`. Format is RFC3339 (e.g. `2024-04-08T15:48:54Z`).
+
+The primitive use case is **backfilling history** when adopting clarity on an existing repo. A migration script (e.g. one that queries the GitHub Actions API for past workflow runs) shells out to `git clarity report` once per historical run, passing `--sha` and `--at` to recreate events for commits clarity wasn't installed on at the time.
+
+Backfilled events use the same JSON schema and the same ref as live ones — the TUI cannot distinguish them. Note that backfill produces only the terminal status per stage (no `started` events) since that's what after-the-fact APIs typically expose.
 
 ---
 

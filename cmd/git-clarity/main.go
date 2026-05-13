@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/refs"
@@ -61,20 +64,17 @@ func runTUI() error {
 }
 
 func runReport(args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("usage: git clarity report <stage> <status>")
+	opts, err := parseReportArgs(args)
+	if err != nil {
+		return err
 	}
 	repoPath, err := repoRoot()
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	stage, status := args[0], args[1]
-	sha, err := report.Run(report.Options{
-		RepoPath: repoPath,
-		Remote:   "origin",
-		Stage:    stage,
-		Status:   status,
-	})
+	opts.RepoPath = repoPath
+	opts.Remote = "origin"
+	sha, err := report.Run(opts)
 	if err != nil {
 		return err
 	}
@@ -82,8 +82,39 @@ func runReport(args []string) error {
 	if len(short) > 8 {
 		short = short[:8]
 	}
-	fmt.Printf("wrote event: %s %s %s\n", short, stage, status)
+	fmt.Printf("wrote event: %s %s %s\n", short, opts.Stage, opts.Status)
 	return nil
+}
+
+// parseReportArgs parses CLI args for `git clarity report` into report.Options.
+// Flags must come before the positional <stage> <status> args. `--sha` and
+// `--at` are migration overrides: --sha takes precedence over GITHUB_SHA /
+// CI_COMMIT_SHA / HEAD, and --at (RFC3339) replaces the default time.Now().
+func parseReportArgs(args []string) (report.Options, error) {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	sha := fs.String("sha", "", "explicit commit SHA (overrides GITHUB_SHA / CI_COMMIT_SHA / HEAD)")
+	at := fs.String("at", "", "explicit event timestamp in RFC3339 (overrides time.Now())")
+	if err := fs.Parse(args); err != nil {
+		return report.Options{}, fmt.Errorf("usage: git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>: %w", err)
+	}
+	rest := fs.Args()
+	if len(rest) != 2 {
+		return report.Options{}, fmt.Errorf("usage: git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>")
+	}
+	opts := report.Options{
+		Stage:  rest[0],
+		Status: rest[1],
+		SHA:    *sha,
+	}
+	if *at != "" {
+		t, err := time.Parse(time.RFC3339, *at)
+		if err != nil {
+			return report.Options{}, fmt.Errorf("invalid --at timestamp (want RFC3339, e.g. 2006-01-02T15:04:05Z): %w", err)
+		}
+		opts.Time = t
+	}
+	return opts, nil
 }
 
 func repoRoot() (string, error) {

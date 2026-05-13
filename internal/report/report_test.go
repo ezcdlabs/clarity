@@ -313,6 +313,41 @@ func TestRun_ReturnsCISHA_WhenSet(t *testing.T) {
 	}
 }
 
+func TestRun_OptionsSHA_BeatsGITHUB_SHA(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	const envSHA = "1111111111111111111111111111111111111111"
+	const optSHA = "2222222222222222222222222222222222222222"
+	t.Setenv("GITHUB_SHA", envSHA)
+
+	got, err := report.Run(report.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Stage:    "ci",
+		Status:   "passed",
+		SHA:      optSHA,
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if got != optSHA {
+		t.Errorf("expected returned sha=%s (explicit Options.SHA), got %s", optSHA, got)
+	}
+
+	fetchEventsRef(t, clone.Path)
+	if optEvents, _ := clarityrefs.ReadEvents(clone.Path, optSHA); len(optEvents) != 1 {
+		t.Errorf("expected 1 event under Options.SHA, got %d", len(optEvents))
+	}
+	if envEvents, _ := clarityrefs.ReadEvents(clone.Path, envSHA); len(envEvents) != 0 {
+		t.Errorf("expected 0 events under GITHUB_SHA when Options.SHA is set, got %d", len(envEvents))
+	}
+}
+
 func TestRun_UsesProvidedTime(t *testing.T) {
 	clearEnv(t)
 	remote := gittest.NewRemote(t)

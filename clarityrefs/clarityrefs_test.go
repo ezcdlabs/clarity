@@ -2,8 +2,11 @@ package clarityrefs_test
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -69,6 +72,35 @@ func TestWriteEvent_CreatesFileOnRemote(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected refs/clarity/events on remote, got: %v", refs)
+	}
+}
+
+// TestWriteEvent_BypassesPrePushHook verifies that WriteEvent's push to
+// refs/clarity/events is not blocked by a user-installed pre-push hook in
+// the clone. The events ref is internal bookkeeping; users' pre-push hooks
+// (typically gating real code pushes) shouldn't apply to it.
+func TestWriteEvent_BypassesPrePushHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Pre-push hooks rely on a POSIX shebang; the equivalent on Windows
+		// would need a .bat or interpreter on PATH. Skip rather than skew
+		// the test for the rare Windows-host case.
+		t.Skip("pre-push hook scripting is POSIX-only")
+	}
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	hookPath := filepath.Join(clone.Path, ".git", "hooks", "pre-push")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("install pre-push hook: %v", err)
+	}
+
+	ev := clarityrefs.Event{
+		Stage:  "ci",
+		Status: "passed",
+		Time:   time.Unix(1744120134, 0),
+	}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent must not be blocked by a pre-push hook, got: %v", err)
 	}
 }
 

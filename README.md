@@ -342,7 +342,7 @@ Examples:
    a. Fetch `refs/clarity/events`
    b. Add the event file under `events/<sha>/<filename>`
    c. Commit with message `report: <sha> <stage> <status>`
-   d. Push the ref
+   d. Push the ref with `--no-verify` so user pre-push hooks (which typically gate real code pushes) don't block clarity's bookkeeping push
    e. If rejected (not fast-forward): fetch, replay commit, retry
 6. Exit
 

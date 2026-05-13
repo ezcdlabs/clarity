@@ -362,7 +362,12 @@ func fetchEventsRef(repoPath, remote string) error {
 }
 
 func pushEventsRef(repoPath, remote string) error {
-	cmd := exec.Command("git", "push", remote, EventsRef+":"+EventsRef)
+	// --no-verify skips the user's pre-push hook. The events ref is internal
+	// bookkeeping (event JSON files keyed by commit SHA), not user code, so
+	// a hook gating real code pushes — tests, linters, etc. — has no business
+	// inspecting it and shouldn't be able to block clarity from recording an
+	// event.
+	cmd := exec.Command("git", "push", "--no-verify", remote, EventsRef+":"+EventsRef)
 	cmd.Dir = repoPath
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()

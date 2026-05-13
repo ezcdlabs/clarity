@@ -264,8 +264,8 @@ Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based d
 A single shared blob (e.g. git notes) requires read-modify-write semantics for every append, with concurrent CI jobs racing on the push. Per-file events solve this:
 
 - **Race-free appends** — different filenames, different events, no content conflicts. Only the fast-forward push race remains, which is trivially retried.
-- **No data loss** — events have unique filenames so they cannot accidentally overwrite each other.
-- **Audit trail by design** — every retry and parallel job's report is preserved as its own file.
+- **No data loss** — event filenames are content-addressed (`<unix-ts>-<sha256(json)[:8]>.json`), so two truly identical reports collapse into one file and two reports that differ (different timestamps, retries with different `GITHUB_RUN_ATTEMPT`, etc.) keep distinct files.
+- **Audit trail by design** — every distinct report is preserved as its own file. Retries and parallel jobs carry different CI metadata so they hash to different filenames; duplicate writes of the literal same event are idempotent at the file and tree level (re-running a backfill produces no new commit).
 - **Consistent with pushq** — same architectural pattern as `refs/push-queue/state`, making the EzcdLabs codebase coherent.
 
 The trade-off is that events aren't directly inspectable with `git notes show`. This is addressed in Future Work via an optional summarisation layer that writes derived digests to `refs/notes/clarity` for native git tooling.
@@ -385,6 +385,8 @@ Blank lines are skipped; the first malformed line aborts with a `line N: ...` er
 
 `scripts/generate-backfill.sh` is an interactive generator that reads your repo's workflows via `gh`, asks which jobs mark the start and end of CI (and optionally Deploy) — modelled as the `needs:` list of a hypothetical clarity step — and emits a tailored backfill script. The generated script aggregates timestamps and conclusions across the chosen job set per run, then pipes the whole event stream through `git clarity report --batch`.
 
+**Recommended order: integrate first, backfill after.** Add the `ezcdlabs/clarity` action to your workflows and merge that change before running the backfill. The live action then handles the currently-in-flight run, and the backfill handles strictly-historical commits — any run still in progress when the backfill executes gets skipped (the generator gates on a paired terminal status), and that's correct because the live action will emit its own paired events when the run completes.
+
 Run it from the root of your repo (requires `gh` authenticated, `jq`, and `git-clarity` v0.1.2+):
 
 ```bash
@@ -393,6 +395,8 @@ bash generate-backfill.sh > backfill.sh   # answer the prompts
 bash backfill.sh --dry-run | less          # review the JSONL stream
 bash backfill.sh                           # execute (single push)
 ```
+
+Re-runs are safe: event filenames are content-addressed, so a second `bash backfill.sh` for the same input is a no-op (no duplicate files, no new commit on the events ref).
 
 The generator is the only GitHub-specific piece of the migration; everything downstream of the JSONL stream is platform-neutral. Adapting it for another CI provider is a matter of rewriting the discovery and event-emission steps to target that provider's API — the `git clarity report --batch` consumer stays the same.
 

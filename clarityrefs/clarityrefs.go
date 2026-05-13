@@ -4,7 +4,7 @@
 package clarityrefs
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -151,15 +151,11 @@ func WriteEvent(repoPath, remote, sha string, event Event) error {
 	if remote == "" {
 		remote = "origin"
 	}
-	suffix, err := shortID()
-	if err != nil {
-		return fmt.Errorf("generate event id: %w", err)
-	}
-	filename := fmt.Sprintf("%d-%s.json", event.Time.Unix(), suffix)
 	data, err := event.marshal()
 	if err != nil {
 		return err
 	}
+	filename := fmt.Sprintf("%d-%s.json", event.Time.Unix(), contentHash(data))
 	filePath := "events/" + sha + "/" + filename
 	message := fmt.Sprintf("report: %s %s %s", sha, event.Stage, event.Status)
 
@@ -189,15 +185,11 @@ func WriteEvents(repoPath, remote string, eventsBySHA map[string][]Event) error 
 	total := 0
 	for sha, events := range eventsBySHA {
 		for _, ev := range events {
-			suffix, err := shortID()
-			if err != nil {
-				return fmt.Errorf("generate event id: %w", err)
-			}
-			filename := fmt.Sprintf("%d-%s.json", ev.Time.Unix(), suffix)
 			data, err := ev.marshal()
 			if err != nil {
 				return err
 			}
+			filename := fmt.Sprintf("%d-%s.json", ev.Time.Unix(), contentHash(data))
 			prep = append(prep, prepared{
 				path: "events/" + sha + "/" + filename,
 				data: data,
@@ -236,6 +228,15 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 		treeHash, err := buildTree(repo, files)
 		if err != nil {
 			return fmt.Errorf("build tree: %w", err)
+		}
+
+		// Idempotency short-circuit: when content-addressed filenames produce
+		// a tree identical to the parent's, the caller's events are already
+		// recorded. Skip the no-op commit + push so a re-run is truly free.
+		if parentHash != plumbing.ZeroHash {
+			if parent, err := repo.CommitObject(parentHash); err == nil && parent.TreeHash == treeHash {
+				return nil
+			}
 		}
 
 		sig := &object.Signature{Name: "clarity", Email: "clarity@local", When: time.Now()}
@@ -455,10 +456,12 @@ func isBrokenObjectError(err error) bool {
 		strings.Contains(msg, "fsck error")
 }
 
-func shortID() (string, error) {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b[:]), nil
+// contentHash returns a short, deterministic suffix derived from the event's
+// marshaled JSON. Same event content → same suffix, so two writes of the
+// identical event collapse into one tree entry rather than two random files.
+// That's what makes a backfill re-run idempotent: filenames depend only on
+// the (sha, stage, status, time, ci) content the caller supplied.
+func contentHash(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:4])
 }

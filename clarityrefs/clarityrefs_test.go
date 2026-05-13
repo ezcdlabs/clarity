@@ -223,6 +223,111 @@ func TestReadAllEvents_GroupsBySHA(t *testing.T) {
 	}
 }
 
+// TestWriteEvent_FilenameIsContentAddressed verifies that writing the same
+// event twice produces only ONE file on the events ref. Content-addressed
+// filenames are what make a backfill re-run idempotent: identical input
+// collapses into the same tree entry rather than accumulating duplicates.
+func TestWriteEvent_FilenameIsContentAddressed(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent (first): %v", err)
+	}
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+		t.Fatalf("WriteEvent (second): %v", err)
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	got, err := clarityrefs.ReadEvents(clone.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("writing the same event twice should produce 1 file, got %d", len(got))
+	}
+}
+
+// TestWriteEvent_DifferentEventsKeepDistinctFiles verifies that the content-
+// addressed naming still preserves genuinely-different events (different
+// status) under the same SHA — distinct content → distinct hash → distinct
+// filename.
+func TestWriteEvent_DifferentEventsKeepDistinctFiles(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	for _, ev := range []clarityrefs.Event{
+		{Stage: "ci", Status: "started", Time: time.Unix(1744120000, 0)},
+		{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)},
+	} {
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, ev); err != nil {
+			t.Fatalf("WriteEvent: %v", err)
+		}
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	got, err := clarityrefs.ReadEvents(clone.Path, fakeSHA)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("two distinct events should produce 2 files, got %d", len(got))
+	}
+}
+
+// TestWriteEvents_BatchIsIdempotent verifies that re-running an identical
+// batch creates no new commit and no duplicate event files. This is what
+// lets users safely re-run a backfill after a partial / interrupted run.
+func TestWriteEvents_BatchIsIdempotent(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	batch := map[string][]clarityrefs.Event{
+		fakeSHA: {
+			{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)},
+			{Stage: "deploy", Status: "passed", Time: time.Unix(1744120200, 0)},
+		},
+		fakeSHA2: {
+			{Stage: "ci", Status: "passed", Time: time.Unix(1744120300, 0)},
+		},
+	}
+
+	if err := clarityrefs.WriteEvents(clone.Path, "origin", batch); err != nil {
+		t.Fatalf("first WriteEvents: %v", err)
+	}
+	first := len(remote.LogBranch("refs/clarity/events"))
+	if first != 1 {
+		t.Fatalf("expected 1 commit after first batch, got %d", first)
+	}
+
+	if err := clarityrefs.WriteEvents(clone.Path, "origin", batch); err != nil {
+		t.Fatalf("second WriteEvents: %v", err)
+	}
+	second := len(remote.LogBranch("refs/clarity/events"))
+	if second != first {
+		t.Errorf("identical re-run should not add a commit, got %d -> %d", first, second)
+	}
+
+	if err := fetchEventsRef(clone.Path); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	all, err := clarityrefs.ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllEvents: %v", err)
+	}
+	if len(all[fakeSHA]) != 2 {
+		t.Errorf("expected 2 events for fakeSHA, got %d", len(all[fakeSHA]))
+	}
+	if len(all[fakeSHA2]) != 1 {
+		t.Errorf("expected 1 event for fakeSHA2, got %d", len(all[fakeSHA2]))
+	}
+}
+
 // TestWriteEvents_BatchesIntoSingleCommit verifies that WriteEvents writes an
 // arbitrary number of events spanning multiple commit SHAs in a SINGLE commit
 // + push on the events ref. This is the property that lets the backfill

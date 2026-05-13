@@ -381,6 +381,21 @@ Each line is a JSON object with all four fields:
 
 Blank lines are skipped; the first malformed line aborts with a `line N: ...` error. A batch lands on `refs/clarity/events` as a single commit with message `report: batch of N events`. Backfill events in batch mode do not get CI metadata auto-attached — the local env doesn't describe the historical pipeline that produced them. Live reporting should continue to use the single-event form so each event lands as its own audit-able commit.
 
+### Migrating from GitHub Actions
+
+`scripts/generate-backfill.sh` is an interactive generator that reads your repo's workflows via `gh`, asks which jobs mark the start and end of CI (and optionally Deploy) — modelled as the `needs:` list of a hypothetical clarity step — and emits a tailored backfill script. The generated script aggregates timestamps and conclusions across the chosen job set per run, then pipes the whole event stream through `git clarity report --batch`.
+
+Run it from the root of your repo (requires `gh` authenticated, `jq`, and `git-clarity` v0.1.2+):
+
+```bash
+curl -sLO https://raw.githubusercontent.com/ezcdlabs/clarity/main/scripts/generate-backfill.sh
+bash generate-backfill.sh > backfill.sh   # answer the prompts
+bash backfill.sh --dry-run | less          # review the JSONL stream
+bash backfill.sh                           # execute (single push)
+```
+
+The generator is the only GitHub-specific piece of the migration; everything downstream of the JSONL stream is platform-neutral. Adapting it for another CI provider is a matter of rewriting the discovery and event-emission steps to target that provider's API — the `git clarity report --batch` consumer stays the same.
+
 ---
 
 ## Repository Structure

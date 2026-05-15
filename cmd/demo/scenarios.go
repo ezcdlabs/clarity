@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
@@ -14,13 +15,39 @@ type Frame struct {
 	Hold     time.Duration
 }
 
+// PreludeLine is one line written to the regular terminal BEFORE the TUI
+// takes over the alt-screen. Used to stage the "user typed `git clarity` at
+// the shell" framing the viewer sees at the start of every recording.
+type PreludeLine struct {
+	Text      string
+	Delay     time.Duration // wait BEFORE printing this line
+	Typing    bool          // print one rune at a time so it looks like a real keystroke stream
+	NoNewline bool          // suppress the trailing newline (used for the prompt itself)
+}
+
 // Scenario is a named sequence of frames driven through the real TUI for
 // recording.
 type Scenario struct {
 	Name         string
 	Repo         string        // shown in the header (in place of a real repo name)
+	Prelude      []PreludeLine // shell prompt + typed command before the TUI starts
 	InitialDelay time.Duration // hold the "Loading…" state before the first snapshot
 	Frames       []Frame
+}
+
+// shellPrompt builds a colored bash-style prompt: green user@host, blue
+// path, default-foreground "$". Inline ANSI escapes (no lipgloss) so the
+// recording's byte stream is deterministic regardless of terminal probing.
+func shellPrompt(user, host, path string) string {
+	return fmt.Sprintf("\x1b[32m%s@%s\x1b[0m:\x1b[34m%s\x1b[0m$ ", user, host, path)
+}
+
+// sharedPrelude is the standard "user typed `git clarity` at the shell"
+// intro every scenario uses — keeps the recordings visually consistent so
+// viewers see the same framing across the happy path / failure variants.
+var sharedPrelude = []PreludeLine{
+	{Text: shellPrompt("you", "workstation", "~/Projects/your-app"), Delay: 400 * time.Millisecond, NoNewline: true},
+	{Text: "git clarity", Delay: 300 * time.Millisecond, Typing: true},
 }
 
 // demoBase is the virtual "now" anchor for all times in the scenarios. The
@@ -58,6 +85,7 @@ func commit(sha, author, subject string, commitOffset time.Duration, events ...c
 var happyPath = Scenario{
 	Name:         "happy-path",
 	Repo:         "your-app",
+	Prelude:      sharedPrelude,
 	InitialDelay: 800 * time.Millisecond,
 	Frames: []Frame{
 		// Frame 1 — steady state.
@@ -200,6 +228,7 @@ var happyPath = Scenario{
 var deployFailure = Scenario{
 	Name:         "deploy-failure",
 	Repo:         "your-app",
+	Prelude:      sharedPrelude,
 	InitialDelay: 800 * time.Millisecond,
 	Frames: []Frame{
 		// Frame 1 — alice is mid-deploy.
@@ -271,6 +300,7 @@ var deployFailure = Scenario{
 var ciFailure = Scenario{
 	Name:         "ci-failure",
 	Repo:         "your-app",
+	Prelude:      sharedPrelude,
 	InitialDelay: 800 * time.Millisecond,
 	Frames: []Frame{
 		// Frame 1 — steady state, header green/green.

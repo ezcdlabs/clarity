@@ -47,14 +47,21 @@ func main() {
 	}
 }
 
-// play runs the scenario through the real TUI. The snapshots channel feeds
-// scripted frames; once the last frame's hold elapses we Send a synthetic
-// "q" key so the alt-screen exits cleanly and the recording terminates.
+// play runs the scenario in two phases:
+//  1. Prelude — print the (typed) shell prompt + command to the regular
+//     terminal so viewers see how the tool is invoked. Phase 1 happens
+//     BEFORE the TUI claims the alt-screen.
+//  2. TUI — the snapshots channel feeds scripted frames; once the last
+//     frame's hold elapses we Send a synthetic "q" key so the alt-screen
+//     exits cleanly and the recording terminates.
 //
-// The TUI's clock is anchored at demoBase plus elapsed real time, so
-// lead-time timers tick at real pace while scenario data uses fixed offsets
-// from a stable reference. This is the same trick pushq's demo uses.
+// The TUI's clock is anchored at demoBase plus elapsed real time *since
+// the TUI started* (not since play() started), so lead-time timers begin
+// at the scenario's reference offsets regardless of how long the prelude
+// took. Same trick pushq's demo uses.
 func play(s *Scenario) error {
+	playPrelude(s.Prelude)
+
 	scenarioStart := time.Now()
 	nowFn := func() time.Time { return demoBase.Add(time.Since(scenarioStart)) }
 
@@ -78,5 +85,61 @@ func play(s *Scenario) error {
 	}()
 
 	_, err := p.Run()
+	playPostlude(s.Prelude)
 	return err
+}
+
+// playPostlude reprints the shell prompt after the TUI exits so the
+// recording ends back "at the shell" — without it, alt-screen exits to
+// reveal the still-visible typed command, which reads like the program
+// hung. Held briefly so asciinema captures the fresh prompt as the final
+// frame instead of cutting off mid-restore.
+func playPostlude(prelude []PreludeLine) {
+	if len(prelude) == 0 {
+		return
+	}
+	const trailingPause = 600 * time.Millisecond
+	for _, line := range prelude {
+		if line.NoNewline {
+			fmt.Print(line.Text)
+			break
+		}
+	}
+	time.Sleep(trailingPause)
+}
+
+// playPrelude streams the prelude to stdout BEFORE the TUI starts. Typing
+// lines are emitted one rune at a time at roughly the typing speed used by
+// pushq's recordings (45ms inter-keystroke) so the recorded session reads
+// like a real keyboard rather than an instant paste. Holds for a short beat
+// at the end so viewers can read the full command before the alt-screen
+// takes over — and so the recording feels like a real "press Enter and the
+// program loads", not an instant flicker.
+func playPrelude(lines []PreludeLine) {
+	if len(lines) == 0 {
+		return
+	}
+	const typingPause = 45 * time.Millisecond
+	const trailingPause = 700 * time.Millisecond
+	for _, line := range lines {
+		if line.Delay > 0 {
+			time.Sleep(line.Delay)
+		}
+		switch {
+		case line.Typing:
+			runes := []rune(line.Text)
+			for i, ch := range runes {
+				fmt.Print(string(ch))
+				if i < len(runes)-1 {
+					time.Sleep(typingPause)
+				}
+			}
+			fmt.Println()
+		case line.NoNewline:
+			fmt.Print(line.Text)
+		default:
+			fmt.Println(line.Text)
+		}
+	}
+	time.Sleep(trailingPause)
 }

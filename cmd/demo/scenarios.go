@@ -51,6 +51,10 @@ func commit(sha, author, subject string, commitOffset time.Duration, events ...c
 //   - frame 2: a build completes — a commit moves from NeedsCI to NextDeploy
 //   - frame 3: a deploy starts — the Next deploy header annotates "deploying…"
 //   - frame 4: the deploy completes — the NextDeploy batch fix-forwards into Deployed
+//
+// An older deploy (ivy, 8 days back) sits in the previous ISO week so the
+// Deployed section renders both the merged "Deployed … W<this-week>" header
+// AND a standalone "W<last-week>" divider above the older batch.
 var happyPath = Scenario{
 	Name:         "happy-path",
 	Repo:         "your-app",
@@ -80,6 +84,10 @@ var happyPath = Scenario{
 					ev("ci", "passed", -59*time.Minute),
 					ev("deploy", "passed", -30*time.Minute),
 				),
+				commit("ivy007", "ivy", "rewrite onboarding flow", -8*24*time.Hour-30*time.Minute,
+					ev("ci", "passed", -8*24*time.Hour-15*time.Minute),
+					ev("deploy", "passed", -8*24*time.Hour),
+				),
 			}},
 			Hold: 2500 * time.Millisecond,
 		},
@@ -106,6 +114,10 @@ var happyPath = Scenario{
 				commit("grace6", "grace", "improve search index", -1*time.Hour,
 					ev("ci", "passed", -59*time.Minute),
 					ev("deploy", "passed", -30*time.Minute),
+				),
+				commit("ivy007", "ivy", "rewrite onboarding flow", -8*24*time.Hour-30*time.Minute,
+					ev("ci", "passed", -8*24*time.Hour-15*time.Minute),
+					ev("deploy", "passed", -8*24*time.Hour),
 				),
 			}},
 			Hold: 2200 * time.Millisecond,
@@ -134,6 +146,10 @@ var happyPath = Scenario{
 				commit("grace6", "grace", "improve search index", -1*time.Hour,
 					ev("ci", "passed", -59*time.Minute),
 					ev("deploy", "passed", -30*time.Minute),
+				),
+				commit("ivy007", "ivy", "rewrite onboarding flow", -8*24*time.Hour-30*time.Minute,
+					ev("ci", "passed", -8*24*time.Hour-15*time.Minute),
+					ev("deploy", "passed", -8*24*time.Hour),
 				),
 			}},
 			Hold: 2000 * time.Millisecond,
@@ -164,6 +180,10 @@ var happyPath = Scenario{
 				commit("grace6", "grace", "improve search index", -1*time.Hour,
 					ev("ci", "passed", -59*time.Minute),
 					ev("deploy", "passed", -30*time.Minute),
+				),
+				commit("ivy007", "ivy", "rewrite onboarding flow", -8*24*time.Hour-30*time.Minute,
+					ev("ci", "passed", -8*24*time.Hour-15*time.Minute),
+					ev("deploy", "passed", -8*24*time.Hour),
 				),
 			}},
 			Hold: 1800 * time.Millisecond,

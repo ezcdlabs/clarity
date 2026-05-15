@@ -153,6 +153,89 @@ func TestRenderPlain_Limit_TruncatesCommits(t *testing.T) {
 	}
 }
 
+func TestRenderPlain_WeekDivider_AppearsAboveFirstBatchOfWeek(t *testing.T) {
+	// One deploy in ISO week 2 of 2026. Plain output should include a
+	// "W2026-02" divider line with deploy count and avg lead time.
+	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC)
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: fakeSHA1, Author: "alice", Subject: "ship",
+			Time:   c,
+			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
+	}}
+	out := tui.RenderPlain("clarity", snap, d.Add(time.Hour), tui.PlainOptions{})
+	if !strings.Contains(out, "W2026-02") {
+		t.Errorf("expected W2026-02 week divider, got:\n%s", out)
+	}
+	if !strings.Contains(out, "1 deploy") {
+		t.Errorf("expected '1 deploy' on divider, got:\n%s", out)
+	}
+}
+
+func TestRenderPlain_WeekDivider_TwoWeeks_TwoDividers(t *testing.T) {
+	// Two deploys in different ISO weeks.
+	c1 := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	d1 := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC) // week 2
+	c2 := time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC) // week 3
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: fakeSHA2, Author: "alice", Subject: "newer", Time: c2,
+			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d2}}},
+		{SHA: fakeSHA1, Author: "alice", Subject: "older", Time: c1,
+			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d1}}},
+	}}
+	out := tui.RenderPlain("clarity", snap, d2.Add(time.Hour), tui.PlainOptions{})
+	if !strings.Contains(out, "W2026-03") {
+		t.Errorf("expected W2026-03 divider, got:\n%s", out)
+	}
+	if !strings.Contains(out, "W2026-02") {
+		t.Errorf("expected W2026-02 divider, got:\n%s", out)
+	}
+	// Order: newer week appears above older week (matches the snapshot's
+	// newest-first commit order).
+	idxNewer := strings.Index(out, "W2026-03")
+	idxOlder := strings.Index(out, "W2026-02")
+	if idxNewer == -1 || idxOlder == -1 || idxNewer > idxOlder {
+		t.Errorf("expected W2026-03 to appear above W2026-02, got positions %d vs %d", idxNewer, idxOlder)
+	}
+}
+
+func TestRenderPlain_WeekDivider_MergedIntoDeployedHeader(t *testing.T) {
+	// The topmost week's stats share the Deployed section header line —
+	// saves a row and parallels the TUI's merged divider.
+	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC)
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: fakeSHA1, Author: "alice", Subject: "ship",
+			Time:   c,
+			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
+	}}
+	out := tui.RenderPlain("clarity", snap, d.Add(time.Hour), tui.PlainOptions{})
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "Deployed") {
+			if !strings.Contains(line, "W2026-02") {
+				t.Errorf("expected merged Deployed + W2026-02 header line, got: %q", line)
+			}
+			return
+		}
+	}
+	t.Errorf("no Deployed header line found, got:\n%s", out)
+}
+
+func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
+	// A commit with only CI events (no deploy) must not produce a week
+	// divider — week dividers are a Deployed-section feature.
+	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: fakeSHA1, Author: "alice", Subject: "ci only", Time: c,
+			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(time.Minute)}}},
+	}}
+	out := tui.RenderPlain("clarity", snap, c.Add(time.Hour), tui.PlainOptions{})
+	if strings.Contains(out, "W2026") {
+		t.Errorf("expected no week divider when there are no deploys, got:\n%s", out)
+	}
+}
+
 func TestRenderPlain_NoColor(t *testing.T) {
 	// Plain mode is for non-TTY consumers (pipes, agents). It must not embed
 	// ANSI escape sequences — the row icons (✓ ✗ …) are UTF-8 glyphs only.

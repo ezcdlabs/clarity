@@ -54,6 +54,8 @@ When `stdout` is not a terminal (e.g. piped to another command, redirected to a 
 
 The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
 
+The Deployed section also surfaces per-ISO-week DORA throughput inline: a `W<year>-<NN>  N deploys  Xh Ym avg` summary on each week boundary. The topmost week shares the `Deployed` section header row; older weeks below get their own dividers as you scroll history. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" is the standard DORA lead time — average of `(deploy_time − commit_time)` across every commit that reached production in the week. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
+
 ### Reporting from CI: `git clarity report <stage> <status>`
 
 Inside your pipelines:

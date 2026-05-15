@@ -279,6 +279,81 @@ func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
 }
 
 // A passed deploy and a started deploy should produce two distinct subheaders.
+// Week dividers in the Deployed section show ISO-week throughput summaries
+// (W<year>-<week>, deploy count, average lead time). They appear once per
+// week above that week's group of batches.
+func TestRenderSnapshot_WeekDivider_AppearsAboveDeployedBatch(t *testing.T) {
+	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC).Unix()
+	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC).Unix()
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: "a", Author: "alice", Subject: "shipped",
+			Time:   time.Unix(c, 0),
+			Events: []clarityrefs.Event{ev("ci", "passed", c+60), ev("deploy", "passed", d)}},
+	}}
+	out := tui.RenderSnapshot(snap, 80, time.Unix(d+3600, 0), 0)
+	if !strings.Contains(out, "W2026-02") {
+		t.Errorf("expected W2026-02 week divider in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "1 deploy") {
+		t.Errorf("expected '1 deploy' on divider, got:\n%s", out)
+	}
+}
+
+// The topmost week's stats live on the same divider line as the "Deployed"
+// section header — saves a row and keeps the eye on the section start.
+// Older weeks below still get their own standalone dividers.
+func TestRenderSnapshot_WeekDivider_MergedIntoDeployedHeaderForTopWeek(t *testing.T) {
+	c1 := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC).Unix()
+	d1 := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC).Unix() // week 2
+	c2 := time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC).Unix()
+	d2 := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC).Unix() // week 3
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: "b", Author: "alice", Subject: "newer",
+			Time:   time.Unix(c2, 0),
+			Events: []clarityrefs.Event{ev("ci", "passed", c2+60), ev("deploy", "passed", d2)}},
+		{SHA: "a", Author: "alice", Subject: "older",
+			Time:   time.Unix(c1, 0),
+			Events: []clarityrefs.Event{ev("ci", "passed", c1+60), ev("deploy", "passed", d1)}},
+	}}
+	out := tui.RenderSnapshot(snap, 120, time.Unix(d2+3600, 0), 0)
+
+	// Find the line that contains "Deployed" — it must ALSO contain the
+	// newest week's W-label so the two have been merged onto one row.
+	var deployedLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Deployed") {
+			deployedLine = line
+			break
+		}
+	}
+	if deployedLine == "" {
+		t.Fatalf("no Deployed line found in output:\n%s", out)
+	}
+	if !strings.Contains(deployedLine, "W2026-03") {
+		t.Errorf("expected newest week (W2026-03) merged into Deployed header line, got: %q", deployedLine)
+	}
+
+	// The OLDER week still gets its own standalone divider line.
+	if !strings.Contains(out, "W2026-02") {
+		t.Errorf("expected W2026-02 standalone divider for older week, got:\n%s", out)
+	}
+	// And that older divider must NOT be on the Deployed header line.
+	if strings.Contains(deployedLine, "W2026-02") {
+		t.Errorf("older week should not appear on the Deployed header line, got: %q", deployedLine)
+	}
+}
+
+func TestRenderSnapshot_WeekDivider_NotShownForEmptyDeployed(t *testing.T) {
+	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+		{SHA: "a", Author: "alice", Subject: "ci only",
+			Events: []clarityrefs.Event{ev("ci", "passed", 100)}},
+	}}
+	out := tui.RenderSnapshot(snap, 80, time.Unix(200, 0), 0)
+	if strings.Contains(out, "W20") {
+		t.Errorf("expected no week divider when nothing has been deployed, got:\n%s", out)
+	}
+}
+
 func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 	snap := watcher.Snapshot{
 		Commits: []watcher.CommitView{

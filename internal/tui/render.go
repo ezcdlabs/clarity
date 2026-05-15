@@ -211,9 +211,31 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 
 	// Deployed: blue lifecycle accent. Only completed (deploy:passed) batches.
 	// The first batch (newest passing deploy) is THE currently-live state in
-	// production; subsequent batches are settled history.
-	b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
+	// production; subsequent batches are settled history. The Deployed header
+	// also carries the TOPMOST week's DORA summary on its right side (saving
+	// a row) — only older weeks need standalone week dividers below.
+	statsByWeek := indexStatsByWeek(WeeklyStats(snap))
+	topWeekKey, topWeekStat, hasTopWeek := firstPassedWeekStat(g.Deployed, statsByWeek)
+	if hasTopWeek {
+		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, weekDividerLabel(topWeekStat), width))
+	} else {
+		b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
+	}
+	prevWeekKey := int64(-1)
+	if hasTopWeek {
+		prevWeekKey = topWeekKey
+	}
 	for i, batch := range g.Deployed {
+		if batch.Status == "passed" {
+			year, week := batch.Time.UTC().ISOWeek()
+			key := weekKey(year, week)
+			if key != prevWeekKey {
+				if s, ok := statsByWeek[key]; ok {
+					b.WriteString(renderWeekDivider(s, width))
+				}
+				prevWeekKey = key
+			}
+		}
 		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
@@ -223,6 +245,91 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 
 	return b.String()
+}
+
+// firstPassedWeekStat finds the topmost (newest) passed deploy batch and
+// returns its week key, the matching WeekStat, and whether a match was found.
+// Used so the Deployed section header can absorb the topmost week's stats
+// into its own divider row instead of emitting a separate one below it.
+func firstPassedWeekStat(batches []DeployBatch, statsByWeek map[int64]WeekStat) (int64, WeekStat, bool) {
+	for _, batch := range batches {
+		if batch.Status != "passed" {
+			continue
+		}
+		year, week := batch.Time.UTC().ISOWeek()
+		key := weekKey(year, week)
+		if s, ok := statsByWeek[key]; ok {
+			return key, s, true
+		}
+		return 0, WeekStat{}, false
+	}
+	return 0, WeekStat{}, false
+}
+
+// weekDividerLabel formats a WeekStat as the inline text for a divider
+// ("W<year>-<NN>  N deploys  Xh Ym avg"). Shared by the TUI and plain modes
+// (and the standalone week-divider helper) so the format stays in one place.
+func weekDividerLabel(s WeekStat) string {
+	deploysLabel := "deploys"
+	if s.Deploys == 1 {
+		deploysLabel = "deploy"
+	}
+	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
+		s.Year, s.Week, s.Deploys, deploysLabel, formatElapsed(s.AvgLead))
+}
+
+// renderWeekDivider is the less-prominent sibling of renderSectionDivider:
+// gray dashes (no lifecycle tint, no bold) with the week's DORA summary
+// inlined on the RIGHT side, separating groups of batches in different ISO
+// weeks. The right alignment + lighter weight keeps the eye on the per-batch
+// "deployed Xh ago" subheaders while the weekly aggregate stays available
+// peripherally.
+func renderWeekDivider(s WeekStat, width int) string {
+	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
+	labelStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
+	label := labelStyle.Render(weekDividerLabel(s))
+
+	const trailing = 4
+	tail := dashStyle.Render(strings.Repeat("─", trailing))
+	// 2 spaces frame the label on each side.
+	used := lipgloss.Width(label) + trailing + 2
+	if width <= used {
+		return label + " " + tail + "\n"
+	}
+	leading := dashStyle.Render(strings.Repeat("─", width-used))
+	return leading + " " + label + " " + tail + "\n"
+}
+
+// renderSectionDividerWithRight is renderSectionDivider with an extra right-
+// aligned secondary label (italic gray). Used by the Deployed section header
+// to absorb the topmost week's DORA summary onto the same row — left part is
+// the bold section title, dashes fill the middle, right part is the week
+// stats. Falls back to the plain section divider when the terminal isn't
+// wide enough to fit both labels.
+func renderSectionDividerWithRight(label string, leftColor color.Color, rightLabel string, width int) string {
+	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
+	rightStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
+
+	leading := dashStyle.Render(strings.Repeat("─", rowAuthorColumn))
+	spacedLabel := label + " "
+	labelStyle := lipgloss.NewStyle().Bold(true)
+	if leftColor != nil {
+		labelStyle = labelStyle.Foreground(leftColor)
+	}
+	boldLabel := labelStyle.Render(spacedLabel)
+
+	const trailingDashes = 4
+	rightRendered := rightStyle.Render(rightLabel)
+	leftUsed := rowAuthorColumn + lipgloss.Width(spacedLabel)
+	// 1 space before rightRendered + 1 space before trailing dashes:
+	rightUsed := 1 + lipgloss.Width(rightRendered) + 1 + trailingDashes
+	if width <= leftUsed+rightUsed {
+		// Not enough room for both labels — degrade to the plain section divider.
+		return renderSectionDivider(label, leftColor, width)
+	}
+	middle := dashStyle.Render(strings.Repeat("─", width-leftUsed-rightUsed))
+	tail := dashStyle.Render(strings.Repeat("─", trailingDashes))
+	return leading + boldLabel + middle + " " + rightRendered + " " + tail + "\n"
 }
 
 // rowAuthorColumn is the visible column at which renderRowInGroup places the

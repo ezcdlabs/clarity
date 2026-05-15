@@ -66,9 +66,34 @@ func RenderPlain(repoName string, snap watcher.Snapshot, now time.Time, opts Pla
 	}
 	b.WriteString("\n")
 
-	b.WriteString("Deployed")
-	b.WriteString("\n")
+	statsByWeek := indexStatsByWeek(WeeklyStats(capped))
+	topWeekKey, topWeekStat, hasTopWeek := firstPassedWeekStat(g.Deployed, statsByWeek)
+	if hasTopWeek {
+		// Merge the topmost week's summary onto the section header row so we
+		// don't burn a line on a divider that's about to be followed by the
+		// batch subheader for the same week.
+		b.WriteString("Deployed  ·  ")
+		b.WriteString(weekDividerLabel(topWeekStat))
+		b.WriteString("\n")
+	} else {
+		b.WriteString("Deployed\n")
+	}
+	prevWeekKey := int64(-1)
+	if hasTopWeek {
+		prevWeekKey = topWeekKey
+	}
 	for i, batch := range g.Deployed {
+		if batch.Status == "passed" {
+			year, week := batch.Time.UTC().ISOWeek()
+			key := weekKey(year, week)
+			if key != prevWeekKey {
+				if s, ok := statsByWeek[key]; ok {
+					b.WriteString(weekDividerLabel(s))
+					b.WriteString("\n")
+				}
+				prevWeekKey = key
+			}
+		}
 		b.WriteString(plainBatchSubheader(batch, now, i == 0))
 		for _, c := range batch.Commits {
 			b.WriteString(plainRow(c, &g, indexBySHA[c.SHA], now, opts))
@@ -79,6 +104,20 @@ func RenderPlain(repoName string, snap watcher.Snapshot, now time.Time, opts Pla
 
 	return b.String()
 }
+
+// indexStatsByWeek builds a lookup map keyed by weekKey(year, week) so the
+// renderer can find a week's stats in O(1) while walking batches.
+func indexStatsByWeek(stats []WeekStat) map[int64]WeekStat {
+	out := make(map[int64]WeekStat, len(stats))
+	for _, s := range stats {
+		out[weekKey(s.Year, s.Week)] = s
+	}
+	return out
+}
+
+// weekKey is the same int64 packing WeeklyStats uses internally — kept in
+// one place so the renderer and the stats computation agree.
+func weekKey(year, week int) int64 { return int64(year)*100 + int64(week) }
 
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
 // Mirrors the TUI's header semantics: "started" and "skipped" events are

@@ -137,27 +137,37 @@ func TestWeeklyStats_AcrossWeeks_ProducesMultipleBuckets(t *testing.T) {
 	}
 }
 
-func TestWeeklyStats_SkipsInFlightBatches(t *testing.T) {
-	// One started, one passed. Only the passed batch contributes to weekly
-	// stats — in-flight deploys haven't actually shipped yet.
-	c := utc(2026, 1, 5, 9)
+func TestWeeklyStats_OlderBatchWithoutRecordedDeploy_StillContributesToAvg(t *testing.T) {
+	// Real-world case: an OLDER batch's deploy:passed event was never
+	// recorded (data gap). Its commits sit in the Deployed section below a
+	// newer passed deploy, inherit that deploy's time via fix-forward, so
+	// their lead times are FROZEN and visible. They should count toward the
+	// same week's average. "Deploys" count stays strict at 1 — only the
+	// actually-recorded passed batch is a deploy.
+	cNewer := utc(2026, 1, 5, 9)
+	dNewer := utc(2026, 1, 5, 10)   // newest passed deploy, week 2
+	cOlder := utc(2026, 1, 1, 0)    // 4 days earlier than dNewer
 	snap := watcher.Snapshot{Commits: []watcher.CommitView{
-		// In-flight (started, no terminal):
-		{SHA: "in-flight", Time: utc(2026, 1, 6, 9),
-			Events: []clarityrefs.Event{
-				{Stage: "ci", Status: "passed", Time: utc(2026, 1, 6, 9)},
-				{Stage: "deploy", Status: "started", Time: utc(2026, 1, 6, 10)},
-			}},
-		// Completed:
-		commit("done", c, utc(2026, 1, 5, 10)),
+		commit("newer", cNewer, dNewer),
+		// Older: deploy:started exists but no recorded terminal. Inherits
+		// dNewer via fix-forward, so its frozen lead time is dNewer-cOlder.
+		{SHA: "older", Time: cOlder, Events: []clarityrefs.Event{
+			{Stage: "ci", Status: "passed", Time: cOlder.Add(time.Hour)},
+			{Stage: "deploy", Status: "started", Time: cOlder.Add(2 * time.Hour)},
+		}},
 	}}
 
 	got := tui.WeeklyStats(snap)
 	if len(got) != 1 {
-		t.Fatalf("expected only the completed deploy's week, got %d entries: %+v", len(got), got)
+		t.Fatalf("expected 1 week (older commit inherits newer's deploy week), got %d: %+v", len(got), got)
 	}
-	if got[0].Deploys != 1 {
-		t.Errorf("expected 1 deploy (in-flight excluded), got %d", got[0].Deploys)
+	w := got[0]
+	if w.Deploys != 1 {
+		t.Errorf("expected Deploys=1 (started batch is not a recorded deploy), got %d", w.Deploys)
+	}
+	wantAvg := (dNewer.Sub(cNewer) + dNewer.Sub(cOlder)) / 2
+	if w.AvgLead != wantAvg {
+		t.Errorf("expected avg lead %v (includes inherited frozen lead), got %v", wantAvg, w.AvgLead)
 	}
 }
 

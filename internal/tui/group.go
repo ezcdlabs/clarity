@@ -166,6 +166,19 @@ func computeBatches(commits []watcher.CommitView) []DeployBatch {
 	return batches
 }
 
+// DeployedAtIndex returns the deploy time the commit at index will appear
+// to have under fix-forward semantics: its own deploy:passed time, or — if
+// it has none — the time of the newest newer commit that did get a passed
+// deploy. Zero when neither applies (commit is newer than every passed
+// deploy in the snapshot). Exposed so callers like WeeklyStats can bucket
+// commits by the same deploy-week the per-row lead time was computed from.
+func (g Groupings) DeployedAtIndex(index int) time.Time {
+	if index < 0 || index >= len(g.deployedAt) {
+		return time.Time{}
+	}
+	return g.deployedAt[index]
+}
+
 // LeadTime returns the elapsed time from the commit's authoring to either
 // the deploy that pushed it to production (frozen=true) or the current moment
 // (frozen=false). Returns ok=false when the commit time is unknown.

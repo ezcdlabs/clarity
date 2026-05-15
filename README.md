@@ -47,6 +47,13 @@ git clarity
 
 This opens an alt-screen TUI showing the most recent commits on `main` with their pipeline status. Press `q` to quit. No setup beyond install — clarity adds the events fetch refspec to your repo's git config the first time it runs.
 
+When `stdout` is not a terminal (e.g. piped to another command, redirected to a file, or invoked by an agent), `git clarity` automatically switches to a static plain-text rendering of the same view — header line plus HEAD / CI Passed / Deployed sections, no animation, no ANSI escapes. Force it in an interactive terminal with `--plain`. Two more flags shape the output in either mode:
+
+- `--show-shas` — include a short commit SHA per row. Off by default in both TUI and plain modes; agents acting on specific commits should turn this on.
+- `--limit N` — cap how many commits are walked. Defaults to 100; pass `0` for unlimited.
+
+The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
+
 ### Reporting from CI: `git clarity report <stage> <status>`
 
 Inside your pipelines:

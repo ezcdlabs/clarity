@@ -167,6 +167,80 @@ func TestReadBatchEvents_ReportsLineNumberOnError(t *testing.T) {
 	}
 }
 
+func TestParseRootArgs_Defaults(t *testing.T) {
+	opts, err := parseRootArgs(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.plain {
+		t.Errorf("plain should default to false")
+	}
+	if opts.showSHAs {
+		t.Errorf("showSHAs should default to false")
+	}
+	if opts.limit != 100 {
+		t.Errorf("limit should default to 100, got %d", opts.limit)
+	}
+}
+
+func TestParseRootArgs_PlainFlag(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--plain"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.plain {
+		t.Errorf("--plain should set plain=true")
+	}
+}
+
+func TestParseRootArgs_ShowShas(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--show-shas"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.showSHAs {
+		t.Errorf("--show-shas should set showSHAs=true")
+	}
+}
+
+func TestParseRootArgs_LimitOverride(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--limit", "25"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.limit != 25 {
+		t.Errorf("--limit 25 should set limit=25, got %d", opts.limit)
+	}
+}
+
+func TestParseRootArgs_LimitZeroIsUnlimited(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--limit", "0"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 0 is the documented sentinel for "no cap" — main translates this into a
+	// huge ceiling when calling BuildSnapshot.
+	if opts.limit != 0 {
+		t.Errorf("--limit 0 should be preserved as the unlimited sentinel, got %d", opts.limit)
+	}
+}
+
+func TestParseRootArgs_AllFlagsTogether(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--plain", "--show-shas", "--limit", "10"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.plain || !opts.showSHAs || opts.limit != 10 {
+		t.Errorf("flags should combine, got %+v", opts)
+	}
+}
+
+func TestParseRootArgs_RejectsUnknownFlag(t *testing.T) {
+	if _, err := parseRootArgs([]string{"--bogus"}); err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
 func TestIsBatchInvocation(t *testing.T) {
 	for _, tc := range []struct {
 		args []string

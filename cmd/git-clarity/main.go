@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,19 +35,59 @@ func main() {
 	}
 }
 
-func dispatch(args []string) error {
-	if len(args) == 0 {
-		return runTUI()
-	}
-	switch args[0] {
-	case "report":
-		return runReport(args[1:])
-	default:
-		return fmt.Errorf("unknown subcommand %q", args[0])
-	}
+// rootOptions are the flags accepted on the base `git clarity` invocation.
+// Subcommands (currently just `report`) handle their own arg parsing and
+// don't see these flags.
+type rootOptions struct {
+	plain    bool
+	showSHAs bool
+	limit    int // 0 == unlimited (sentinel); default is 100
 }
 
-func runTUI() error {
+func dispatch(args []string) error {
+	// Subcommands consume their own args before any root-flag parsing.
+	if len(args) > 0 && args[0] == "report" {
+		return runReport(args[1:])
+	}
+	opts, err := parseRootArgs(args)
+	if err != nil {
+		return err
+	}
+	// Pipe into a non-TTY → plain text automatically. --plain forces text
+	// even in an interactive terminal.
+	if opts.plain || !isTerminal(os.Stdout) {
+		return runPlain(opts)
+	}
+	return runTUI(opts)
+}
+
+func parseRootArgs(args []string) (rootOptions, error) {
+	fs := flag.NewFlagSet("clarity", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	plain := fs.Bool("plain", false, "force plain-text output (auto-enabled when stdout is not a tty)")
+	showSHAs := fs.Bool("show-shas", false, "include short commit SHA per row")
+	limit := fs.Int("limit", 100, "max commits to display; 0 means unlimited")
+	if err := fs.Parse(args); err != nil {
+		return rootOptions{}, fmt.Errorf("usage: git clarity [--plain] [--show-shas] [--limit N]: %w", err)
+	}
+	if fs.NArg() != 0 {
+		return rootOptions{}, fmt.Errorf("unknown argument %q", fs.Arg(0))
+	}
+	return rootOptions{plain: *plain, showSHAs: *showSHAs, limit: *limit}, nil
+}
+
+// isTerminal reports whether f is a real character device (a terminal). False
+// when stdout is being piped to another process, redirected to a file, or
+// otherwise non-interactive — that's the trigger for auto-plain mode.
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func runTUI(opts rootOptions) error {
 	repoPath, err := repoRoot()
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
@@ -61,8 +102,59 @@ func runTUI() error {
 		RepoPath: repoPath,
 		Remote:   "origin",
 		Branch:   branch,
+		Limit:    effectiveLimit(opts.limit),
 	})
 	return tui.Run(filepath.Base(repoPath), snapshots)
+}
+
+// runPlain takes one snapshot from the watcher (which performs the initial
+// fetch on first emit) and renders it as static text. Intended for piped
+// agent / shell-script consumers.
+func runPlain(opts rootOptions) error {
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	if err := refs.EnsureClarityFetchRefspec(repoPath, "origin"); err != nil {
+		return fmt.Errorf("configure clarity fetch refspec: %w", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	const branch = "main"
+	snapshots := watcher.Watch(ctx, watcher.Options{
+		RepoPath: repoPath,
+		Remote:   "origin",
+		Branch:   branch,
+		Limit:    effectiveLimit(opts.limit),
+	})
+
+	// The watcher emits its first snapshot immediately after the initial
+	// fetch — we consume that one and exit. A timeout protects against a
+	// hung fetch (network problems) so plain mode can't wedge indefinitely.
+	select {
+	case snap, ok := <-snapshots:
+		if !ok {
+			return fmt.Errorf("watcher closed before emitting a snapshot")
+		}
+		fmt.Print(tui.RenderPlain(filepath.Base(repoPath), snap, time.Now(), tui.PlainOptions{
+			ShowSHAs: opts.showSHAs,
+			// Limit is already applied by the watcher; passing 0 here means
+			// "don't truncate further" inside RenderPlain.
+			Limit: 0,
+		}))
+		return nil
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("timed out waiting for first snapshot")
+	}
+}
+
+// effectiveLimit maps the CLI's "0 = unlimited" convention onto the watcher's
+// Limit field, which would otherwise reset 0 back to its own default of 50.
+func effectiveLimit(cliLimit int) int {
+	if cliLimit <= 0 {
+		return math.MaxInt32
+	}
+	return cliLimit
 }
 
 func runReport(args []string) error {

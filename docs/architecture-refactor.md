@@ -26,22 +26,38 @@ renderers) be a pluggable adapter.
 ## Target architecture — hexagonal / ports & adapters
 
 ```
-                       ┌───────────────────────────────┐
-   inbound ports       │                               │     outbound ports
-   ─────────────       │      core (the lens)          │     ──────────────
-                       │                               │
-   CommitReader  ─────►│  Snapshot → DeriveView →      ├─────►  Renderer
-                       │             View              │
-   EventReader   ─────►│                               │
-                       │  (GroupCommits, WeeklyStats,  │
-                       │   LeadTime, OverallStatus...) │
-                       │                               │
-                       └───────────────────────────────┘
+   ┌──────────────────────────┐   Source.Watch    ┌──────────────────────┐   Renderer.Render   ┌──────────┐
+   │   Source adapter         │                   │       Lens           │                     │ Renderer │
+   │   (refsource / ghsource) │                   │   (in core)          │                     │ adapter  │
+   │                          │                   │                      │                     │          │
+   │   poll / fetch           │                   │   for each Snapshot: │                     │          │
+   │   ↓                      │                   │     DeriveView →     │                     │          │
+   │   commits + events       │                   │     View             │                     │          │
+   │   ↓                      │ ────Snapshot────► │   send on Views chan │ ──── View ────────► │  bytes   │
+   │   core.BuildSnapshot     │                   │                      │                     │          │
+   │   ↓                      │                   │                      │                     │          │
+   │   Snapshot               │                   │                      │                     │          │
+   └──────────────────────────┘                   └──────────────────────┘                     └──────────┘
+
+                     ←─── core (BuildSnapshot here) ───┤                  ├─── core (Lens + DeriveView) ───→
 ```
 
-The core is pure: no `os`, no `net`, no `bubbletea`, no `gogit`. It takes
-typed inputs from the readers, computes the derived view, and hands typed
-outputs to the renderer.
+The two pure cores sit **on either side of the `Source` port**:
+
+1. **`BuildSnapshot(commits, events)`** is called by the **adapter** to
+   produce what the Source port emits. The join from raw inputs to
+   `Snapshot` is identical regardless of where commits and events came
+   from, so it lives in core and every adapter imports it.
+2. **`DeriveView(snapshot)`** is called by the **Lens** to consume what
+   the Source port emits. The Lens then sends the resulting `View`
+   through the Renderer port.
+
+So the Source port itself carries `Snapshot` values — exactly
+`BuildSnapshot`'s output and `DeriveView`'s input. The port is the
+boundary between the two cores, not an input to either.
+
+Both functions are pure: no `os`, no `net`, no `bubbletea`, no `gogit`.
+Adapters do the I/O; cores do the data transforms.
 
 `EventWriter` is an **auxiliary** outbound type used only by
 `git clarity copy-events` (see below) — never imported by `internal/core`.
@@ -53,20 +69,31 @@ two don't share a code path.
 ### Inbound
 
 ```go
-type CommitReader interface {
-    Log(ctx context.Context, branch string, limit int) ([]Commit, error)
-    WatchHead(ctx context.Context, branch string) <-chan struct{}
-}
-
-type EventReader interface {
-    Read(ctx context.Context) (Events, error)         // synchronous, one-shot
-    Watch(ctx context.Context) <-chan Events          // streaming, emits on change
+type Source interface {
+    // Watch starts the adapter's polling lifecycle and returns a channel
+    // of Snapshots. The first snapshot lands after the adapter's initial
+    // fetch; subsequent ones arrive on the adapter's own cadence whenever
+    // it detects a change. Closes when ctx is cancelled.
+    Watch(ctx context.Context) <-chan Snapshot
 }
 ```
 
-`CommitReader.WatchHead` is signal-only — callers re-`Log` on each tick.
-`EventReader.Watch` re-emits the full event map on each change; tiny
-payload, simpler than diffing on the wire.
+**One** port for the data the core consumes — not two. Each adapter
+owns:
+
+- its own polling cadence (refsource ~5s; ghsource ~30s — the appropriate
+  rate for each underlying system),
+- its own fetch verb (refsource fetches refs; ghsource hits the GH API),
+- the join from raw commits + events into a `Snapshot` (via
+  `core.BuildSnapshot`).
+
+The Lens is not responsible for orchestrating fetches or merging
+multi-channel updates. Polling is the adapter's concern; the adapter
+emits Snapshots when something has actually changed.
+
+For two adapter implementations that both happen to want commits from
+the local git repo, a small shared utility helper (`internal/gitlog`) is
+imported — not a port, just shared code.
 
 ### Outbound
 
@@ -87,13 +114,12 @@ type EventWriter interface {
 }
 ```
 
-Defined alongside the core ports for type-symmetry with `EventReader`, but
-not depended on by `internal/core`. Used only by the `copy-events`
-subcommand and by adapters that want to mirror their input somewhere as
-a side effect. Lives in a separate file (`internal/core/aux.go` or
-similar) so the core's import graph stays clean.
+Defined alongside the core ports for type-symmetry, but not depended on
+by `internal/core`. Used only by the `copy-events` subcommand. Lives in
+a separate file (`internal/core/aux.go` or similar) so the core's import
+graph stays clean.
 
-## Core types
+## Core types & functions
 
 ```go
 type Commit struct {
@@ -101,16 +127,16 @@ type Commit struct {
     Time                 time.Time
 }
 
-type Event struct {
-    Stage, Status string
-    Time          time.Time
-    CI            map[string]string
-}
-
+// Event is re-exported from clarityrefs (which stays the canonical
+// public API for the events ref). The core imports clarityrefs;
+// clarityrefs does NOT import internal/core. See "Public API surface"
+// below.
+type Event = clarityrefs.Event
 type Events map[string][]Event // keyed by commit SHA
 
 type Snapshot struct {
-    Commits []CommitView // joined commits + events, newest-first
+    Commits  []CommitView // joined commits + events, newest-first
+    RepoName string       // for the Renderer header line
 }
 
 type CommitView struct {
@@ -125,37 +151,84 @@ type View struct {
     Header   HeaderStatus // ci/deploy summary for the top header line
     Stale    bool         // rendered from cache; fresh refresh in flight
 }
-
-func DeriveView(snap Snapshot) View // pure, used by Lens + demo binary
 ```
 
+### Two pure derivations
+
+The core is the home of two pure functions that all adapters and the lens
+share:
+
+```go
+// BuildSnapshot joins commits with their events by SHA. Every Source
+// adapter calls this to produce a Snapshot from its raw inputs. Pure.
+func BuildSnapshot(commits []Commit, events map[string][]Event, repoName string) Snapshot
+
+// DeriveView runs the lifecycle grouping, DORA aggregation, header
+// status, and per-commit derived state. Called by the Lens and the
+// demo binary. Pure.
+func DeriveView(snap Snapshot) View
+```
+
+Two cores, in the sense the user asked about: one builds the joined
+shape, the other derives the renderer-ready shape. Both stateless,
+both fully testable as pure functions, both in `internal/core`.
+
 Currently in `internal/tui` and migrating to `internal/core` unchanged:
-`GroupCommits`, `LeadTime`, `DeployedAtIndex`, `IsStaleStage`, `WeeklyStats`,
-`CollapseStages`, `OverallStatus`.
+`GroupCommits`, `LeadTime`, `DeployedAtIndex`, `IsStaleStage`,
+`WeeklyStats`, `CollapseStages`, `OverallStatus`, plus the `Snapshot` /
+`CommitView` types that move from `internal/watcher`. The new `View`,
+`Groupings` (exported), `WeekStat` (exported), `HeaderStatus`, and
+`BuildSnapshot` / `DeriveView` functions are added during step 1.
+
+### Public API surface
+
+`clarityrefs` stays the **canonical public Go API** — its `Event`,
+`WriteEvent`, `WriteEvents`, `ReadEvents`, `ReadAllEvents`, `EventsRef`
+remain externally importable. Third-party code that reads or writes the
+clarity events ref keeps working unchanged.
+
+`internal/core` imports `clarityrefs` for the `Event` type (re-exported
+as an alias for in-core ergonomics). The dependency direction is
+`core → clarityrefs`, never the reverse. `Snapshot` and `View` are
+core-internal: they're derived types used by the renderer, not a public
+storage format, so they live under `internal/`.
 
 ## Composition
+
+The Lens shrinks to almost nothing — adapters do the polling, the lens
+just runs `DeriveView` on each Snapshot:
 
 ```go
 // internal/core/lens.go
 type Lens struct {
-    commits CommitReader
-    events  EventReader
-    branch  string
-    limit   int
+    source Source
 }
 
-func (l *Lens) Views(ctx context.Context) <-chan View
+func NewLens(source Source) *Lens
+
+func (l *Lens) Views(ctx context.Context) <-chan View {
+    out := make(chan View)
+    go func() {
+        defer close(out)
+        for snap := range l.source.Watch(ctx) {
+            select {
+            case out <- DeriveView(snap):
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return out
+}
 ```
 
 Composition root (`cmd/git-clarity/main.go`):
 
 ```go
 cfg := config.Load(repoPath)
+source := buildSource(cfg, repoPath, "ref" /* default identifier */)
 
-commits := gitlog.New(repoPath)
-events  := pickEventReader(cfg, repoPath)  // ref-source OR gh-source
-
-lens := core.NewLens(commits, events, cfg.Branch, 0 /* unbounded */)
+lens := core.NewLens(source)
 if opts.useTUI {
     lens = core.NewCachedLens(lens, ".git/clarity/snapshot-cache.json.gz")
 }
@@ -163,6 +236,11 @@ if opts.useTUI {
 renderer := pickRenderer(cfg, opts)
 renderer.Render(ctx, lens.Views(ctx))
 ```
+
+`buildSource` is a factory keyed by identifier (`ref`, `github`,
+future `file:...`) — same factory the `copy-events` subcommand uses to
+look up its `--from` and `--to` adapters. Single resolution path
+regardless of caller.
 
 The `Lens` doesn't take writers, sinks, or any output destination other
 than the views channel. If the user wants events forwarded to another
@@ -186,6 +264,23 @@ plain run keeps the cache warm for the next TUI run.
 
 **Renderers** check `View.Stale` and may show a small "refreshing…"
 indicator (TUI: right of header; web: spinner; plain: ignored).
+
+### Three loading states owned by the renderer
+
+There are *three* visual states the renderer needs to handle:
+
+1. **No view yet** — channel hasn't emitted anything. Renderer shows
+   `Loading…` (bubble-tea's existing `Model.received` pattern keeps
+   working).
+2. **Stale view** — cached view delivered first by `CachedLens`. Render
+   the data plus a "refreshing…" indicator (`View.Stale == true`).
+3. **Fresh view** — real fetch completed. Render the data, no
+   indicator (`View.Stale == false`).
+
+Only states 2 and 3 are encoded in `View`. State 1 is the renderer's
+own concern — the channel simply hasn't produced anything yet. Keeping
+"loading" out of the View protocol means the lens doesn't have to emit
+synthetic "I'm loading" sentinels.
 
 ## Caching strategy summary
 
@@ -218,15 +313,30 @@ Just atomic gzipped bytes — callers JSON-marshal whatever they want.
 Both are _implementation details of adapters_, not ports — the core
 doesn't know they exist.
 
+### Cache location configurability
+
+Default cache path is `.git/clarity/` (lives inside the repo's working
+tree). For ephemeral container deployments (the Docker forwarder) the
+working tree may be discarded between runs; losing the gh-cache defeats
+incremental polling. Two overrides:
+
+- `--cache-dir <path>` CLI flag — explicit per invocation
+- `CLARITY_CACHE_DIR` env var — for containerised use, point at a mounted
+  persistent volume
+
+Resolution order: flag → env var → default. Both cache files
+(`snapshot-cache.json.gz` and `github-runs.json.gz`) live inside the
+resolved directory.
+
 ## Adapters
 
 ```
 internal/
+  gitlog/        # Shared utility — gogit commit walk (used by both Source adapters)
   cache/         # Shared atomic gzipped-file helper (used by CachedLens + ghsource)
   adapters/
-    gitlog/      # CommitReader via gogit
-    refsource/   # EventReader for refs/clarity/events  (existing watcher logic)
-    ghsource/    # EventReader for GitHub Actions (gh CLI + github-runs.json.gz)
+    refsource/   # Source for refs/clarity/events  (today's watcher logic)
+    ghsource/    # Source for GitHub Actions (gh CLI + github-runs.json.gz)
     refwriter/   # EventWriter for refs/clarity/events  (used by copy-events)
     filewriter/  # EventWriter for a JSONL file (future, used by copy-events)
     tui/         # Renderer — bubble-tea
@@ -236,6 +346,23 @@ internal/
 
 GH adapter shells out to `gh` (zero new auth code; users already have it).
 A `GHClient` interface lets tests substitute a fake without subprocess.
+
+### What each adapter owns
+
+| Concern                | refsource                         | ghsource                                |
+| ---------------------- | --------------------------------- | --------------------------------------- |
+| Initial setup          | `EnsureClarityFetchRefspec`       | (none — `gh` handles auth externally)   |
+| Polling cadence        | ~5s, `ls-remote` (covers both refs in one call) | ~30s, `gh api` with `updated_at` filter |
+| Fetch verb             | `git fetch` (branch + events ref) | `gh api`; writes raw runs to gh-cache   |
+| Commit log read        | `internal/gitlog`                 | `internal/gitlog`                       |
+| Events read            | `clarityrefs.ReadAllEvents`       | Derive from gh-cache + `clarity.github` mapping |
+| Snapshot join          | `core.BuildSnapshot`              | `core.BuildSnapshot`                    |
+| Change detection       | ref tip moved vs last tick        | any new/updated run since last tick     |
+| Emit                   | Snapshot when changed             | Snapshot when changed                   |
+
+Both implementations of `Source.Watch` are independent — neither needs
+to coordinate with the lens or with each other. The lens never knows
+which Source it's using.
 
 ## Copy events between event stores
 
@@ -290,7 +417,27 @@ git clarity copy-events --from ref --to github
 
 This subsumes the current `scripts/generate-backfill.sh` flow: pick which
 jobs are CI vs deploy in `.ezcd.json` once, then run the copy command. No
-generated script, no two-layers-of-bash.
+generated script, no two-layers-of-bash. First-time users get an
+interactive helper via `git clarity init --github` (see sequencing) so
+they don't have to hand-write the mapping.
+
+### `--watch` steady-state cost
+
+`--watch` is not "N pushes per N events". Per tick:
+
+1. Source's `Watch` channel either yields a Snapshot (something
+   actually changed) or stays silent.
+2. If a Snapshot yields, the writer computes the new tree using
+   content-addressed event filenames. If the resulting tree hash
+   matches the parent's, `WriteEvents`' idempotency short-circuit (see
+   [clarityrefs.go:updateEventsRef](../clarityrefs/clarityrefs.go)) skips
+   the commit and push entirely.
+3. A push only happens when actual new events landed (different content
+   → different filenames → different tree).
+
+So the steady-state cost when nothing's happening is just the source's
+own poll (e.g. one `gh api ...?updated_at>=since`). Network traffic is
+proportional to *change*, not to wall-clock time.
 
 ## Web UI / Docker / always-on forwarder (future)
 
@@ -470,39 +617,152 @@ memory cost ~1.2MB per 10k commits in rendered string form. Acceptable.
 DORA stats span everything in the loaded snapshot. There's no good reason
 to bound DORA history smaller than what's displayed.
 
+## Test architecture
+
+Three layers, each able to be tested without touching the layer below.
+
+### Layer 1 — Core (pure functions)
+
+Lives in `internal/core/*_test.go`. Table-driven, microsecond-fast, no
+goroutines, no temp dirs, no I/O.
+
+- `BuildSnapshot` — joins commits + events. Edge cases: events for
+  unknown SHAs, commits with no events, mixed.
+- `DeriveView` — end-to-end on hand-built Snapshots. Existing
+  `tui/group_test.go`, `weekly_test.go`, `elapsed_test.go` migrate here
+  with import-path updates only.
+- `Lens.Views` — uses a `fakeSource` (programmable channel of
+  Snapshots), asserts `View` flows through derivation correctly. This
+  is the only Layer-1 test that uses a goroutine.
+
+### Layer 2 — Adapters (each tested in isolation)
+
+Each adapter lives in `internal/adapters/<name>/`. Tests use the
+narrowest set of dependencies the adapter actually has.
+
+- **`refsource`** — uses `gittest.NewRemote` / `gittest.NewClone` (real
+  git over a temp dir). Push events, assert the source emits a fresh
+  Snapshot with the new event present. Inherits today's
+  `internal/watcher/*_test.go` coverage.
+- **`ghsource`** — uses a fake `GHClient` returning canned `Runs` /
+  `Jobs` responses, real `gitlog` against a `gittest` repo, real cache
+  file in a temp dir. Asserts the mapping config → events derivation,
+  and that the cache stores raw API data correctly.
+- **`refwriter`** — `gittest`, assert events land on the ref at the
+  expected paths.
+- **`tui`** — feed scripted `Views` through, snapshot-test the
+  rendered strings. Existing `program_test.go` pattern.
+- **`plain`** — same idea, simpler output. Existing
+  `render_plain_test.go` pattern.
+
+### Layer 3 — Composition / integration
+
+- `cmd/git-clarity/main_test.go` — root-flag parsing, `copy-events`
+  identifier validation, direction rejection (`--to github` errors),
+  config loading.
+- `test/integration/clarityrefs_test.go` — end-to-end via the real
+  binary. Stays where it is.
+
+### Fakes that need to exist
+
+| Fake               | Used by                          | Purpose                                              |
+| ------------------ | -------------------------------- | ---------------------------------------------------- |
+| `core.fakeSource`  | `lens_test.go`                   | Programmable channel of Snapshots                    |
+| `ghsource.fakeClient` | `ghsource_test.go`            | Canned GH API responses (Runs, Jobs)                 |
+| `core.fakeRenderer` | composition tests in `cmd/`     | Captures `View`s to a slice                          |
+| `core.fakeWriter`  | `copy-events` tests              | Captures `Write(events)` calls                       |
+
+All four are simple structs with channels/slices. No mocking framework.
+
+### Migration of existing tests
+
+| Existing                                            | After                                            |
+| --------------------------------------------------- | ------------------------------------------------ |
+| `clarityrefs/*_test.go`                             | Stays — public API surface                       |
+| `internal/tui/group_test.go`                        | `internal/core/groupings_test.go`                |
+| `internal/tui/weekly_test.go`                       | `internal/core/weekly_test.go`                   |
+| `internal/tui/elapsed_test.go`                      | `internal/core/elapsed_test.go`                  |
+| `internal/tui/render_test.go`                       | `internal/adapters/tui/render_test.go`           |
+| `internal/tui/render_plain_test.go`                 | `internal/adapters/plain/render_test.go`         |
+| `internal/tui/program_test.go`                      | `internal/adapters/tui/program_test.go`          |
+| `internal/watcher/watcher_test.go` / `snapshot_test.go` | `internal/adapters/refsource/refsource_test.go` |
+| `cmd/git-clarity/main_test.go`                      | Stays                                            |
+| `test/integration/clarityrefs_test.go`              | Stays — **highest-risk step** for accidental breakage |
+
+The integration suite is the canary. Step 3 (refsource extraction) is
+the one where it'll get exercised hardest; treat it as the highest-risk
+step, not the lowest.
+
 ## Sequencing (work plan)
 
 Each step is a separate commit. Each leaves the suite green and the binary
-functional.
+functional. Risk callouts on the steps most likely to surface latent
+coupling.
 
-1. **Move pure lens code to `internal/core`** — `GroupCommits`, `LeadTime`,
-   `DeployedAtIndex`, `IsStaleStage`, `WeeklyStats`, `CollapseStages`,
-   `OverallStatus`, plus `Snapshot` and `CommitView` from `internal/watcher`.
-   No behavior change. All tests still pass.
-2. **Define ports + payload types** in `internal/core/ports.go`. The
-   bubble-tea renderer and the existing watcher temporarily implement them
-   in-place; no logical change.
-3. **Build `Lens` struct + `Views(ctx)` channel** combining
-   `CommitReader` + `EventReader`. Refactor the existing watcher into a
-   ref-source `EventReader` adapter and a gogit `CommitReader` adapter.
+1. **Move pure lens code to `internal/core`** — `GroupCommits`,
+   `LeadTime`, `DeployedAtIndex`, `IsStaleStage`, `WeeklyStats`,
+   `CollapseStages`, `OverallStatus`, plus `Snapshot` and `CommitView`
+   from `internal/watcher`. Add `BuildSnapshot` and `DeriveView`. Semantics
+   unchanged but the diff is sweeping — every `internal/tui`,
+   `internal/watcher`, and `cmd/demo` file with these imports has to be
+   touched. Tests still pass.
+2. **Define `Source` and `Renderer` ports** in `internal/core/ports.go`.
+   The bubble-tea renderer and the existing watcher temporarily
+   implement them in-place; no logical change yet.
+3. **Extract `refsource` adapter** from the existing watcher into
+   `internal/adapters/refsource/`. Move `EnsureClarityFetchRefspec`
+   into `refsource.New`. Lift the unified `ls-remote` loop verbatim;
+   the adapter owns its own polling. ⚠️ **Highest-risk step** — this is
+   where `test/integration/clarityrefs_test.go` gets exercised hardest.
+   Run the integration suite explicitly as part of this commit's check.
 4. **Move the renderers** into `internal/adapters/tui` and
    `internal/adapters/plain`. Both consume `<-chan View` via the
-   `Renderer` interface.
-5. **Add `CachedLens` decorator** for SWR startup. TUI mode wraps; plain
-   mode doesn't. Add `View.Stale` and the small indicator in the TUI.
-6. **Config loader** for `.ezcd.json`. Optional in v1 (no config → current
-   defaults).
+   `Renderer` interface. Add `Snapshot.RepoName` so renderers don't need
+   the name via constructor.
+5. **Add `CachedLens` decorator** for SWR startup. TUI mode wraps;
+   plain mode doesn't. Add `View.Stale` and the small indicator in the
+   TUI. Renderer keeps owning its "no view yet → Loading…" state.
+6. **Config loader** for `.ezcd.json` + `--cache-dir` / `CLARITY_CACHE_DIR`.
+   Optional in v1 (no config → current defaults). Threads `cfg.Branch`
+   through everywhere that's currently hardcoded `"main"`.
 7. **GH source adapter** (`internal/adapters/ghsource`) — shells out to
-   `gh`, caches raw GH data into `.git/clarity/github-runs.json.gz`,
-   derives events from cache + mapping config. First user-visible feature:
-   `git clarity` renders the TUI from GitHub Actions data, no writes.
-8. **`copy-events` subcommand + `EventWriter` interface + `refwriter`
+   `gh`, caches raw GH data into `<cache-dir>/github-runs.json.gz`,
+   derives events from cache + mapping config. First user-visible
+   feature: `git clarity` renders the TUI from GitHub Actions data, no
+   writes anywhere.
+8. **`git clarity init --github`** — interactive workflow + job
+   discovery. Same gh-API exploration the bash script does today, but
+   it writes the answers into `.ezcd.json` instead of generating
+   another script. Replaces the discovery half of
+   `scripts/generate-backfill.sh`.
+9. **`copy-events` subcommand + `EventWriter` interface + `refwriter`
    adapter**. `git clarity copy-events --from github --to ref` replaces
-   `scripts/generate-backfill.sh`. Identifier table + direction
-   validation. Add `--watch` for the daemon use case.
-9. **Web renderer + Docker image** — future. Same `Renderer` port. A
-   long-lived container can run either `git clarity --web` (UI mode) or
-   `git clarity copy-events --watch` (forwarder mode).
+   the execution half of `scripts/generate-backfill.sh`. Identifier
+   table + direction validation. Add `--watch` for the daemon use case.
+10. **Web renderer + Docker image** — future. Same `Renderer` port. A
+    long-lived container can run either `git clarity --web` (UI mode)
+    or `git clarity copy-events --watch` (forwarder mode).
+
+## Migration notes (user-visible behaviour changes)
+
+Worth a release note when this lands:
+
+- **`--limit` default flips from 100 to unbounded.** Big repos pay a
+  one-time startup cost (~1s per 10k commits); scroll becomes
+  `git log`-style infinite. `--limit N` still available as an escape
+  hatch.
+- **TUI shows a "refreshing…" indicator** while a stale cached view
+  is being revalidated. First-paint feels instant on repeat
+  invocations; the indicator disappears as soon as the fresh fetch
+  completes.
+- **`scripts/generate-backfill.sh` retires** (after step 9). Migration:
+  `git clarity init --github` (one-time mapping setup) +
+  `git clarity copy-events --from github --to ref`. The README example
+  changes from `bash backfill.sh` to two `git clarity ...` invocations.
+- **Cache files** live at `.git/clarity/` by default; configurable via
+  `--cache-dir` / `CLARITY_CACHE_DIR` for containerised use.
+- **`.ezcd.json` is now read** if present. No config = current defaults
+  preserved — opt-in, not breaking.
 
 ## Out of scope (for now)
 

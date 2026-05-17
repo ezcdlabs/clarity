@@ -1,12 +1,11 @@
-package tui_test
+package core_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 // utc is a shorthand for constructing UTC test times — ISO week boundaries
@@ -17,8 +16,8 @@ func utc(year, month, day, hour int) time.Time {
 
 // commit constructs a CommitView with a single deploy:passed event at deployAt.
 // The CI event isn't needed for WeeklyStats — only the deploy time is bucketed.
-func commit(sha string, commitAt, deployAt time.Time) watcher.CommitView {
-	return watcher.CommitView{
+func commit(sha string, commitAt, deployAt time.Time) core.CommitView {
+	return core.CommitView{
 		SHA:  sha,
 		Time: commitAt,
 		Events: []clarityrefs.Event{
@@ -28,7 +27,7 @@ func commit(sha string, commitAt, deployAt time.Time) watcher.CommitView {
 }
 
 func TestWeeklyStats_EmptySnapshot(t *testing.T) {
-	got := tui.WeeklyStats(watcher.Snapshot{})
+	got := core.WeeklyStats(core.Snapshot{})
 	if len(got) != 0 {
 		t.Errorf("expected no stats for empty snapshot, got %v", got)
 	}
@@ -38,9 +37,9 @@ func TestWeeklyStats_SingleDeploy_OneCommit(t *testing.T) {
 	// 2026-01-05 (Mon) → 2026-01-08 (Thu) — both ISO week 2 of 2026.
 	c := utc(2026, 1, 5, 9)
 	d := utc(2026, 1, 8, 10)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{commit("abc", c, d)}}
+	snap := core.Snapshot{Commits: []core.CommitView{commit("abc", c, d)}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 week stat, got %d: %+v", len(got), got)
 	}
@@ -63,12 +62,12 @@ func TestWeeklyStats_MultipleDeploys_SameWeek_AveragesLeadTime(t *testing.T) {
 	d1 := utc(2026, 1, 5, 10)  // 1h lead
 	c2 := utc(2026, 1, 6, 9)
 	d2 := utc(2026, 1, 6, 12)  // 3h lead
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("c2", c2, d2), // newest first in snapshot order
 		commit("c1", c1, d1),
 	}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 week, got %d", len(got))
 	}
@@ -91,12 +90,12 @@ func TestWeeklyStats_BatchWithMultipleCommits_OneDeploy_AvgAcrossCommits(t *test
 	cNewer := utc(2026, 1, 5, 10) // 2h lead
 	cOlder := utc(2026, 1, 5, 9)  // 3h lead
 	d := utc(2026, 1, 5, 12)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("newer", cNewer, d),
 		{SHA: "older", Time: cOlder}, // no deploy event — rides along
 	}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 week, got %d", len(got))
 	}
@@ -117,12 +116,12 @@ func TestWeeklyStats_AcrossWeeks_ProducesMultipleBuckets(t *testing.T) {
 	d1 := utc(2026, 1, 8, 10)
 	c2 := utc(2026, 1, 12, 9)
 	d2 := utc(2026, 1, 15, 10)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("c2", c2, d2),
 		commit("c1", c1, d1),
 	}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 weeks, got %d: %+v", len(got), got)
 	}
@@ -147,7 +146,7 @@ func TestWeeklyStats_OlderBatchWithoutRecordedDeploy_StillContributesToAvg(t *te
 	cNewer := utc(2026, 1, 5, 9)
 	dNewer := utc(2026, 1, 5, 10)   // newest passed deploy, week 2
 	cOlder := utc(2026, 1, 1, 0)    // 4 days earlier than dNewer
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("newer", cNewer, dNewer),
 		// Older: deploy:started exists but no recorded terminal. Inherits
 		// dNewer via fix-forward, so its frozen lead time is dNewer-cOlder.
@@ -157,7 +156,7 @@ func TestWeeklyStats_OlderBatchWithoutRecordedDeploy_StillContributesToAvg(t *te
 		}},
 	}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 week (older commit inherits newer's deploy week), got %d: %+v", len(got), got)
 	}
@@ -179,12 +178,12 @@ func TestWeeklyStats_ISOWeekBoundary(t *testing.T) {
 	d1 := utc(2026, 1, 4, 23) // Sunday of week 1
 	c2 := utc(2026, 1, 5, 9)
 	d2 := utc(2026, 1, 5, 10) // Monday of week 2
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("c2", c2, d2),
 		commit("c1", c1, d1),
 	}}
 
-	got := tui.WeeklyStats(snap)
+	got := core.WeeklyStats(snap)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 weeks across the boundary, got %d", len(got))
 	}

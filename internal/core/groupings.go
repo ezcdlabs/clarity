@@ -1,10 +1,9 @@
-package tui
+package core
 
 import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
 // Groupings buckets a snapshot's commits into the trunk-based-development
@@ -13,11 +12,11 @@ import (
 // changes as supersedence moves the build and deploy lines.
 type Groupings struct {
 	// Head: landed on main but not yet passed CI.
-	Head []watcher.CommitView
+	Head []CommitView
 
 	// CIPassed: built green, no in-flight deploy associated yet. Idle commits
 	// that are queued for the next deploy.
-	CIPassed []watcher.CommitView
+	CIPassed []CommitView
 
 	// InFlight sits visually at the bottom of the CI Passed section: any
 	// deploy attempt that hasn't successfully landed yet (status "started"
@@ -46,14 +45,14 @@ type Groupings struct {
 type DeployBatch struct {
 	Status  string // "started" | "passed" | "failed"
 	Time    time.Time
-	Commits []watcher.CommitView
+	Commits []CommitView
 }
 
 // GroupCommits classifies commits (newest-first) into lifecycle groups. The
 // section boundary between CI Passed and Deployed is the deploy:passed line —
 // in-flight (started/failed) batches stay above the line as InFlight, sitting
 // at the bottom of CI Passed in the rendered TUI.
-func GroupCommits(commits []watcher.CommitView) Groupings {
+func GroupCommits(commits []CommitView) Groupings {
 	g := Groupings{
 		ciLine:           -1,
 		deployPassedLine: -1,
@@ -92,8 +91,8 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 	}
 
 	// Pass 2 — classify into Head / CI-Passed range / Deployed range.
-	var ciRange []watcher.CommitView
-	var deployedRange []watcher.CommitView
+	var ciRange []CommitView
+	var deployedRange []CommitView
 	for i, c := range commits {
 		switch {
 		case g.deployPassedLine != -1 && i >= g.deployPassedLine:
@@ -110,7 +109,7 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 	// Walking newest → oldest: until we encounter the first deploy event,
 	// commits are idle; from there on they belong to an in-flight batch.
 	var seenDeploy bool
-	var inFlightCommits []watcher.CommitView
+	var inFlightCommits []CommitView
 	for _, c := range ciRange {
 		if !seenDeploy && !hasDeployEvent(c.Events) {
 			g.CIPassed = append(g.CIPassed, c)
@@ -133,7 +132,7 @@ func GroupCommits(commits []watcher.CommitView) Groupings {
 // joins the current (newer) batch; a commit with a failed deploy joins the
 // current batch (fix-forwarded) when the current batch is non-failed,
 // otherwise it starts its own visible failed batch.
-func computeBatches(commits []watcher.CommitView) []DeployBatch {
+func computeBatches(commits []CommitView) []DeployBatch {
 	var batches []DeployBatch
 	var current *DeployBatch
 	for _, c := range commits {
@@ -157,7 +156,7 @@ func computeBatches(commits []watcher.CommitView) []DeployBatch {
 		current = &DeployBatch{
 			Status:  latestEvent.Status,
 			Time:    latestEvent.Time,
-			Commits: []watcher.CommitView{c},
+			Commits: []CommitView{c},
 		}
 	}
 	if current != nil {

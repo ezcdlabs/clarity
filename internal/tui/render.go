@@ -1,89 +1,43 @@
-// Package tui renders watcher snapshots to the terminal. The package is split
+// Package tui renders core Views to the terminal. The package is split
 // into pure render functions (this file) and a thin Bubble Tea program
 // (program.go) so the visuals are unit-testable without spinning up a TTY.
+//
+// Pure data derivation (grouping, weekly stats, stage collapse, etc.)
+// lives in internal/core; this package only turns derived data into bytes.
 package tui
 
 import (
 	"fmt"
 	"image/color"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
-// StageStatus is the most recent status for one stage on one commit.
-type StageStatus struct {
-	Stage  string
-	Status string
-	Time   timeRef
-}
+// Re-export commonly-used core types so existing callers (tests, demo) keep
+// working through the migration. Removed in step 3 when the rest of the
+// codebase imports from core directly.
+type (
+	StageStatus = core.StageStatus
+	DeployBatch = core.DeployBatch
+	Groupings   = core.Groupings
+	WeekStat    = core.WeekStat
+)
 
-// timeRef is a minimal time wrapper so callers don't need to import time
-// just to construct test data — they can build it via CollapseStages.
-type timeRef struct{ unix int64 }
-
-// CollapseStages returns the latest status per stage from the given event
-// stream, in the order each stage's latest event was observed (chronological).
-// This is the "render-time status collapse" described in README.md.
-func CollapseStages(events []clarityrefs.Event) []StageStatus {
-	latestByStage := map[string]clarityrefs.Event{}
-	firstSeen := map[string]int64{}
-	for _, e := range events {
-		ts := e.Time.Unix()
-		if cur, ok := latestByStage[e.Stage]; !ok || e.Time.After(cur.Time) {
-			latestByStage[e.Stage] = e
-		}
-		if _, ok := firstSeen[e.Stage]; !ok {
-			firstSeen[e.Stage] = ts
-		}
-	}
-
-	out := make([]StageStatus, 0, len(latestByStage))
-	for stage, e := range latestByStage {
-		out = append(out, StageStatus{
-			Stage:  stage,
-			Status: e.Status,
-			Time:   timeRef{unix: e.Time.Unix()},
-		})
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return firstSeen[out[i].Stage] < firstSeen[out[j].Stage]
-	})
-	return out
-}
-
-// OverallStatus reduces a commit's events to one of:
-//   - "none"    no events
-//   - "passed"  every stage's latest is passed or skipped
-//   - "failed"  any stage's latest is failed
-//   - "running" any stage's latest is started (and none failed)
-//
-// "failed" wins over "running"; "running" wins over "passed".
-func OverallStatus(events []clarityrefs.Event) string {
-	if len(events) == 0 {
-		return "none"
-	}
-	stages := CollapseStages(events)
-	hasRunning := false
-	for _, s := range stages {
-		switch s.Status {
-		case "failed":
-			return "failed"
-		case "started":
-			hasRunning = true
-		}
-	}
-	if hasRunning {
-		return "running"
-	}
-	return "passed"
-}
+// CollapseStages, OverallStatus, GroupCommits, WeeklyStats are similarly
+// re-exported from core for callers that haven't been migrated yet.
+var (
+	CollapseStages = core.CollapseStages
+	OverallStatus  = core.OverallStatus
+	GroupCommits   = core.GroupCommits
+	WeeklyStats    = core.WeeklyStats
+)
 
 // --- rendering ---------------------------------------------------------------
 
@@ -275,7 +229,7 @@ func weekDividerLabel(s WeekStat) string {
 		deploysLabel = "deploy"
 	}
 	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
-		s.Year, s.Week, s.Deploys, deploysLabel, formatElapsed(s.AvgLead))
+		s.Year, s.Week, s.Deploys, deploysLabel, core.FormatElapsed(s.AvgLead))
 }
 
 // renderWeekDivider is the less-prominent sibling of renderSectionDivider:
@@ -378,7 +332,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive b
 	case "passed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
 		}
 		if isLive {
 			// The currently-live batch is the present state, not a past
@@ -392,7 +346,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive b
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
 		}
 		return lipgloss.NewStyle().Foreground(colorRed).Italic(true).
 			Render("  deploy failed"+ago) + "\n"
@@ -423,7 +377,7 @@ func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, widt
 			if frozen {
 				color = colorBlue
 			}
-			timer = lipgloss.NewStyle().Foreground(color).Render(formatElapsed(d))
+			timer = lipgloss.NewStyle().Foreground(color).Render(core.FormatElapsed(d))
 		}
 	}
 
@@ -447,7 +401,7 @@ func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, widt
 // neutral gray; their meaning is carried by the icon shape (✓ / spinner /
 // ·) and the section the row sits in.
 func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx int) string {
-	status := ciStatus(events)
+	status := core.CIStatus(events)
 	stale := group != nil && group.IsStaleStage(index, "ci")
 
 	color := colorGray
@@ -468,21 +422,3 @@ func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx 
 	return lipgloss.NewStyle().Foreground(color).Render(glyph)
 }
 
-// ciStatus returns the latest build event's status, or "" if there are none.
-func ciStatus(events []clarityrefs.Event) string {
-	var latest clarityrefs.Event
-	found := false
-	for _, e := range events {
-		if e.Stage != "ci" {
-			continue
-		}
-		if !found || e.Time.After(latest.Time) {
-			latest = e
-			found = true
-		}
-	}
-	if !found {
-		return ""
-	}
-	return latest.Status
-}

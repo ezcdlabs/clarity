@@ -7,28 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/core"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// Snapshot is the data structure rendered by the TUI: a list of commits
-// (newest first) with their joined events.
-type Snapshot struct {
-	Commits []CommitView
-}
+// Snapshot is re-exported from core for backwards compatibility while the
+// adapter migration is in progress; it will be removed in step 3 when
+// watcher itself moves under internal/adapters/refsource.
+type Snapshot = core.Snapshot
 
-// CommitView is one row in the snapshot.
-type CommitView struct {
-	SHA     string
-	Subject string
-	Author  string
-	Time    time.Time
-	Events  []clarityrefs.Event
-}
+// CommitView same — re-exported alias during the migration.
+type CommitView = core.CommitView
 
 // BuildSnapshot walks up to limit commits starting from the given branch and
 // joins each one to its events from the local clarity events ref. Pure: does

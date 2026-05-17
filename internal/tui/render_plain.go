@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
@@ -123,8 +124,8 @@ func weekKey(year, week int) int64 { return int64(year)*100 + int64(week) }
 // Mirrors the TUI's header semantics: "started" and "skipped" events are
 // ignored so the badge holds its colour across transient retries.
 func plainHeader(repoName string, snap watcher.Snapshot) string {
-	ci := plainBadge(currentStageStatus(snap.Commits, "ci"))
-	deploy := plainBadge(currentStageStatus(snap.Commits, "deploy"))
+	ci := plainBadge(core.CurrentStageStatus(snap.Commits, "ci"))
+	deploy := plainBadge(core.CurrentStageStatus(snap.Commits, "deploy"))
 	return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, deploy)
 }
 
@@ -146,7 +147,7 @@ func plainBatchSubheader(b DeployBatch, now time.Time, isLive bool) string {
 	case "passed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
 		}
 		if isLive {
 			return "  deployed" + ago + "  (live)\n"
@@ -155,7 +156,7 @@ func plainBatchSubheader(b DeployBatch, now time.Time, isLive bool) string {
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + formatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
 		}
 		return "  deploy failed" + ago + "\n"
 	default:
@@ -180,14 +181,14 @@ func plainRow(view watcher.CommitView, group *Groupings, index int, now time.Tim
 	if group != nil {
 		if d, _, ok := group.LeadTime(index, view.Time, now); ok {
 			b.WriteString("  ")
-			b.WriteString(formatElapsed(d))
+			b.WriteString(core.FormatElapsed(d))
 		}
 	}
 	return b.String()
 }
 
 func plainCIIcon(events []clarityrefs.Event) string {
-	switch ciStatus(events) {
+	switch core.CIStatus(events) {
 	case "passed":
 		return "✓"
 	case "failed":

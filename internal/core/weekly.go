@@ -1,10 +1,8 @@
-package tui
+package core
 
 import (
 	"sort"
 	"time"
-
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
 // WeekStat is one ISO week's DORA-shaped throughput summary.
@@ -39,7 +37,7 @@ type WeekStat struct {
 //
 // Deploys counts distinct DeployBatch entries with Status == "passed". A
 // started-or-failed batch is not a deploy.
-func WeeklyStats(snap watcher.Snapshot) []WeekStat {
+func WeeklyStats(snap Snapshot) []WeekStat {
 	g := GroupCommits(snap.Commits)
 
 	type bucket struct {

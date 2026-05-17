@@ -1,8 +1,10 @@
-package tui
+package core_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 func TestFormatElapsed(t *testing.T) {
@@ -20,9 +22,9 @@ func TestFormatElapsed(t *testing.T) {
 		{2*time.Hour + 3*time.Minute + 5*time.Second, "2h 03m 05s"},
 	}
 	for _, tc := range cases {
-		got := formatElapsed(tc.d)
+		got := core.FormatElapsed(tc.d)
 		if got != tc.want {
-			t.Errorf("formatElapsed(%v) = %q, want %q", tc.d, got, tc.want)
+			t.Errorf("FormatElapsed(%v) = %q, want %q", tc.d, got, tc.want)
 		}
 	}
 }

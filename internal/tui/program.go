@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
@@ -145,8 +145,8 @@ func (m Model) View() tea.View {
 // alarm in the top-left where the eye naturally lands first, without
 // recolouring the rest of the header.
 func renderHeader(repoName string, snap watcher.Snapshot, width int) string {
-	ciStatus := currentStageStatus(snap.Commits, "ci")
-	deployStatus := currentStageStatus(snap.Commits, "deploy")
+	ciStatus := core.CurrentStageStatus(snap.Commits, "ci")
+	deployStatus := core.CurrentStageStatus(snap.Commits, "deploy")
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	if ciStatus == "failed" || deployStatus == "failed" {
@@ -191,34 +191,6 @@ func iconForStatus(status string) string {
 	default:
 		return lipgloss.NewStyle().Foreground(colorGray).Render("·")
 	}
-}
-
-// currentStageStatus returns the latest *resolved* (passed or failed) event
-// status for the given stage anywhere in the snapshot, or "" if no resolved
-// events exist. "started" and "skipped" events are intentionally ignored so
-// the header badge holds its colour through transient retries instead of
-// flickering to neutral every time a build kicks off.
-func currentStageStatus(commits []watcher.CommitView, stage string) string {
-	var latest clarityrefs.Event
-	found := false
-	for _, c := range commits {
-		for _, e := range c.Events {
-			if e.Stage != stage {
-				continue
-			}
-			if e.Status != "passed" && e.Status != "failed" {
-				continue
-			}
-			if !found || e.Time.After(latest.Time) {
-				latest = e
-				found = true
-			}
-		}
-	}
-	if !found {
-		return ""
-	}
-	return latest.Status
 }
 
 // NewProgram constructs a Bubble Tea program in alt-screen mode and starts a

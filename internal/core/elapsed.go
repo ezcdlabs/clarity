@@ -1,11 +1,14 @@
-package tui
+package core
 
 import (
 	"fmt"
 	"time"
 )
 
-func formatElapsed(d time.Duration) string {
+// FormatElapsed renders a duration as "1h 02m 03s" / "2m 05s" / "7s" form
+// — the same compact form lead-time timers and "deployed Xh ago" batch
+// subheaders use throughout the TUI and plain renderers.
+func FormatElapsed(d time.Duration) string {
 	d = d.Truncate(time.Second)
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60

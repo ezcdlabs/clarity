@@ -11,8 +11,10 @@ RUN adduser -D -s /usr/bin/git-shell git \
     && chmod 700 /home/git/.ssh \
     && passwd -u git
 
-# Install the test client's public key
-COPY test/integration/keys/test_client_key.pub /home/git/.ssh/authorized_keys
+# Install the test client's public key. Build context is this directory
+# (internal/gittest/sshserver/) — see gittest_ssh.go for the testcontainers
+# FromDockerfile request that wires it up.
+COPY keys/test_client_key.pub /home/git/.ssh/authorized_keys
 RUN chmod 600 /home/git/.ssh/authorized_keys \
     && chown -R git:git /home/git/.ssh
 

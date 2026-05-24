@@ -45,10 +45,32 @@ type Commit struct {
 	Message string
 }
 
-// Remote is a bare git repository acting as the shared remote.
+// Remote is a git repository acting as the shared remote in a test. Two
+// concrete backends construct it:
+//
+//   - NewRemote (this file) — bare repo on the local filesystem; Path is
+//     both the on-disk location AND the clone URL.
+//   - NewSSHRemote (gittest_ssh.go, build tag "ssh") — Docker-hosted SSH
+//     server; URL is "ssh://git@localhost:<mapped-port>/repo.git"; Path
+//     is empty because the bare repo lives inside the container.
+//
+// Callers that need to drive git client commands should use URL(); callers
+// that need to inspect repo internals directly (file reads, log walks)
+// must use Path and are inherently local-only.
 type Remote struct {
+	// Path is the on-disk bare repo directory for local backends, empty
+	// for SSH backends.
 	Path string
+	// url is the clone URL — either the same as Path (local) or an
+	// ssh://... form (SSH). Unexported because callers should go through
+	// URL() rather than constructing one.
+	url string
 }
+
+// URL returns the clone URL for the remote. For local-backed remotes this
+// is the bare repo path; for SSH-backed remotes this is the ssh:// URL.
+// Either form is valid input to `git clone`.
+func (r *Remote) URL() string { return r.url }
 
 // Clone is a working git clone of a Remote.
 type Clone struct {
@@ -77,15 +99,16 @@ func NewRemote(t *testing.T) *Remote {
 	run(t, seedDir, "git", "commit", "-m", "initial commit")
 	run(t, seedDir, "git", "push", "origin", "main")
 
-	return &Remote{Path: dir}
+	return &Remote{Path: dir, url: dir}
 }
 
 // NewClone creates a working clone of the remote in a temp directory.
+// Uses URL() so it works the same for local-file and SSH backends.
 func (r *Remote) NewClone(t *testing.T) *Clone {
 	t.Helper()
 	dir := t.TempDir()
 
-	run(t, dir, "git", "clone", r.Path, ".")
+	run(t, dir, "git", "clone", r.URL(), ".")
 	run(t, dir, "git", "config", "user.email", "test@example.com")
 	run(t, dir, "git", "config", "user.name", "Test")
 

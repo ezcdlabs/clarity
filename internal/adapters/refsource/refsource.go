@@ -1,4 +1,10 @@
-package watcher
+// Package refsource is the Source adapter that reads commits and
+// clarity events from a local git repository's remote-tracking refs.
+// It polls the remote with `git ls-remote`, fetches when the branch
+// tip or events ref has moved, and emits a core.Snapshot per change.
+//
+// Implements core.Source.
+package refsource
 
 import (
 	"context"
@@ -9,10 +15,12 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/clock"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
+	"github.com/ezcdlabs/clarity/internal/refs"
 )
 
-// Options configures a Watch session.
+// Options configures a Source.
 type Options struct {
 	RepoPath string
 	Remote   string        // defaults to "origin"
@@ -22,11 +30,17 @@ type Options struct {
 	Clock    clock.Clock   // defaults to clock.Real()
 }
 
-// Watch starts a polling goroutine and returns a channel of snapshots. The
-// first snapshot is emitted immediately after a fetch; subsequent snapshots
-// are only emitted when the branch tip or events ref has moved on the remote.
-// The channel is closed when ctx is cancelled.
-func Watch(ctx context.Context, opts Options) <-chan Snapshot {
+// Source polls the configured remote and emits a Snapshot whenever the
+// branch tip or events ref changes. Satisfies core.Source.
+type Source struct {
+	opts Options
+}
+
+// New returns a configured Source. As a side effect it registers the
+// clarity fetch refspec on the named remote (idempotent; no-op when the
+// remote hasn't published any events yet) so subsequent `git fetch`
+// invocations carry the events ref without any per-call refspec flags.
+func New(opts Options) (*Source, error) {
 	if opts.Remote == "" {
 		opts.Remote = "origin"
 	}
@@ -42,29 +56,39 @@ func Watch(ctx context.Context, opts Options) <-chan Snapshot {
 	if opts.Clock == nil {
 		opts.Clock = clock.Real()
 	}
+	if err := refs.EnsureClarityFetchRefspec(opts.RepoPath, opts.Remote); err != nil {
+		return nil, fmt.Errorf("configure clarity fetch refspec: %w", err)
+	}
+	return &Source{opts: opts}, nil
+}
 
-	out := make(chan Snapshot, 1)
+// Watch starts a polling goroutine and returns a channel of snapshots.
+// The first snapshot is emitted immediately after the initial fetch;
+// subsequent snapshots are only emitted when the branch tip or events
+// ref has moved on the remote. The channel is closed when ctx is
+// cancelled.
+func (s *Source) Watch(ctx context.Context) <-chan core.Snapshot {
+	out := make(chan core.Snapshot, 1)
 	go func() {
 		defer close(out)
 
-		branchRemoteRef := "refs/heads/" + opts.Branch
+		branchRemoteRef := "refs/heads/" + s.opts.Branch
 		watched := []string{branchRemoteRef, clarityrefs.EventsRef}
 
-		// Initial: fetch + emit, regardless of whether anything moved.
-		_ = fetchAll(opts.RepoPath, opts.Remote, opts.Branch)
-		if !emit(ctx, opts, out) {
+		_ = fetchAll(s.opts.RepoPath, s.opts.Remote, s.opts.Branch)
+		if !s.emit(ctx, out) {
 			return
 		}
-		lastRefs, _ := lsRemote(opts.RepoPath, opts.Remote, watched...)
+		lastRefs, _ := lsRemote(s.opts.RepoPath, s.opts.Remote, watched...)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-opts.Clock.After(opts.Interval):
+			case <-s.opts.Clock.After(s.opts.Interval):
 			}
 
-			current, err := lsRemote(opts.RepoPath, opts.Remote, watched...)
+			current, err := lsRemote(s.opts.RepoPath, s.opts.Remote, watched...)
 			if err != nil {
 				continue
 			}
@@ -72,8 +96,8 @@ func Watch(ctx context.Context, opts Options) <-chan Snapshot {
 				continue
 			}
 
-			_ = fetchAll(opts.RepoPath, opts.Remote, opts.Branch)
-			if !emit(ctx, opts, out) {
+			_ = fetchAll(s.opts.RepoPath, s.opts.Remote, s.opts.Branch)
+			if !s.emit(ctx, out) {
 				return
 			}
 			lastRefs = current
@@ -82,12 +106,10 @@ func Watch(ctx context.Context, opts Options) <-chan Snapshot {
 	return out
 }
 
-// emit builds a snapshot and sends it on out. Returns false if ctx was
-// cancelled while sending (caller should exit).
-func emit(ctx context.Context, opts Options, out chan<- Snapshot) bool {
-	snap, err := BuildSnapshot(opts.RepoPath, opts.Branch, opts.Limit)
+func (s *Source) emit(ctx context.Context, out chan<- core.Snapshot) bool {
+	snap, err := BuildSnapshot(s.opts.RepoPath, s.opts.Branch, s.opts.Limit)
 	if err != nil {
-		return true // skip this cycle but keep watching
+		return true
 	}
 	select {
 	case out <- snap:
@@ -106,7 +128,6 @@ func fetchAll(repoPath, remote, branch string) error {
 		"+refs/heads/"+branch+":refs/remotes/"+remote+"/"+branch); err != nil {
 		return fmt.Errorf("fetch branch: %w", err)
 	}
-	// Events ref is best-effort: the ref may not exist yet on a fresh repo.
 	_ = runFetch(repoPath, remote, "+"+clarityrefs.EventsRef+":"+clarityrefs.EventsRef)
 	return nil
 }

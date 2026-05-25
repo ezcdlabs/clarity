@@ -19,7 +19,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 func main() {
@@ -65,7 +65,7 @@ func play(s *Scenario) error {
 	scenarioStart := time.Now()
 	nowFn := func() time.Time { return demoBase.Add(time.Since(scenarioStart)) }
 
-	snapshots := make(chan watcher.Snapshot, 1)
+	snapshots := make(chan core.Snapshot, 1)
 	p := tui.NewProgramWithClock(s.Repo, snapshots, nowFn)
 
 	go func() {

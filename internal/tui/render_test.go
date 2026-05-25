@@ -7,7 +7,7 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 func ev(stage, status string, ts int64) clarityrefs.Event {
@@ -17,7 +17,7 @@ func ev(stage, status string, ts int64) clarityrefs.Event {
 // --- RenderRow ---------------------------------------------------------------
 
 func TestRenderRow_ShowsAuthorAndSubject(t *testing.T) {
-	view := watcher.CommitView{
+	view := core.CommitView{
 		SHA: "abc", Author: "alice", Subject: "refactor user model",
 	}
 	out := tui.RenderRow(view, 80)
@@ -30,7 +30,7 @@ func TestRenderRow_ShowsAuthorAndSubject(t *testing.T) {
 }
 
 func TestRenderRow_PassedShowsCheckmark(t *testing.T) {
-	view := watcher.CommitView{
+	view := core.CommitView{
 		SHA: "abc", Author: "alice", Subject: "x",
 		Events: []clarityrefs.Event{ev("ci", "passed", 100)},
 	}
@@ -41,7 +41,7 @@ func TestRenderRow_PassedShowsCheckmark(t *testing.T) {
 }
 
 func TestRenderRow_FailedShowsCross(t *testing.T) {
-	view := watcher.CommitView{
+	view := core.CommitView{
 		SHA: "abc", Author: "eve", Subject: "x",
 		Events: []clarityrefs.Event{ev("ci", "failed", 100)},
 	}
@@ -52,7 +52,7 @@ func TestRenderRow_FailedShowsCross(t *testing.T) {
 }
 
 func TestRenderRow_RunningShowsSpinner(t *testing.T) {
-	view := watcher.CommitView{
+	view := core.CommitView{
 		SHA: "abc", Author: "dave", Subject: "x",
 		Events: []clarityrefs.Event{ev("ci", "started", 100)},
 	}
@@ -73,8 +73,8 @@ func TestRenderRow_RunningShowsSpinner(t *testing.T) {
 // --- RenderSnapshot ----------------------------------------------------------
 
 func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "1", Author: "alice", Subject: "first"},
 			{SHA: "2", Author: "bob", Subject: "second"},
 			{SHA: "3", Author: "carol", Subject: "third"},
@@ -95,8 +95,8 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 // only-currently-active groups.
 func TestRenderSnapshot_AllThreeDividersAlwaysRender(t *testing.T) {
 	// Only HEAD has content; CI Passed and Deployed are both empty.
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "1", Author: "alice", Subject: "wip"},
 		},
 	}
@@ -110,7 +110,7 @@ func TestRenderSnapshot_AllThreeDividersAlwaysRender(t *testing.T) {
 
 // Even with zero commits at all, the structural frame stays in place.
 func TestRenderSnapshot_EmptySnapshot_StillShowsDividers(t *testing.T) {
-	out := tui.RenderSnapshot(watcher.Snapshot{}, 80, time.Time{}, 0)
+	out := tui.RenderSnapshot(core.Snapshot{}, 80, time.Time{}, 0)
 	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected divider %q in empty render, got:\n%s", label, out)
@@ -120,8 +120,8 @@ func TestRenderSnapshot_EmptySnapshot_StillShowsDividers(t *testing.T) {
 
 // A snapshot covering all three lifecycle stages should produce all three section headers.
 func TestRenderSnapshot_AllThreeSections(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "d", Author: "dave", Subject: "broken"},
 			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("ci", "passed", 200)}},
 			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{
@@ -144,8 +144,8 @@ func TestRenderSnapshot_AllThreeSections(t *testing.T) {
 
 // While a deploy is in flight the Deployed batch subheader says "deploying…".
 func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "b", Author: "bob", Subject: "shipping", Events: []clarityrefs.Event{
 				ev("ci", "passed", 100), ev("deploy", "started", 200),
 			}},
@@ -167,7 +167,7 @@ func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
 func TestRenderSnapshot_WeekDivider_AppearsAboveDeployedBatch(t *testing.T) {
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC).Unix()
 	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC).Unix()
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: "a", Author: "alice", Subject: "shipped",
 			Time:   time.Unix(c, 0),
 			Events: []clarityrefs.Event{ev("ci", "passed", c+60), ev("deploy", "passed", d)}},
@@ -189,7 +189,7 @@ func TestRenderSnapshot_WeekDivider_MergedIntoDeployedHeaderForTopWeek(t *testin
 	d1 := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC).Unix() // week 2
 	c2 := time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC).Unix()
 	d2 := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC).Unix() // week 3
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: "b", Author: "alice", Subject: "newer",
 			Time:   time.Unix(c2, 0),
 			Events: []clarityrefs.Event{ev("ci", "passed", c2+60), ev("deploy", "passed", d2)}},
@@ -226,7 +226,7 @@ func TestRenderSnapshot_WeekDivider_MergedIntoDeployedHeaderForTopWeek(t *testin
 }
 
 func TestRenderSnapshot_WeekDivider_NotShownForEmptyDeployed(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: "a", Author: "alice", Subject: "ci only",
 			Events: []clarityrefs.Event{ev("ci", "passed", 100)}},
 	}}
@@ -237,8 +237,8 @@ func TestRenderSnapshot_WeekDivider_NotShownForEmptyDeployed(t *testing.T) {
 }
 
 func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "c", Author: "carol", Subject: "shipping", Events: []clarityrefs.Event{
 				ev("ci", "passed", 300), ev("deploy", "started", 350),
 			}},
@@ -260,8 +260,8 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 // to distinguish "what's running right now" from settled deploy history.
 // Older batches keep the plain "deployed Xm ago" label.
 func TestRenderSnapshot_TopDeployedBatch_IsMarkedLive(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "b", Author: "bob", Subject: "fresh ship", Events: []clarityrefs.Event{
 				ev("ci", "passed", 300), ev("deploy", "passed", 350),
 			}},
@@ -284,8 +284,8 @@ func TestRenderSnapshot_TopDeployedBatch_IsMarkedLive(t *testing.T) {
 // The row format no longer trails with explicit "ci" / "deploy" labels —
 // the icon and section convey that.
 func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "a", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
 				ev("ci", "passed", 100), ev("deploy", "passed", 150),
 			}},
@@ -310,8 +310,8 @@ func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
 func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
 	commitTime := time.Unix(1000, 0)
 	now := time.Unix(1090, 0) // 1m 30s later
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "a", Author: "alice", Subject: "wip", Time: commitTime,
 				Events: []clarityrefs.Event{ev("ci", "started", 50)}},
 		},
@@ -327,8 +327,8 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 	commitTime := time.Unix(1000, 0)
 	deployTime := time.Unix(1300, 0) // exactly 5m after commit
 	now := time.Unix(9999, 0)        // long after — must NOT influence frozen value
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "a", Author: "alice", Subject: "shipped", Time: commitTime,
 				Events: []clarityrefs.Event{
 					ev("ci", "passed", 100),
@@ -344,8 +344,8 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 
 // Sections appear top-to-bottom in lifecycle order: HEAD → CI Passed → Deployed.
 func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "d", Author: "dave", Subject: "broken"},
 			{SHA: "c", Author: "carol", Subject: "built", Events: []clarityrefs.Event{ev("ci", "passed", 200)}},
 			{SHA: "b", Author: "bob", Subject: "shipped", Events: []clarityrefs.Event{

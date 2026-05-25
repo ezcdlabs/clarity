@@ -7,14 +7,14 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 const fakeSHA1 = "abc1234567890abc1234567890abc1234567890a"
 const fakeSHA2 = "def4567890abcdef4567890abcdef4567890abcd"
 
 func TestRenderPlain_EmptySnapshot_ShowsHeaderAndSections(t *testing.T) {
-	out := tui.RenderPlain("clarity", watcher.Snapshot{}, time.Unix(0, 0), tui.PlainOptions{})
+	out := tui.RenderPlain("clarity", core.Snapshot{}, time.Unix(0, 0), tui.PlainOptions{})
 	for _, want := range []string{"clarity", "HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output, got:\n%s", want, out)
@@ -23,7 +23,7 @@ func TestRenderPlain_EmptySnapshot_ShowsHeaderAndSections(t *testing.T) {
 }
 
 func TestRenderPlain_HeaderShowsCIAndDeployBadges(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "x", Events: []clarityrefs.Event{
 			{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
 			{Stage: "deploy", Status: "failed", Time: time.Unix(200, 0)},
@@ -46,7 +46,7 @@ func TestRenderPlain_HeaderShowsCIAndDeployBadges(t *testing.T) {
 }
 
 func TestRenderPlain_PassedCommit_ShowsTickAndAuthor(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "fix things",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 	}}
@@ -63,7 +63,7 @@ func TestRenderPlain_PassedCommit_ShowsTickAndAuthor(t *testing.T) {
 }
 
 func TestRenderPlain_FailedCommit_ShowsCross(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "broke ci",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "failed", Time: time.Unix(100, 0)}}},
 	}}
@@ -74,7 +74,7 @@ func TestRenderPlain_FailedCommit_ShowsCross(t *testing.T) {
 }
 
 func TestRenderPlain_StartedCommit_ShowsStaticEllipsis(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "in progress",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "started", Time: time.Unix(100, 0)}}},
 	}}
@@ -88,7 +88,7 @@ func TestRenderPlain_StartedCommit_ShowsStaticEllipsis(t *testing.T) {
 }
 
 func TestRenderPlain_InFlightDeploy_ShowsDeployingSubheader(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "deploying",
 			Events: []clarityrefs.Event{
 				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
@@ -102,7 +102,7 @@ func TestRenderPlain_InFlightDeploy_ShowsDeployingSubheader(t *testing.T) {
 }
 
 func TestRenderPlain_DeployedBatch_ShowsAgoAndLive(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "shipped",
 			Events: []clarityrefs.Event{
 				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
@@ -120,7 +120,7 @@ func TestRenderPlain_DeployedBatch_ShowsAgoAndLive(t *testing.T) {
 }
 
 func TestRenderPlain_ShowSHAs_OptIn(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "x",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 	}}
@@ -138,7 +138,7 @@ func TestRenderPlain_ShowSHAs_OptIn(t *testing.T) {
 }
 
 func TestRenderPlain_Limit_TruncatesCommits(t *testing.T) {
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "newer",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 		{SHA: fakeSHA2, Author: "bob", Subject: "older",
@@ -158,7 +158,7 @@ func TestRenderPlain_WeekDivider_AppearsAboveFirstBatchOfWeek(t *testing.T) {
 	// "W2026-02" divider line with deploy count and avg lead time.
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "ship",
 			Time:   c,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
@@ -178,7 +178,7 @@ func TestRenderPlain_WeekDivider_TwoWeeks_TwoDividers(t *testing.T) {
 	d1 := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC) // week 2
 	c2 := time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC)
 	d2 := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC) // week 3
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA2, Author: "alice", Subject: "newer", Time: c2,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d2}}},
 		{SHA: fakeSHA1, Author: "alice", Subject: "older", Time: c1,
@@ -205,7 +205,7 @@ func TestRenderPlain_WeekDivider_MergedIntoDeployedHeader(t *testing.T) {
 	// saves a row and parallels the TUI's merged divider.
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "ship",
 			Time:   c,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
@@ -226,7 +226,7 @@ func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
 	// A commit with only CI events (no deploy) must not produce a week
 	// divider — week dividers are a Deployed-section feature.
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "ci only", Time: c,
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(time.Minute)}}},
 	}}
@@ -239,7 +239,7 @@ func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
 func TestRenderPlain_NoColor(t *testing.T) {
 	// Plain mode is for non-TTY consumers (pipes, agents). It must not embed
 	// ANSI escape sequences — the row icons (✓ ✗ …) are UTF-8 glyphs only.
-	snap := watcher.Snapshot{Commits: []watcher.CommitView{
+	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: fakeSHA1, Author: "alice", Subject: "x",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 	}}

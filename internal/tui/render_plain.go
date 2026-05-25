@@ -7,7 +7,6 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/core"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
 // PlainOptions configures RenderPlain. ShowSHAs surfaces a short commit hash
@@ -23,12 +22,12 @@ type PlainOptions struct {
 // matching the TUI's groupings and batch subheaders. Aimed at piped/agent
 // consumers — the row vocabulary (✓ ✗ … plus section names) is greppable
 // without needing key:value annotations.
-func RenderPlain(repoName string, snap watcher.Snapshot, now time.Time, opts PlainOptions) string {
+func RenderPlain(repoName string, snap core.Snapshot, now time.Time, opts PlainOptions) string {
 	commits := snap.Commits
 	if opts.Limit > 0 && len(commits) > opts.Limit {
 		commits = commits[:opts.Limit]
 	}
-	capped := watcher.Snapshot{Commits: commits}
+	capped := core.Snapshot{Commits: commits}
 
 	g := GroupCommits(capped.Commits)
 	indexBySHA := make(map[string]int, len(capped.Commits))
@@ -40,7 +39,7 @@ func RenderPlain(repoName string, snap watcher.Snapshot, now time.Time, opts Pla
 	b.WriteString(plainHeader(repoName, capped))
 	b.WriteString("\n\n")
 
-	writeSection := func(label string, commits []watcher.CommitView) {
+	writeSection := func(label string, commits []core.CommitView) {
 		b.WriteString(label)
 		b.WriteString("\n")
 		for _, c := range commits {
@@ -123,7 +122,7 @@ func weekKey(year, week int) int64 { return int64(year)*100 + int64(week) }
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
 // Mirrors the TUI's header semantics: "started" and "skipped" events are
 // ignored so the badge holds its colour across transient retries.
-func plainHeader(repoName string, snap watcher.Snapshot) string {
+func plainHeader(repoName string, snap core.Snapshot) string {
 	ci := plainBadge(core.CurrentStageStatus(snap.Commits, "ci"))
 	deploy := plainBadge(core.CurrentStageStatus(snap.Commits, "deploy"))
 	return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, deploy)
@@ -164,7 +163,7 @@ func plainBatchSubheader(b DeployBatch, now time.Time, isLive bool) string {
 	}
 }
 
-func plainRow(view watcher.CommitView, group *Groupings, index int, now time.Time, opts PlainOptions) string {
+func plainRow(view core.CommitView, group *Groupings, index int, now time.Time, opts PlainOptions) string {
 	icon := plainCIIcon(view.Events)
 	var b strings.Builder
 	b.WriteString("  ")

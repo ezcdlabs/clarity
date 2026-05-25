@@ -9,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 func newModel(repo string) tui.Model {
@@ -30,7 +30,7 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 // After the first snapshot arrives — even an empty one — the loading
 // placeholder is gone and the structural dividers take over instead.
 func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
-	m, _ := newModel("clarity").Update(tui.SnapshotMsg(watcher.Snapshot{}))
+	m, _ := newModel("clarity").Update(tui.SnapshotMsg(core.Snapshot{}))
 	out := m.View().Content
 	if strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("should no longer show loading once a snapshot has arrived, got:\n%s", out)
@@ -43,8 +43,8 @@ func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
 }
 
 func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "1", Author: "alice", Subject: "first commit",
 				Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 		},
@@ -70,8 +70,8 @@ func TestModel_HeaderShowsRepoName(t *testing.T) {
 
 // The header shows pipeline status badges for CI and deploy.
 func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
-	snap := watcher.Snapshot{
-		Commits: []watcher.CommitView{
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
 			{SHA: "1", Author: "alice", Subject: "x", Events: []clarityrefs.Event{
 				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
 				{Stage: "deploy", Status: "passed", Time: time.Unix(150, 0)},
@@ -92,16 +92,16 @@ func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 // clipped — and scrolling down reveals different content.
 func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 	// Build a snapshot with 30 commits — far more than our small terminal.
-	var commits []watcher.CommitView
+	var commits []core.CommitView
 	for i := 0; i < 30; i++ {
-		commits = append(commits, watcher.CommitView{
+		commits = append(commits, core.CommitView{
 			SHA:     pad("sha", i),
 			Author:  pad("auth", i),
 			Subject: pad("subj", i),
 			Time:    time.Unix(int64(1_000_000+i), 0),
 		})
 	}
-	snap := watcher.Snapshot{Commits: commits}
+	snap := core.Snapshot{Commits: commits}
 
 	// Tiny terminal — 10 rows total, leaving ~8 for the body.
 	m := tui.New("clarity").WithSize(80, 10)

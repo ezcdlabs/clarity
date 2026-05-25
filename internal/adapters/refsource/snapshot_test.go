@@ -1,4 +1,4 @@
-package watcher_test
+package refsource_test
 
 import (
 	"os/exec"
@@ -7,10 +7,14 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/gittest"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
+// fetchAll mirrors what Source.Watch does between ticks, so the directly-
+// called snapshot helper sees the same local refs state the polling loop
+// would. Used only by tests that invoke refsource.BuildSnapshot without
+// going through Watch's initial fetch.
 func fetchAll(t *testing.T, repoPath string) {
 	t.Helper()
 	cmd := exec.Command("git", "fetch", "origin",
@@ -29,7 +33,7 @@ func TestBuildSnapshot_EmptyRepo_ReturnsInitialCommitOnly(t *testing.T) {
 	clone := remote.NewClone(t)
 	fetchAll(t, clone.Path)
 
-	snap, err := watcher.BuildSnapshot(clone.Path, "main", 50)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 50)
 	if err != nil {
 		t.Fatalf("BuildSnapshot: %v", err)
 	}
@@ -53,7 +57,7 @@ func TestBuildSnapshot_ReturnsCommitsNewestFirst(t *testing.T) {
 	clone.Push("main")
 
 	fetchAll(t, clone.Path)
-	snap, err := watcher.BuildSnapshot(clone.Path, "main", 50)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 50)
 	if err != nil {
 		t.Fatalf("BuildSnapshot: %v", err)
 	}
@@ -78,7 +82,7 @@ func TestBuildSnapshot_RespectsLimit(t *testing.T) {
 	clone.Push("main")
 	fetchAll(t, clone.Path)
 
-	snap, err := watcher.BuildSnapshot(clone.Path, "main", 3)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 3)
 	if err != nil {
 		t.Fatalf("BuildSnapshot: %v", err)
 	}
@@ -94,7 +98,6 @@ func TestBuildSnapshot_JoinsEventsToCommitsBySHA(t *testing.T) {
 	clone.CommitAll("a commit")
 	clone.Push("main")
 
-	// Find HEAD SHA via git rev-parse.
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = clone.Path
 	out, err := cmd.Output()
@@ -112,7 +115,7 @@ func TestBuildSnapshot_JoinsEventsToCommitsBySHA(t *testing.T) {
 	}
 
 	fetchAll(t, clone.Path)
-	snap, err := watcher.BuildSnapshot(clone.Path, "main", 50)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 50)
 	if err != nil {
 		t.Fatalf("BuildSnapshot: %v", err)
 	}
@@ -141,13 +144,13 @@ func TestBuildSnapshot_CommitsWithoutEvents_HaveEmptyList(t *testing.T) {
 	clone.Push("main")
 	fetchAll(t, clone.Path)
 
-	snap, err := watcher.BuildSnapshot(clone.Path, "main", 50)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 50)
 	if err != nil {
 		t.Fatalf("BuildSnapshot: %v", err)
 	}
 	for _, c := range snap.Commits {
 		if c.Events == nil {
-			continue // nil is fine
+			continue
 		}
 		if len(c.Events) != 0 {
 			t.Errorf("expected no events for %s, got %d", c.SHA, len(c.Events))

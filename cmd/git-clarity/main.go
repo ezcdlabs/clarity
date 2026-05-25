@@ -14,11 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
-	"github.com/ezcdlabs/clarity/internal/refs"
 	"github.com/ezcdlabs/clarity/internal/report"
 	"github.com/ezcdlabs/clarity/internal/tui"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
 // version is set at build time via -ldflags "-X main.version=<value>".
@@ -92,22 +91,21 @@ func runTUI(opts rootOptions) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	if err := refs.EnsureClarityFetchRefspec(repoPath, "origin"); err != nil {
-		return fmt.Errorf("configure clarity fetch refspec: %w", err)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	const branch = "main"
-	snapshots := watcher.Watch(ctx, watcher.Options{
+	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		Remote:   "origin",
-		Branch:   branch,
+		Branch:   "main",
 		Limit:    effectiveLimit(opts.limit),
 	})
-	return tui.Run(filepath.Base(repoPath), snapshots)
+	if err != nil {
+		return err
+	}
+	return tui.Run(filepath.Base(repoPath), src.Watch(ctx))
 }
 
-// runPlain takes one snapshot from the watcher (which performs the initial
+// runPlain takes one snapshot from the source (which performs the initial
 // fetch on first emit) and renders it as static text. Intended for piped
 // agent / shell-script consumers.
 func runPlain(opts rootOptions) error {
@@ -115,30 +113,30 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	if err := refs.EnsureClarityFetchRefspec(repoPath, "origin"); err != nil {
-		return fmt.Errorf("configure clarity fetch refspec: %w", err)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	const branch = "main"
-	snapshots := watcher.Watch(ctx, watcher.Options{
+	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		Remote:   "origin",
-		Branch:   branch,
+		Branch:   "main",
 		Limit:    effectiveLimit(opts.limit),
 	})
+	if err != nil {
+		return err
+	}
+	snapshots := src.Watch(ctx)
 
-	// The watcher emits its first snapshot immediately after the initial
+	// The source emits its first snapshot immediately after the initial
 	// fetch — we consume that one and exit. A timeout protects against a
 	// hung fetch (network problems) so plain mode can't wedge indefinitely.
 	select {
 	case snap, ok := <-snapshots:
 		if !ok {
-			return fmt.Errorf("watcher closed before emitting a snapshot")
+			return fmt.Errorf("source closed before emitting a snapshot")
 		}
 		fmt.Print(tui.RenderPlain(filepath.Base(repoPath), snap, time.Now(), tui.PlainOptions{
 			ShowSHAs: opts.showSHAs,
-			// Limit is already applied by the watcher; passing 0 here means
+			// Limit is already applied by the source; passing 0 here means
 			// "don't truncate further" inside RenderPlain.
 			Limit: 0,
 		}))
@@ -148,7 +146,7 @@ func runPlain(opts rootOptions) error {
 	}
 }
 
-// effectiveLimit maps the CLI's "0 = unlimited" convention onto the watcher's
+// effectiveLimit maps the CLI's "0 = unlimited" convention onto the source's
 // Limit field, which would otherwise reset 0 back to its own default of 50.
 func effectiveLimit(cliLimit int) int {
 	if cliLimit <= 0 {

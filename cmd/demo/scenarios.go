@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/watcher"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 // Frame is a single demo step: the snapshot to display and how long to hold
 // it before advancing.
 type Frame struct {
-	Snapshot watcher.Snapshot
+	Snapshot core.Snapshot
 	Hold     time.Duration
 }
 
@@ -63,8 +63,8 @@ func ev(stage, status string, off time.Duration) clarityrefs.Event {
 }
 
 // commit is a small constructor to keep scenario data readable.
-func commit(sha, author, subject string, commitOffset time.Duration, events ...clarityrefs.Event) watcher.CommitView {
-	return watcher.CommitView{
+func commit(sha, author, subject string, commitOffset time.Duration, events ...clarityrefs.Event) core.CommitView {
+	return core.CommitView{
 		SHA:     sha,
 		Author:  author,
 		Subject: subject,
@@ -93,7 +93,7 @@ var happyPath = Scenario{
 		// NextDeploy: alice, carol (built but not yet deployed)
 		// Deployed: frank (production), grace (older history)
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
 				commit("dave02", "dave", "update dependencies", -2*time.Minute,
 					ev("ci", "started", -90*time.Second),
@@ -123,7 +123,7 @@ var happyPath = Scenario{
 		// Frame 2 — dave's build passes.
 		// Build line moves to dave; he joins NextDeploy.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
 				commit("dave02", "dave", "update dependencies", -2*time.Minute,
 					ev("ci", "started", -90*time.Second),
@@ -155,7 +155,7 @@ var happyPath = Scenario{
 		// dave's commit gets a deploy:started event; the section header annotates "deploying…"
 		// and the entire batch (dave, alice, carol) is implicitly being deployed.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
 				commit("dave02", "dave", "update dependencies", -2*time.Minute,
 					ev("ci", "passed", 2*time.Second),
@@ -188,7 +188,7 @@ var happyPath = Scenario{
 		// batch (alice, carol) gets fix-forwarded into Deployed at dave's deploy time.
 		// frank stays frozen at his OWN earlier deploy time (own-deploy wins).
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
 				commit("dave02", "dave", "update dependencies", -2*time.Minute,
 					ev("ci", "passed", 2*time.Second),
@@ -233,7 +233,7 @@ var deployFailure = Scenario{
 	Frames: []Frame{
 		// Frame 1 — alice is mid-deploy.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("alice1", "alice", "refactor user model", -3*time.Minute,
 					ev("ci", "passed", -150*time.Second),
 					ev("deploy", "started", -30*time.Second),
@@ -248,7 +248,7 @@ var deployFailure = Scenario{
 
 		// Frame 2 — alice's deploy fails. Standalone failed batch.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("alice1", "alice", "refactor user model", -3*time.Minute,
 					ev("ci", "passed", -150*time.Second),
 					ev("deploy", "started", -30*time.Second),
@@ -265,7 +265,7 @@ var deployFailure = Scenario{
 		// Frame 3 — bob lands as the fix-forward and starts deploying. alice's
 		// failed batch is absorbed into bob's "deploying…" batch.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob003", "bob", "patch token validation", -10*time.Second,
 					ev("ci", "passed", 6*time.Second),
 					ev("deploy", "started", 8*time.Second),
@@ -305,7 +305,7 @@ var ciFailure = Scenario{
 	Frames: []Frame{
 		// Frame 1 — steady state, header green/green.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("alice1", "alice", "refactor user model", -10*time.Minute,
 					ev("ci", "passed", -9*time.Minute),
 					ev("deploy", "passed", -3*time.Minute),
@@ -321,7 +321,7 @@ var ciFailure = Scenario{
 		// Frame 2 — bob lands at HEAD, CI starts. Header stays green
 		// because the LATEST RESOLVED ci event is still alice's pass.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
 					ev("ci", "started", -15*time.Second),
 				),
@@ -340,7 +340,7 @@ var ciFailure = Scenario{
 		// Frame 3 — bob's CI FAILS. Header badge flips red. Bob's row
 		// in HEAD picks up the red ✗ icon.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("bob03", "bob", "add billing endpoint", -30*time.Second,
 					ev("ci", "started", -15*time.Second),
 					ev("ci", "failed", 5*time.Second),
@@ -360,7 +360,7 @@ var ciFailure = Scenario{
 		// Frame 4 — dave lands a fix on top. His CI is started; bob is
 		// still failed. Header stays red — newest resolved is bob's fail.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("dave04", "dave", "fix the billing bug", 8*time.Second,
 					ev("ci", "started", 10*time.Second),
 				),
@@ -385,7 +385,7 @@ var ciFailure = Scenario{
 		// of HEAD into CI Passed. Bob's individual ci event is still
 		// "failed" but stale, so his row icon dims to gray ✗.
 		{
-			Snapshot: watcher.Snapshot{Commits: []watcher.CommitView{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
 				commit("dave04", "dave", "fix the billing bug", 8*time.Second,
 					ev("ci", "started", 10*time.Second),
 					ev("ci", "passed", 20*time.Second),

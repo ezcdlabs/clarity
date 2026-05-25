@@ -17,7 +17,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/core"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
 // Re-export commonly-used core types so existing callers (tests, demo) keep
@@ -109,7 +108,7 @@ func spinnerFrame(idx int) string {
 // RenderRow renders one commit row using only that commit's own events —
 // no fix-forward awareness, no timer. Used for standalone tests; section
 // rendering goes through renderRowInGroup.
-func RenderRow(view watcher.CommitView, width int) string {
+func RenderRow(view core.CommitView, width int) string {
 	return renderRowInGroup(view, nil, 0, width, time.Time{}, 0)
 }
 
@@ -125,7 +124,7 @@ func RenderRow(view watcher.CommitView, width int) string {
 // now drives the live half of the timer; pass time.Time{} for tests that
 // don't care about timer values (timers won't render for commits with no
 // Time set anyway).
-func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx int) string {
+func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int) string {
 	g := GroupCommits(snap.Commits)
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
@@ -133,7 +132,7 @@ func RenderSnapshot(snap watcher.Snapshot, width int, now time.Time, spinnerIdx 
 	}
 
 	var b strings.Builder
-	writeFlat := func(title string, color color.Color, commits []watcher.CommitView) {
+	writeFlat := func(title string, color color.Color, commits []core.CommitView) {
 		b.WriteString(renderSectionDivider(title, color, width))
 		for _, c := range commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
@@ -360,7 +359,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive b
 // lead-time timer. The deploy status is implied by the section the row
 // sits in, so it isn't rendered explicitly. When width > 0 the timer is
 // right-aligned to that column.
-func renderRowInGroup(view watcher.CommitView, group *Groupings, index int, width int, now time.Time, spinnerIdx int) string {
+func renderRowInGroup(view core.CommitView, group *Groupings, index int, width int, now time.Time, spinnerIdx int) string {
 	icon := ciIcon(view.Events, group, index, spinnerIdx)
 	author := lipgloss.NewStyle().Foreground(colorGray).Render(view.Author)
 	subject := view.Subject

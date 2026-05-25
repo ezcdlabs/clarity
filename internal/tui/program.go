@@ -8,12 +8,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/internal/core"
-	"github.com/ezcdlabs/clarity/internal/watcher"
 )
 
-// SnapshotMsg is sent to the Bubble Tea program when the watcher emits a new
+// SnapshotMsg is sent to the Bubble Tea program when the source emits a new
 // snapshot.
-type SnapshotMsg watcher.Snapshot
+type SnapshotMsg core.Snapshot
 
 // tickMsg fires often enough to keep the spinner animating and the lead-time
 // timers updating.
@@ -29,7 +28,7 @@ const headerHeight = 2
 // state instead of the genuine "no commits" state), a clock function for
 // timer updates, and a scrollable viewport holding the body.
 type Model struct {
-	snap       watcher.Snapshot
+	snap       core.Snapshot
 	width      int
 	height     int
 	repoName   string
@@ -96,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
 	case SnapshotMsg:
-		m.snap = watcher.Snapshot(msg)
+		m.snap = core.Snapshot(msg)
 		m.received = true
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
@@ -144,7 +143,7 @@ func (m Model) View() tea.View {
 // badge has resolved to failed, the repo name flips bold red — a focused
 // alarm in the top-left where the eye naturally lands first, without
 // recolouring the rest of the header.
-func renderHeader(repoName string, snap watcher.Snapshot, width int) string {
+func renderHeader(repoName string, snap core.Snapshot, width int) string {
 	ciStatus := core.CurrentStageStatus(snap.Commits, "ci")
 	deployStatus := core.CurrentStageStatus(snap.Commits, "deploy")
 
@@ -198,18 +197,18 @@ func iconForStatus(status string) string {
 // returned *tea.Program is ready for callers to invoke .Run() on. Exposed
 // (rather than hidden inside Run) so the demo binary can also Send synthetic
 // messages — e.g. a scripted quit at the end of a recorded scenario.
-func NewProgram(repoName string, snapshots <-chan watcher.Snapshot) *tea.Program {
+func NewProgram(repoName string, snapshots <-chan core.Snapshot) *tea.Program {
 	return newProgram(repoName, snapshots, nil)
 }
 
 // NewProgramWithClock is like NewProgram but lets the caller drive the
 // timer's notion of "now". Used by the demo binary so lead-time timers tick
 // relative to a scenario's reference time rather than wall time.
-func NewProgramWithClock(repoName string, snapshots <-chan watcher.Snapshot, nowFn func() time.Time) *tea.Program {
+func NewProgramWithClock(repoName string, snapshots <-chan core.Snapshot, nowFn func() time.Time) *tea.Program {
 	return newProgram(repoName, snapshots, nowFn)
 }
 
-func newProgram(repoName string, snapshots <-chan watcher.Snapshot, nowFn func() time.Time) *tea.Program {
+func newProgram(repoName string, snapshots <-chan core.Snapshot, nowFn func() time.Time) *tea.Program {
 	m := New(repoName)
 	if nowFn != nil {
 		m = m.WithClock(nowFn)
@@ -233,7 +232,7 @@ func newProgram(repoName string, snapshots <-chan watcher.Snapshot, nowFn func()
 
 // Run starts the Bubble Tea program and blocks until the user quits or the
 // program exits.
-func Run(repoName string, snapshots <-chan watcher.Snapshot) error {
+func Run(repoName string, snapshots <-chan core.Snapshot) error {
 	_, err := NewProgram(repoName, snapshots).Run()
 	return err
 }

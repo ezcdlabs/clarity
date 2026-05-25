@@ -1,18 +1,20 @@
-//go:build integration
+//go:build ssh
 
-// Package integration contains tests that run clarity against a live SSH git
-// server (the "server" Docker Compose service) configured exactly like
-// production GitHub: receive.fsckObjects=true, restricted git-shell user,
-// pubkey-only auth.
+// SSH-backed integration tests for clarityrefs. These exercise the write
+// path against a real SSH git server (an alpine+openssh container with
+// receive.fsckObjects=true, mirroring GitHub's enforcement) — the exact
+// behaviours that the file-backed local tests can't catch:
 //
-// Run from the repo root with:
+//   - Concurrent push / FF-retry over real network round-trips, not
+//     local-fs writes.
+//   - GitHub's receive.fsckObjects rejection of the flat-tree shape
+//     (the "fullPathname" class of bug). Only triggers against a remote
+//     git server, never against a local-file remote.
 //
-//	docker compose -f test/integration/docker-compose.yml run --rm client
-//
-// Or for a manual shell inside the client container:
-//
-//	docker compose -f test/integration/docker-compose.yml run --rm client bash
-package integration_test
+// Gated by the `ssh` build tag; default `go test ./...` doesn't run them
+// (and doesn't even compile testcontainers-go's transitive dependencies).
+// Run with `go test -tags ssh ./clarityrefs/`.
+package clarityrefs_test
 
 import (
 	"encoding/hex"
@@ -25,65 +27,29 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/gittest"
 )
-
-const fakeSHA = "0123456789abcdef0123456789abcdef01234567"
-
-// serverHost returns the hostname of the SSH git server from the environment.
-// The test is skipped if the variable is not set (i.e. running outside Docker).
-func serverHost(t *testing.T) string {
-	t.Helper()
-	h := os.Getenv("CLARITY_SSH_SERVER")
-	if h == "" {
-		t.Skip("CLARITY_SSH_SERVER not set — run inside the Docker Compose client container")
-	}
-	return h
-}
-
-// cloneRepo clones git@host:/home/git/repo.git into a temp directory.
-func cloneRepo(t *testing.T, host string) string {
-	t.Helper()
-	dir := t.TempDir()
-	remoteURL := fmt.Sprintf("git@%s:/home/git/repo.git", host)
-	run(t, "", "git", "clone", remoteURL, dir)
-	run(t, dir, "git", "config", "user.email", "test@clarity")
-	run(t, dir, "git", "config", "user.name", "Test")
-	return dir
-}
-
-// fetchEventsRef pulls the events ref so reads see the latest server state.
-func fetchEventsRef(t *testing.T, repoPath string) {
-	t.Helper()
-	cmd := exec.Command("git", "fetch", "origin", "+refs/clarity/events:refs/clarity/events")
-	cmd.Dir = repoPath
-	if out, err := cmd.CombinedOutput(); err != nil &&
-		!strings.Contains(string(out), "couldn't find remote ref") {
-		t.Fatalf("fetch events ref: %v\n%s", err, out)
-	}
-}
 
 // TestSSHWriteEvent_LandsOnEventsRef is the basic end-to-end: write one event
 // and read it back from a fresh clone. Exercises the optimistic push loop and
 // nested-tree builder against a real SSH+fsckObjects remote.
 func TestSSHWriteEvent_LandsOnEventsRef(t *testing.T) {
-	host := serverHost(t)
-	clone := cloneRepo(t, host)
+	remote := gittest.NewSSHRemote(t)
+	writer := remote.NewClone(t)
 
-	// Use a unique SHA suffix so multiple test runs against the same server
-	// don't conflict.
 	uniqueSHA := fmt.Sprintf("%040x", time.Now().UnixNano())[:40]
 	ev := clarityrefs.Event{
 		Stage:  "ci",
 		Status: "passed",
 		Time:   time.Now(),
 	}
-	if err := clarityrefs.WriteEvent(clone, "origin", uniqueSHA, ev); err != nil {
+	if err := clarityrefs.WriteEvent(writer.Path, "origin", uniqueSHA, ev); err != nil {
 		t.Fatalf("WriteEvent over SSH failed: %v", err)
 	}
 
-	reader := cloneRepo(t, host)
-	fetchEventsRef(t, reader)
-	got, err := clarityrefs.ReadEvents(reader, uniqueSHA)
+	reader := remote.NewClone(t)
+	fetchEventsRefSSH(t, reader.Path)
+	got, err := clarityrefs.ReadEvents(reader.Path, uniqueSHA)
 	if err != nil {
 		t.Fatalf("ReadEvents: %v", err)
 	}
@@ -99,9 +65,9 @@ func TestSSHWriteEvent_LandsOnEventsRef(t *testing.T) {
 // network remote. Two clones write to the same SHA simultaneously; both events
 // must be present in the final state.
 func TestSSHConcurrentWriters_BothLand(t *testing.T) {
-	host := serverHost(t)
-	clone1 := cloneRepo(t, host)
-	clone2 := cloneRepo(t, host)
+	remote := gittest.NewSSHRemote(t)
+	clone1 := remote.NewClone(t)
+	clone2 := remote.NewClone(t)
 
 	uniqueSHA := fmt.Sprintf("%040x", time.Now().UnixNano())[:40]
 
@@ -111,12 +77,12 @@ func TestSSHConcurrentWriters_BothLand(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		ev := clarityrefs.Event{Stage: "ci", Status: "passed", Time: time.Now()}
-		err1 = clarityrefs.WriteEvent(clone1, "origin", uniqueSHA, ev)
+		err1 = clarityrefs.WriteEvent(clone1.Path, "origin", uniqueSHA, ev)
 	}()
 	go func() {
 		defer wg.Done()
 		ev := clarityrefs.Event{Stage: "deploy", Status: "passed", Time: time.Now()}
-		err2 = clarityrefs.WriteEvent(clone2, "origin", uniqueSHA, ev)
+		err2 = clarityrefs.WriteEvent(clone2.Path, "origin", uniqueSHA, ev)
 	}()
 	wg.Wait()
 	if err1 != nil {
@@ -126,9 +92,9 @@ func TestSSHConcurrentWriters_BothLand(t *testing.T) {
 		t.Errorf("clone2 WriteEvent: %v", err2)
 	}
 
-	reader := cloneRepo(t, host)
-	fetchEventsRef(t, reader)
-	got, err := clarityrefs.ReadEvents(reader, uniqueSHA)
+	reader := remote.NewClone(t)
+	fetchEventsRefSSH(t, reader.Path)
+	got, err := clarityrefs.ReadEvents(reader.Path, uniqueSHA)
 	if err != nil {
 		t.Fatalf("ReadEvents: %v", err)
 	}
@@ -140,12 +106,13 @@ func TestSSHConcurrentWriters_BothLand(t *testing.T) {
 // TestSSHFsckObjects_RejectsInvalidTree verifies the test server is correctly
 // configured: a tree with a slash in an entry name (the old "fullPathname"
 // bug shape) is rejected. Without this check, a regression to the flat-tree
-// bug would silently pass against the test server.
+// bug would silently pass against any local-file remote — only real git
+// servers with receive.fsckObjects=true catch it.
 func TestSSHFsckObjects_RejectsInvalidTree(t *testing.T) {
-	host := serverHost(t)
-	repoPath := cloneRepo(t, host)
+	remote := gittest.NewSSHRemote(t)
+	clone := remote.NewClone(t)
 
-	blobHash := strings.TrimSpace(runOutputStdin(t, repoPath, "test data\n",
+	blobHash := strings.TrimSpace(runOutputStdinSSH(t, clone.Path, "test data\n",
 		"git", "hash-object", "-w", "--stdin"))
 
 	blobHashBytes, err := hex.DecodeString(blobHash)
@@ -158,16 +125,16 @@ func TestSSHFsckObjects_RejectsInvalidTree(t *testing.T) {
 	var rawTree []byte
 	rawTree = append(rawTree, []byte("100644 events/abc.json\x00")...)
 	rawTree = append(rawTree, blobHashBytes...)
-	treeHash := strings.TrimSpace(runOutputStdin(t, repoPath, string(rawTree),
+	treeHash := strings.TrimSpace(runOutputStdinSSH(t, clone.Path, string(rawTree),
 		"git", "hash-object", "--literally", "-t", "tree", "-w", "--stdin"))
 
-	parentHash := strings.TrimSpace(runOutput(t, repoPath, "git", "rev-parse", "origin/main"))
+	parentHash := strings.TrimSpace(runOutputSSH(t, clone.Path, "git", "rev-parse", "origin/main"))
 	env := append(os.Environ(),
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
 		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
 	)
 	commitCmd := exec.Command("git", "commit-tree", treeHash, "-p", parentHash, "-m", "bad tree")
-	commitCmd.Dir = repoPath
+	commitCmd.Dir = clone.Path
 	commitCmd.Env = env
 	commitOut, err := commitCmd.Output()
 	if err != nil {
@@ -176,7 +143,7 @@ func TestSSHFsckObjects_RejectsInvalidTree(t *testing.T) {
 	badCommit := strings.TrimSpace(string(commitOut))
 
 	pushCmd := exec.Command("git", "push", "origin", badCommit+":refs/heads/probe-fsck")
-	pushCmd.Dir = repoPath
+	pushCmd.Dir = clone.Path
 	out, err := pushCmd.CombinedOutput()
 	t.Logf("push output:\n%s", out)
 	if err == nil {
@@ -187,20 +154,22 @@ func TestSSHFsckObjects_RejectsInvalidTree(t *testing.T) {
 	}
 }
 
-// --- helpers -----------------------------------------------------------------
+// --- helpers (SSH-suffixed so they don't collide with the local-backend
+//   helpers in clarityrefs_test.go's package) -----------------------------
 
-func run(t *testing.T, dir string, args ...string) {
+// fetchEventsRefSSH pulls the events ref so reads see the latest server state.
+// Mirrors the helper that used to live in test/integration/clarityrefs_test.go.
+func fetchEventsRefSSH(t *testing.T, repoPath string) {
 	t.Helper()
-	cmd := exec.Command(args[0], args[1:]...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%v: %v\n%s", args, err, out)
+	cmd := exec.Command("git", "fetch", "origin", "+refs/clarity/events:refs/clarity/events")
+	cmd.Dir = repoPath
+	if out, err := cmd.CombinedOutput(); err != nil &&
+		!strings.Contains(string(out), "couldn't find remote ref") {
+		t.Fatalf("fetch events ref: %v\n%s", err, out)
 	}
 }
 
-func runOutput(t *testing.T, dir string, args ...string) string {
+func runOutputSSH(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
@@ -211,7 +180,7 @@ func runOutput(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-func runOutputStdin(t *testing.T, dir, stdin string, args ...string) string {
+func runOutputStdinSSH(t *testing.T, dir, stdin string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir

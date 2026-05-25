@@ -11,13 +11,12 @@ import (
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
-// SnapshotMsg is sent to the Bubble Tea program for each Snapshot the
-// renderer pulls off its Views channel. The Model only needs the Snapshot
-// part of the View (RepoName, Commits) — DeriveView's other outputs are
-// recomputed inside RenderSnapshot for now, since the existing pure
-// renderer takes a Snapshot, not a View. A later cleanup can fold the View
-// in directly so derived Groups / Weekly aren't recomputed.
-type SnapshotMsg core.Snapshot
+// ViewMsg is sent to the Bubble Tea program for each View the renderer
+// pulls off its Views channel. Carries the derived Groups / Weekly /
+// Header (currently re-derived inside RenderSnapshot — folding them in
+// is a future cleanup) plus the Stale flag that gates the "refreshing…"
+// header indicator.
+type ViewMsg core.View
 
 // tickMsg fires often enough to keep the spinner animating and the lead-time
 // timers updating.
@@ -27,13 +26,14 @@ type tickMsg time.Time
 // scrollable body: one line of badges plus one blank separator line.
 const headerHeight = 2
 
-// Model is the Bubble Tea state — the latest snapshot (carrying RepoName),
-// terminal dimensions, a flag for whether we've received any snapshot yet
-// (so the first paint can show a spinner-and-"Loading" state instead of
-// the genuine "no commits" state), a clock function for timer updates,
-// and a scrollable viewport holding the body.
+// Model is the Bubble Tea state — the latest View (carrying the joined
+// snapshot, its derived shapes, and the Stale flag for the SWR
+// indicator), terminal dimensions, a flag for whether we've received
+// any view yet (so the first paint can show a spinner-and-"Loading"
+// state instead of the genuine "no commits" state), a clock function
+// for timer updates, and a scrollable viewport holding the body.
 type Model struct {
-	snap       core.Snapshot
+	view       core.View
 	width      int
 	height     int
 	received   bool
@@ -98,8 +98,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetHeight(max(0, msg.Height-headerHeight))
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
-	case SnapshotMsg:
-		m.snap = core.Snapshot(msg)
+	case ViewMsg:
+		m.view = core.View(msg)
 		m.received = true
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
@@ -126,12 +126,12 @@ func (m Model) renderBody() string {
 	if m.nowFn != nil {
 		now = m.nowFn()
 	}
-	return RenderSnapshot(m.snap, m.width, now, m.spinnerIdx)
+	return RenderSnapshot(m.view.Snapshot, m.width, now, m.spinnerIdx)
 }
 
 func (m Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(renderHeader(m.snap, m.width))
+	b.WriteString(renderHeader(m.view, m.width))
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
 	v := tea.NewView(b.String())
@@ -143,11 +143,13 @@ func (m Model) View() tea.View {
 }
 
 // renderHeader builds the top line: repo name (bold) + build/deploy status
-// badges on the left, "press q to quit" right-aligned to width. When any
-// badge has resolved to failed, the repo name flips bold red — a focused
-// alarm in the top-left where the eye naturally lands first, without
-// recolouring the rest of the header.
-func renderHeader(snap core.Snapshot, width int) string {
+// badges on the left, an optional "refreshing…" SWR hint, "press q to
+// quit" right-aligned to width. When any badge has resolved to failed,
+// the repo name flips bold red — a focused alarm in the top-left where
+// the eye naturally lands first, without recolouring the rest of the
+// header.
+func renderHeader(view core.View, width int) string {
+	snap := view.Snapshot
 	ciStatus := core.CurrentStageStatus(snap.Commits, "ci")
 	deployStatus := core.CurrentStageStatus(snap.Commits, "deploy")
 
@@ -161,7 +163,14 @@ func renderHeader(snap core.Snapshot, width int) string {
 	deploy := badge("deploy", deployStatus)
 	dot := lipgloss.NewStyle().Foreground(colorGray).Render("·")
 
-	left := strings.Join([]string{title, dot, ci, dot, deploy}, "  ")
+	parts := []string{title, dot, ci, dot, deploy}
+	if view.Stale {
+		// Italic gray "refreshing…" — same weight as the quit hint so it
+		// doesn't pull the eye away from the badges, but visible enough
+		// that the user knows data is in flight.
+		parts = append(parts, dot, lipgloss.NewStyle().Foreground(colorGray).Italic(true).Render("refreshing…"))
+	}
+	left := strings.Join(parts, "  ")
 	right := lipgloss.NewStyle().Foreground(colorGray).Render("press q to quit")
 
 	if width <= 0 {
@@ -221,10 +230,10 @@ func (r *Renderer) WithClock(nowFn func() time.Time) *Renderer {
 	return &cp
 }
 
-// Render runs the bubble-tea program, sending each incoming View's
-// Snapshot into the Model as a SnapshotMsg. Blocks until the user quits
-// (q / Ctrl+C). When ctx is cancelled the program is asked to quit so
-// callers can interrupt cleanly on signal.
+// Render runs the bubble-tea program, sending each incoming View into
+// the Model as a ViewMsg. Blocks until the user quits (q / Ctrl+C).
+// When ctx is cancelled the program is asked to quit so callers can
+// interrupt cleanly on signal.
 func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 	p := newProgram(views, r.nowFn)
 	go func() {
@@ -236,7 +245,7 @@ func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 }
 
 // NewProgram constructs a Bubble Tea program in alt-screen mode and starts a
-// goroutine that forwards each View's Snapshot into it. The returned
+// goroutine that forwards each View into it as a ViewMsg. The returned
 // *tea.Program is ready for callers to invoke .Run() on. Exposed (rather
 // than hidden inside Renderer.Render) so the demo binary can also Send
 // synthetic messages — e.g. a scripted quit at the end of a recorded
@@ -268,7 +277,7 @@ func newProgram(views <-chan core.View, nowFn func() time.Time) *tea.Program {
 	p := tea.NewProgram(m)
 	go func() {
 		for v := range views {
-			p.Send(SnapshotMsg(v.Snapshot))
+			p.Send(ViewMsg(v))
 		}
 	}()
 	return p

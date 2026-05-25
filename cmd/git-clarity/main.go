@@ -17,6 +17,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
+	"github.com/ezcdlabs/clarity/internal/cache"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/report"
@@ -105,7 +106,12 @@ func runTUI(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	lens := core.NewLens(src)
+	// CachedLens wraps the bare Lens so the TUI can paint a stale view
+	// from .git/clarity/snapshot-cache.json.gz immediately, then replace
+	// it with the fresh fetch when the source's first emit lands. Plain
+	// mode deliberately doesn't wrap (scripts/agents want fresh data).
+	cf := cache.New(filepath.Join(repoPath, ".git", "clarity", "snapshot-cache.json.gz"))
+	lens := core.NewCachedLens(core.NewLens(src), cf)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
 

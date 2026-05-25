@@ -43,7 +43,7 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 // After the first snapshot arrives — even an empty one — the loading
 // placeholder is gone and the structural dividers take over instead.
 func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
-	m, _ := newModel("clarity").Update(tui.SnapshotMsg(core.Snapshot{}))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: core.Snapshot{}}))
 	out := m.View().Content
 	if strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("should no longer show loading once a snapshot has arrived, got:\n%s", out)
@@ -62,7 +62,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 				Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 		},
 	}
-	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: snap}))
 	out := m.View().Content
 	if !strings.Contains(out, "alice") {
 		t.Errorf("expected commit author rendered, got:\n%s", out)
@@ -76,7 +76,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 // repo name travels on the Snapshot, so we send one through Update to put
 // the name into the model before asserting the View output.
 func TestModel_HeaderShowsRepoName(t *testing.T) {
-	m, _ := newModel("").Update(tui.SnapshotMsg(withRepo(core.Snapshot{}, "my-cool-repo")))
+	m, _ := newModel("").Update(tui.ViewMsg(core.View{Snapshot: withRepo(core.Snapshot{}, "my-cool-repo")}))
 	out := m.View().Content
 	if !strings.Contains(out, "my-cool-repo") {
 		t.Errorf("expected repo name in header, got:\n%s", out)
@@ -93,7 +93,7 @@ func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 			}},
 		},
 	}
-	m, _ := newModel("clarity").Update(tui.SnapshotMsg(snap))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: snap}))
 	out := m.View().Content
 	if !strings.Contains(strings.ToLower(out), "ci") {
 		t.Errorf("expected 'ci' badge in header, got:\n%s", out)
@@ -120,7 +120,7 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 
 	// Tiny terminal — 10 rows total, leaving ~8 for the body.
 	m := tui.New().WithSize(80, 10)
-	m2, _ := m.Update(tui.SnapshotMsg(snap))
+	m2, _ := m.Update(tui.ViewMsg(core.View{Snapshot: snap}))
 	beforeScroll := m2.View().Content
 
 	// We can't fit all 30 authors in 10 rows, so some must be missing.
@@ -146,6 +146,38 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 // individual commit identifiers without collision.
 func pad(prefix string, n int) string {
 	return fmt.Sprintf("%s-%03d", prefix, n)
+}
+
+// A stale View (from CachedLens) gets a small "refreshing…" indicator
+// on the header line so the user knows the displayed data is from a
+// cache and a fresh fetch is still in flight. The plain-text test sees
+// the literal word regardless of styling — we deliberately don't pin a
+// specific column to keep the test resilient to layout tuning.
+func TestModel_StaleView_ShowsRefreshingIndicator(t *testing.T) {
+	view := core.View{
+		Snapshot: core.Snapshot{RepoName: "clarity"},
+		Stale:    true,
+	}
+	m, _ := newModel("").Update(tui.ViewMsg(view))
+	out := m.View().Content
+	if !strings.Contains(strings.ToLower(out), "refreshing") {
+		t.Errorf("expected 'refreshing' indicator for a stale view, got:\n%s", out)
+	}
+}
+
+// The complementary case: a fresh View does NOT show the indicator —
+// nothing in flight, nothing to advertise. Otherwise the indicator
+// would be on-screen forever once a stale view ever arrived.
+func TestModel_FreshView_NoRefreshingIndicator(t *testing.T) {
+	view := core.View{
+		Snapshot: core.Snapshot{RepoName: "clarity"},
+		Stale:    false,
+	}
+	m, _ := newModel("").Update(tui.ViewMsg(view))
+	out := m.View().Content
+	if strings.Contains(strings.ToLower(out), "refreshing") {
+		t.Errorf("expected no 'refreshing' indicator for a fresh view, got:\n%s", out)
+	}
 }
 
 // The "q to quit" hint sits in the top-right of the header line.

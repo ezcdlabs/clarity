@@ -9,6 +9,13 @@ type View struct {
 	Groups   Groupings    // HEAD / CIPassed / InFlight / Deployed buckets
 	Weekly   []WeekStat   // DORA throughput per ISO week
 	Header   HeaderStatus // ci/deploy summary for the top header line
+	// Stale signals to Renderers that this View was emitted from a
+	// stale-while-revalidate cache and a fresh fetch is still in flight.
+	// Renderers can decide whether and how to indicate that visually
+	// (TUI shows a "refreshing…" hint; plain mode currently ignores).
+	// Set by CachedLens on its initial cache-derived emission; bare
+	// Lens always leaves it false.
+	Stale bool
 }
 
 // HeaderStatus carries the resolved CI / deploy status for the top

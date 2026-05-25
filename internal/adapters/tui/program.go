@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -10,8 +11,12 @@ import (
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
-// SnapshotMsg is sent to the Bubble Tea program when the source emits a new
-// snapshot.
+// SnapshotMsg is sent to the Bubble Tea program for each Snapshot the
+// renderer pulls off its Views channel. The Model only needs the Snapshot
+// part of the View (RepoName, Commits) — DeriveView's other outputs are
+// recomputed inside RenderSnapshot for now, since the existing pure
+// renderer takes a Snapshot, not a View. A later cleanup can fold the View
+// in directly so derived Groups / Weekly aren't recomputed.
 type SnapshotMsg core.Snapshot
 
 // tickMsg fires often enough to keep the spinner animating and the lead-time
@@ -22,26 +27,25 @@ type tickMsg time.Time
 // scrollable body: one line of badges plus one blank separator line.
 const headerHeight = 2
 
-// Model is the Bubble Tea state — the latest snapshot, terminal dimensions,
-// the repository name (for the header), a flag for whether we've received
-// any snapshot yet (so the first paint can show a spinner-and-"Loading"
-// state instead of the genuine "no commits" state), a clock function for
-// timer updates, and a scrollable viewport holding the body.
+// Model is the Bubble Tea state — the latest snapshot (carrying RepoName),
+// terminal dimensions, a flag for whether we've received any snapshot yet
+// (so the first paint can show a spinner-and-"Loading" state instead of
+// the genuine "no commits" state), a clock function for timer updates,
+// and a scrollable viewport holding the body.
 type Model struct {
 	snap       core.Snapshot
 	width      int
 	height     int
-	repoName   string
 	received   bool
 	nowFn      func() time.Time
 	spinnerIdx int
 	viewport   viewport.Model
 }
 
-// New constructs a Model for the given repository name using the real clock.
-func New(repoName string) Model {
+// New constructs a Model with the real clock. RepoName is no longer a
+// constructor argument; it travels on each Snapshot the Source emits.
+func New() Model {
 	return Model{
-		repoName: repoName,
 		nowFn:    time.Now,
 		viewport: viewport.New(),
 	}
@@ -127,7 +131,7 @@ func (m Model) renderBody() string {
 
 func (m Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(renderHeader(m.repoName, m.snap, m.width))
+	b.WriteString(renderHeader(m.snap, m.width))
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
 	v := tea.NewView(b.String())
@@ -143,7 +147,7 @@ func (m Model) View() tea.View {
 // badge has resolved to failed, the repo name flips bold red — a focused
 // alarm in the top-left where the eye naturally lands first, without
 // recolouring the rest of the header.
-func renderHeader(repoName string, snap core.Snapshot, width int) string {
+func renderHeader(snap core.Snapshot, width int) string {
 	ciStatus := core.CurrentStageStatus(snap.Commits, "ci")
 	deployStatus := core.CurrentStageStatus(snap.Commits, "deploy")
 
@@ -151,7 +155,7 @@ func renderHeader(repoName string, snap core.Snapshot, width int) string {
 	if ciStatus == "failed" || deployStatus == "failed" {
 		titleStyle = titleStyle.Foreground(colorRed)
 	}
-	title := titleStyle.Render(repoName)
+	title := titleStyle.Render(snap.RepoName)
 
 	ci := badge("ci", ciStatus)
 	deploy := badge("deploy", deployStatus)
@@ -192,24 +196,64 @@ func iconForStatus(status string) string {
 	}
 }
 
+// Compile-time check: the Renderer adapter satisfies the core.Renderer
+// port. Drift on the port signature surfaces here at build time.
+var _ core.Renderer = (*Renderer)(nil)
+
+// Renderer is the core.Renderer adapter for the bubble-tea TUI. Constructed
+// without any arguments — the repository name travels on the View's
+// Snapshot, and there are no other inputs the constructor needs to know
+// about. Tests / the demo binary that want a custom clock use WithClock.
+type Renderer struct {
+	nowFn func() time.Time
+}
+
+// NewRenderer returns a TUI Renderer with the wall clock. Inject a
+// deterministic clock via WithClock for the demo binary.
+func NewRenderer() *Renderer { return &Renderer{} }
+
+// WithClock returns a copy of r with the clock function set. Same idiom
+// as Model.WithClock — used by the demo to pin lead-time timers to a
+// scenario's reference time.
+func (r *Renderer) WithClock(nowFn func() time.Time) *Renderer {
+	cp := *r
+	cp.nowFn = nowFn
+	return &cp
+}
+
+// Render runs the bubble-tea program, sending each incoming View's
+// Snapshot into the Model as a SnapshotMsg. Blocks until the user quits
+// (q / Ctrl+C). When ctx is cancelled the program is asked to quit so
+// callers can interrupt cleanly on signal.
+func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
+	p := newProgram(views, r.nowFn)
+	go func() {
+		<-ctx.Done()
+		p.Quit()
+	}()
+	_, err := p.Run()
+	return err
+}
+
 // NewProgram constructs a Bubble Tea program in alt-screen mode and starts a
-// goroutine that forwards every snapshot from the channel into it. The
-// returned *tea.Program is ready for callers to invoke .Run() on. Exposed
-// (rather than hidden inside Run) so the demo binary can also Send synthetic
-// messages — e.g. a scripted quit at the end of a recorded scenario.
-func NewProgram(repoName string, snapshots <-chan core.Snapshot) *tea.Program {
-	return newProgram(repoName, snapshots, nil)
+// goroutine that forwards each View's Snapshot into it. The returned
+// *tea.Program is ready for callers to invoke .Run() on. Exposed (rather
+// than hidden inside Renderer.Render) so the demo binary can also Send
+// synthetic messages — e.g. a scripted quit at the end of a recorded
+// scenario.
+func NewProgram(views <-chan core.View) *tea.Program {
+	return newProgram(views, nil)
 }
 
 // NewProgramWithClock is like NewProgram but lets the caller drive the
 // timer's notion of "now". Used by the demo binary so lead-time timers tick
 // relative to a scenario's reference time rather than wall time.
-func NewProgramWithClock(repoName string, snapshots <-chan core.Snapshot, nowFn func() time.Time) *tea.Program {
-	return newProgram(repoName, snapshots, nowFn)
+func NewProgramWithClock(views <-chan core.View, nowFn func() time.Time) *tea.Program {
+	return newProgram(views, nowFn)
 }
 
-func newProgram(repoName string, snapshots <-chan core.Snapshot, nowFn func() time.Time) *tea.Program {
-	m := New(repoName)
+func newProgram(views <-chan core.View, nowFn func() time.Time) *tea.Program {
+	m := New()
 	if nowFn != nil {
 		m = m.WithClock(nowFn)
 	}
@@ -223,16 +267,9 @@ func newProgram(repoName string, snapshots <-chan core.Snapshot, nowFn func() ti
 	// don't pass it as a program option anymore.
 	p := tea.NewProgram(m)
 	go func() {
-		for snap := range snapshots {
-			p.Send(SnapshotMsg(snap))
+		for v := range views {
+			p.Send(SnapshotMsg(v.Snapshot))
 		}
 	}()
 	return p
-}
-
-// Run starts the Bubble Tea program and blocks until the user quits or the
-// program exits.
-func Run(repoName string, snapshots <-chan core.Snapshot) error {
-	_, err := NewProgram(repoName, snapshots).Run()
-	return err
 }

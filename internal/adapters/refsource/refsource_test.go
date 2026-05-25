@@ -85,6 +85,34 @@ func TestSource_Watch_EmitsInitialSnapshot(t *testing.T) {
 	}
 }
 
+// TestSource_PropagatesRepoName fixes the contract that the Source stamps
+// the RepoName onto every Snapshot it emits, so downstream Renderers can
+// look it up via View.Snapshot.RepoName instead of carrying it through
+// their constructor. Drift on this would silently strip the header label.
+func TestSource_PropagatesRepoName(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "main",
+		RepoName: "myrepo",
+		Interval: testInterval,
+		Limit:    50,
+		Clock:    clock.NewFake(),
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+	snap := waitForSnapshot(t, src.Watch(ctx))
+	if snap.RepoName != "myrepo" {
+		t.Errorf("expected RepoName=%q on emitted Snapshot, got %q", "myrepo", snap.RepoName)
+	}
+}
+
 func TestSource_Watch_BranchChange_EmitsNewSnapshot(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)

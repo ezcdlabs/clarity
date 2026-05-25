@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,8 +24,12 @@ import (
 // Options configures a Source.
 type Options struct {
 	RepoPath string
-	Remote   string        // defaults to "origin"
-	Branch   string        // defaults to "main"
+	Remote   string // defaults to "origin"
+	Branch   string // defaults to "main"
+	// RepoName is stamped onto every emitted Snapshot so downstream
+	// Renderers can label their header without their own constructor
+	// argument. Falls back to filepath.Base(RepoPath) when empty.
+	RepoName string
 	Interval time.Duration // defaults to 5s
 	Limit    int           // max commits per snapshot; defaults to 50
 	Clock    clock.Clock   // defaults to clock.Real()
@@ -55,6 +60,9 @@ func New(opts Options) (*Source, error) {
 	}
 	if opts.Clock == nil {
 		opts.Clock = clock.Real()
+	}
+	if opts.RepoName == "" {
+		opts.RepoName = filepath.Base(opts.RepoPath)
 	}
 	if err := refs.EnsureClarityFetchRefspec(opts.RepoPath, opts.Remote); err != nil {
 		return nil, fmt.Errorf("configure clarity fetch refspec: %w", err)
@@ -111,6 +119,7 @@ func (s *Source) emit(ctx context.Context, out chan<- core.Snapshot) bool {
 	if err != nil {
 		return true
 	}
+	snap.RepoName = s.opts.RepoName
 	select {
 	case out <- snap:
 		return true

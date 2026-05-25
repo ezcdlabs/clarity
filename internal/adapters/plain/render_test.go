@@ -1,4 +1,4 @@
-package tui_test
+package plain_test
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/tui"
+	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
@@ -14,7 +14,7 @@ const fakeSHA1 = "abc1234567890abc1234567890abc1234567890a"
 const fakeSHA2 = "def4567890abcdef4567890abcdef4567890abcd"
 
 func TestRenderPlain_EmptySnapshot_ShowsHeaderAndSections(t *testing.T) {
-	out := tui.RenderPlain("clarity", core.Snapshot{}, time.Unix(0, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", core.Snapshot{}, time.Unix(0, 0), plain.Options{})
 	for _, want := range []string{"clarity", "HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output, got:\n%s", want, out)
@@ -29,7 +29,7 @@ func TestRenderPlain_HeaderShowsCIAndDeployBadges(t *testing.T) {
 			{Stage: "deploy", Status: "failed", Time: time.Unix(200, 0)},
 		}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(300, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(300, 0), plain.Options{})
 	first := strings.SplitN(out, "\n", 2)[0]
 	if !strings.Contains(first, "ci") {
 		t.Errorf("expected 'ci' in header line, got: %q", first)
@@ -50,7 +50,7 @@ func TestRenderPlain_PassedCommit_ShowsTickAndAuthor(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "fix things",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	if !strings.Contains(out, "✓") {
 		t.Errorf("expected ✓ icon for passed commit, got:\n%s", out)
 	}
@@ -67,7 +67,7 @@ func TestRenderPlain_FailedCommit_ShowsCross(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "broke ci",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "failed", Time: time.Unix(100, 0)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	if !strings.Contains(out, "✗") {
 		t.Errorf("expected ✗ icon for failed commit, got:\n%s", out)
 	}
@@ -78,7 +78,7 @@ func TestRenderPlain_StartedCommit_ShowsStaticEllipsis(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "in progress",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "started", Time: time.Unix(100, 0)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	// The TUI spinner animates; plain mode renders a static glyph so the
 	// row is still visually distinct from passed/failed without depending
 	// on terminal animation.
@@ -95,7 +95,7 @@ func TestRenderPlain_InFlightDeploy_ShowsDeployingSubheader(t *testing.T) {
 				{Stage: "deploy", Status: "started", Time: time.Unix(150, 0)},
 			}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	if !strings.Contains(out, "deploying") {
 		t.Errorf("expected 'deploying' subheader for in-flight batch, got:\n%s", out)
 	}
@@ -110,7 +110,7 @@ func TestRenderPlain_DeployedBatch_ShowsAgoAndLive(t *testing.T) {
 			}},
 	}}
 	// 200 seconds after deploy_passed.
-	out := tui.RenderPlain("clarity", snap, time.Unix(400, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(400, 0), plain.Options{})
 	if !strings.Contains(out, "deployed") {
 		t.Errorf("expected 'deployed' subheader, got:\n%s", out)
 	}
@@ -126,12 +126,12 @@ func TestRenderPlain_ShowSHAs_OptIn(t *testing.T) {
 	}}
 	short := fakeSHA1[:7]
 
-	defaultOut := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	defaultOut := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	if strings.Contains(defaultOut, short) {
 		t.Errorf("default output should not contain short SHA, got:\n%s", defaultOut)
 	}
 
-	withSHAs := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{ShowSHAs: true})
+	withSHAs := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{ShowSHAs: true})
 	if !strings.Contains(withSHAs, short) {
 		t.Errorf("--show-shas output should contain short SHA %q, got:\n%s", short, withSHAs)
 	}
@@ -144,7 +144,7 @@ func TestRenderPlain_Limit_TruncatesCommits(t *testing.T) {
 		{SHA: fakeSHA2, Author: "bob", Subject: "older",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(50, 0)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{Limit: 1})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{Limit: 1})
 	if !strings.Contains(out, "newer") {
 		t.Errorf("limit=1 should keep newer commit, got:\n%s", out)
 	}
@@ -163,7 +163,7 @@ func TestRenderPlain_WeekDivider_AppearsAboveFirstBatchOfWeek(t *testing.T) {
 			Time:   c,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, d.Add(time.Hour), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, d.Add(time.Hour), plain.Options{})
 	if !strings.Contains(out, "W2026-02") {
 		t.Errorf("expected W2026-02 week divider, got:\n%s", out)
 	}
@@ -184,7 +184,7 @@ func TestRenderPlain_WeekDivider_TwoWeeks_TwoDividers(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "older", Time: c1,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d1}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, d2.Add(time.Hour), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, d2.Add(time.Hour), plain.Options{})
 	if !strings.Contains(out, "W2026-03") {
 		t.Errorf("expected W2026-03 divider, got:\n%s", out)
 	}
@@ -210,7 +210,7 @@ func TestRenderPlain_WeekDivider_MergedIntoDeployedHeader(t *testing.T) {
 			Time:   c,
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, d.Add(time.Hour), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, d.Add(time.Hour), plain.Options{})
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasPrefix(line, "Deployed") {
 			if !strings.Contains(line, "W2026-02") {
@@ -230,7 +230,7 @@ func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "ci only", Time: c,
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(time.Minute)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, c.Add(time.Hour), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, c.Add(time.Hour), plain.Options{})
 	if strings.Contains(out, "W2026") {
 		t.Errorf("expected no week divider when there are no deploys, got:\n%s", out)
 	}
@@ -243,7 +243,7 @@ func TestRenderPlain_NoColor(t *testing.T) {
 		{SHA: fakeSHA1, Author: "alice", Subject: "x",
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 	}}
-	out := tui.RenderPlain("clarity", snap, time.Unix(200, 0), tui.PlainOptions{})
+	out := plain.RenderSnapshot("clarity", snap, time.Unix(200, 0), plain.Options{})
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("plain mode must not embed ANSI escapes, got:\n%q", out)
 	}

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/tui"
+	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 

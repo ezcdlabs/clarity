@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"sort"
 	"time"
 )
@@ -97,4 +98,52 @@ func WeeklyStats(snap Snapshot) []WeekStat {
 		})
 	}
 	return out
+}
+
+// WeekKey packs an ISO (year, week) pair into a single int64 for map keys.
+// Mirrors the packing WeeklyStats uses internally so renderers and stats
+// computation agree on the key shape.
+func WeekKey(year, week int) int64 { return int64(year)*100 + int64(week) }
+
+// IndexStatsByWeek builds a WeekKey → WeekStat lookup so renderers can find
+// a week's stats in O(1) while walking deploy batches.
+func IndexStatsByWeek(stats []WeekStat) map[int64]WeekStat {
+	out := make(map[int64]WeekStat, len(stats))
+	for _, s := range stats {
+		out[WeekKey(s.Year, s.Week)] = s
+	}
+	return out
+}
+
+// FirstPassedWeekStat finds the topmost (newest) passed deploy batch and
+// returns its week key, the matching WeekStat, and whether a match was
+// found. Renderers use this so the Deployed section header can absorb the
+// topmost week's stats into its own divider row instead of emitting a
+// separate one immediately below it.
+func FirstPassedWeekStat(batches []DeployBatch, statsByWeek map[int64]WeekStat) (int64, WeekStat, bool) {
+	for _, batch := range batches {
+		if batch.Status != "passed" {
+			continue
+		}
+		year, week := batch.Time.UTC().ISOWeek()
+		key := WeekKey(year, week)
+		if s, ok := statsByWeek[key]; ok {
+			return key, s, true
+		}
+		return 0, WeekStat{}, false
+	}
+	return 0, WeekStat{}, false
+}
+
+// WeekDividerLabel formats a WeekStat as the inline text for a divider
+// ("W<year>-<NN>  N deploys  Xh Ym avg"). Shared by both renderers so the
+// format stays in one place — the TUI styles around it, the plain renderer
+// emits it bare.
+func WeekDividerLabel(s WeekStat) string {
+	deploysLabel := "deploys"
+	if s.Deploys == 1 {
+		deploysLabel = "deploy"
+	}
+	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
+		s.Year, s.Week, s.Deploys, deploysLabel, FormatElapsed(s.AvgLead))
 }

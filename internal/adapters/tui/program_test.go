@@ -8,12 +8,25 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
-	"github.com/ezcdlabs/clarity/internal/tui"
+	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
-func newModel(repo string) tui.Model {
-	return tui.New(repo).WithSize(120, 40)
+// newModel constructs a Model sized for a fixed terminal so layout-sensitive
+// assertions are stable across machines. The `repo` argument is the repo
+// name we expect the snapshot to carry — for tests that send a snapshot
+// via Update, callers set it on the Snapshot they pass in; for tests that
+// only check the loading-state View() before any snapshot, the argument
+// is unused.
+func newModel(_ string) tui.Model {
+	return tui.New().WithSize(120, 40)
+}
+
+// withRepo is a tiny convenience for tests that want to assert against a
+// rendered repo name: returns a Snapshot copy stamped with the given name.
+func withRepo(snap core.Snapshot, name string) core.Snapshot {
+	snap.RepoName = name
+	return snap
 }
 
 func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
@@ -59,9 +72,11 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 	}
 }
 
-// The header shows the repository name (not the branch).
+// The header shows the repository name (not the branch). After step 4 the
+// repo name travels on the Snapshot, so we send one through Update to put
+// the name into the model before asserting the View output.
 func TestModel_HeaderShowsRepoName(t *testing.T) {
-	m := newModel("my-cool-repo")
+	m, _ := newModel("").Update(tui.SnapshotMsg(withRepo(core.Snapshot{}, "my-cool-repo")))
 	out := m.View().Content
 	if !strings.Contains(out, "my-cool-repo") {
 		t.Errorf("expected repo name in header, got:\n%s", out)
@@ -104,7 +119,7 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 	snap := core.Snapshot{Commits: commits}
 
 	// Tiny terminal — 10 rows total, leaving ~8 for the body.
-	m := tui.New("clarity").WithSize(80, 10)
+	m := tui.New().WithSize(80, 10)
 	m2, _ := m.Update(tui.SnapshotMsg(snap))
 	beforeScroll := m2.View().Content
 

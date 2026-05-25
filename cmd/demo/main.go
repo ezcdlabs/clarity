@@ -18,7 +18,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/ezcdlabs/clarity/internal/tui"
+	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
@@ -51,7 +51,7 @@ func main() {
 //  1. Prelude — print the (typed) shell prompt + command to the regular
 //     terminal so viewers see how the tool is invoked. Phase 1 happens
 //     BEFORE the TUI claims the alt-screen.
-//  2. TUI — the snapshots channel feeds scripted frames; once the last
+//  2. TUI — the views channel feeds scripted frames; once the last
 //     frame's hold elapses we Send a synthetic "q" key so the alt-screen
 //     exits cleanly and the recording terminates.
 //
@@ -59,24 +59,33 @@ func main() {
 // the TUI started* (not since play() started), so lead-time timers begin
 // at the scenario's reference offsets regardless of how long the prelude
 // took. Same trick pushq's demo uses.
+//
+// Scripted Snapshots are passed through core.DeriveView inline instead of
+// being routed through a fake Source + core.Lens. The lens path would buy
+// us an extra goroutine and channel-close coordination to do exactly the
+// same one-line transform — DeriveView is pure, so the demo just calls it.
 func play(s *Scenario) error {
 	playPrelude(s.Prelude)
 
 	scenarioStart := time.Now()
 	nowFn := func() time.Time { return demoBase.Add(time.Since(scenarioStart)) }
 
-	snapshots := make(chan core.Snapshot, 1)
-	p := tui.NewProgramWithClock(s.Repo, snapshots, nowFn)
+	views := make(chan core.View, 1)
+	p := tui.NewProgramWithClock(views, nowFn)
 
 	go func() {
 		// Initial loading delay — viewers see the "Loading…" state briefly
 		// before content appears.
 		time.Sleep(s.InitialDelay)
 		for _, f := range s.Frames {
-			snapshots <- f.Snapshot
+			snap := f.Snapshot
+			if snap.RepoName == "" {
+				snap.RepoName = s.Repo
+			}
+			views <- core.DeriveView(snap)
 			time.Sleep(f.Hold)
 		}
-		close(snapshots)
+		close(views)
 		// Synthetic quit — Bubble Tea's alt-screen would otherwise stay
 		// resident, leaving the recording hanging on the last frame.
 		// v2: KeyMsg is an interface; synthesize a 'q' press via KeyPressMsg

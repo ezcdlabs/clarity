@@ -14,10 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
+	"github.com/ezcdlabs/clarity/internal/adapters/tui"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/report"
-	"github.com/ezcdlabs/clarity/internal/tui"
 )
 
 // version is set at build time via -ldflags "-X main.version=<value>".
@@ -95,6 +97,7 @@ func runTUI(opts rootOptions) error {
 	defer cancel()
 	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
+		RepoName: filepath.Base(repoPath),
 		Remote:   "origin",
 		Branch:   "main",
 		Limit:    effectiveLimit(opts.limit),
@@ -102,21 +105,28 @@ func runTUI(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	return tui.Run(filepath.Base(repoPath), src.Watch(ctx))
+	lens := core.NewLens(src)
+	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
 
 // runPlain takes one snapshot from the source (which performs the initial
 // fetch on first emit) and renders it as static text. Intended for piped
 // agent / shell-script consumers.
+//
+// A 30s timeout protects against a hung fetch (network problems) by
+// cancelling the source's context, which closes the views channel and
+// makes the plain renderer's "source closed before emitting" error fire
+// instead of wedging indefinitely.
 func runPlain(opts rootOptions) error {
 	repoPath, err := repoRoot()
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
+		RepoName: filepath.Base(repoPath),
 		Remote:   "origin",
 		Branch:   "main",
 		Limit:    effectiveLimit(opts.limit),
@@ -124,26 +134,11 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	snapshots := src.Watch(ctx)
-
-	// The source emits its first snapshot immediately after the initial
-	// fetch — we consume that one and exit. A timeout protects against a
-	// hung fetch (network problems) so plain mode can't wedge indefinitely.
-	select {
-	case snap, ok := <-snapshots:
-		if !ok {
-			return fmt.Errorf("source closed before emitting a snapshot")
-		}
-		fmt.Print(tui.RenderPlain(filepath.Base(repoPath), snap, time.Now(), tui.PlainOptions{
-			ShowSHAs: opts.showSHAs,
-			// Limit is already applied by the source; passing 0 here means
-			// "don't truncate further" inside RenderPlain.
-			Limit: 0,
-		}))
-		return nil
-	case <-time.After(30 * time.Second):
-		return fmt.Errorf("timed out waiting for first snapshot")
-	}
+	lens := core.NewLens(src)
+	// Limit is already applied by the source; passing 0 here means "don't
+	// truncate further" inside RenderSnapshot.
+	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).
+		Render(ctx, lens.Views(ctx))
 }
 
 // effectiveLimit maps the CLI's "0 = unlimited" convention onto the source's

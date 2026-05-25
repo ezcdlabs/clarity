@@ -19,25 +19,6 @@ import (
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
-// Re-export commonly-used core types so existing callers (tests, demo) keep
-// working through the migration. Removed in step 3 when the rest of the
-// codebase imports from core directly.
-type (
-	StageStatus = core.StageStatus
-	DeployBatch = core.DeployBatch
-	Groupings   = core.Groupings
-	WeekStat    = core.WeekStat
-)
-
-// CollapseStages, OverallStatus, GroupCommits, WeeklyStats are similarly
-// re-exported from core for callers that haven't been migrated yet.
-var (
-	CollapseStages = core.CollapseStages
-	OverallStatus  = core.OverallStatus
-	GroupCommits   = core.GroupCommits
-	WeeklyStats    = core.WeeklyStats
-)
-
 // --- rendering ---------------------------------------------------------------
 
 // The palette is deliberately minimal: gray is the neutral foreground for
@@ -125,7 +106,7 @@ func RenderRow(view core.CommitView, width int) string {
 // don't care about timer values (timers won't render for commits with no
 // Time set anyway).
 func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int) string {
-	g := GroupCommits(snap.Commits)
+	g := core.GroupCommits(snap.Commits)
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
 		indexBySHA[c.SHA] = i
@@ -167,10 +148,10 @@ func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int
 	// production; subsequent batches are settled history. The Deployed header
 	// also carries the TOPMOST week's DORA summary on its right side (saving
 	// a row) — only older weeks need standalone week dividers below.
-	statsByWeek := indexStatsByWeek(WeeklyStats(snap))
-	topWeekKey, topWeekStat, hasTopWeek := firstPassedWeekStat(g.Deployed, statsByWeek)
+	statsByWeek := core.IndexStatsByWeek(core.WeeklyStats(snap))
+	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
-		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, weekDividerLabel(topWeekStat), width))
+		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))
 	} else {
 		b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
 	}
@@ -181,7 +162,7 @@ func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()
-			key := weekKey(year, week)
+			key := core.WeekKey(year, week)
 			if key != prevWeekKey {
 				if s, ok := statsByWeek[key]; ok {
 					b.WriteString(renderWeekDivider(s, width))
@@ -200,47 +181,16 @@ func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int
 	return b.String()
 }
 
-// firstPassedWeekStat finds the topmost (newest) passed deploy batch and
-// returns its week key, the matching WeekStat, and whether a match was found.
-// Used so the Deployed section header can absorb the topmost week's stats
-// into its own divider row instead of emitting a separate one below it.
-func firstPassedWeekStat(batches []DeployBatch, statsByWeek map[int64]WeekStat) (int64, WeekStat, bool) {
-	for _, batch := range batches {
-		if batch.Status != "passed" {
-			continue
-		}
-		year, week := batch.Time.UTC().ISOWeek()
-		key := weekKey(year, week)
-		if s, ok := statsByWeek[key]; ok {
-			return key, s, true
-		}
-		return 0, WeekStat{}, false
-	}
-	return 0, WeekStat{}, false
-}
-
-// weekDividerLabel formats a WeekStat as the inline text for a divider
-// ("W<year>-<NN>  N deploys  Xh Ym avg"). Shared by the TUI and plain modes
-// (and the standalone week-divider helper) so the format stays in one place.
-func weekDividerLabel(s WeekStat) string {
-	deploysLabel := "deploys"
-	if s.Deploys == 1 {
-		deploysLabel = "deploy"
-	}
-	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
-		s.Year, s.Week, s.Deploys, deploysLabel, core.FormatElapsed(s.AvgLead))
-}
-
 // renderWeekDivider is the less-prominent sibling of renderSectionDivider:
 // gray dashes (no lifecycle tint, no bold) with the week's DORA summary
 // inlined on the RIGHT side, separating groups of batches in different ISO
 // weeks. The right alignment + lighter weight keeps the eye on the per-batch
 // "deployed Xh ago" subheaders while the weekly aggregate stays available
 // peripherally.
-func renderWeekDivider(s WeekStat, width int) string {
+func renderWeekDivider(s core.WeekStat, width int) string {
 	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
 	labelStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
-	label := labelStyle.Render(weekDividerLabel(s))
+	label := labelStyle.Render(core.WeekDividerLabel(s))
 
 	const trailing = 4
 	tail := dashStyle.Render(strings.Repeat("─", trailing))
@@ -322,7 +272,7 @@ func renderSectionDivider(label string, color color.Color, width int) string {
 // currently running in production), the passed subheader is escalated to
 // bold and prefixed with "live on production ·" so the reader can tell
 // at a glance which batch is the present state vs. settled history.
-func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive bool) string {
+func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isLive bool) string {
 	style := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
 	switch b.Status {
 	case "started":
@@ -359,7 +309,7 @@ func renderBatchSubheader(b DeployBatch, now time.Time, spinnerIdx int, isLive b
 // lead-time timer. The deploy status is implied by the section the row
 // sits in, so it isn't rendered explicitly. When width > 0 the timer is
 // right-aligned to that column.
-func renderRowInGroup(view core.CommitView, group *Groupings, index int, width int, now time.Time, spinnerIdx int) string {
+func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, width int, now time.Time, spinnerIdx int) string {
 	icon := ciIcon(view.Events, group, index, spinnerIdx)
 	author := lipgloss.NewStyle().Foreground(colorGray).Render(view.Author)
 	subject := view.Subject
@@ -399,7 +349,7 @@ func renderRowInGroup(view core.CommitView, group *Groupings, index int, width i
 // rather than annotating routine output. Passed/started/idle all render in
 // neutral gray; their meaning is carried by the icon shape (✓ / spinner /
 // ·) and the section the row sits in.
-func ciIcon(events []clarityrefs.Event, group *Groupings, index int, spinnerIdx int) string {
+func ciIcon(events []clarityrefs.Event, group *core.Groupings, index int, spinnerIdx int) string {
 	status := core.CIStatus(events)
 	stale := group != nil && group.IsStaleStage(index, "ci")
 

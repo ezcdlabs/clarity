@@ -1,6 +1,10 @@
-package tui
+// Package plain implements the plain-text Renderer adapter: a one-shot,
+// ANSI-free dump of the lens's current View. Aimed at piped agent / shell-
+// script consumers; the bubble-tea TUI lives in internal/adapters/tui.
+package plain
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -9,27 +13,73 @@ import (
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
-// PlainOptions configures RenderPlain. ShowSHAs surfaces a short commit hash
+// Compile-time check: the Renderer adapter satisfies the core.Renderer
+// port. Drift on the port signature surfaces here at build time.
+var _ core.Renderer = (*Renderer)(nil)
+
+// Renderer is the core.Renderer adapter for plain-text output. It consumes
+// one View from the channel, prints the rendered text to stdout, and
+// returns — matching the doc's "plain mode is one-shot" expectation.
+type Renderer struct {
+	opts  Options
+	nowFn func() time.Time
+}
+
+// NewRenderer constructs a plain Renderer with the given options.
+func NewRenderer(opts Options) *Renderer {
+	return &Renderer{opts: opts}
+}
+
+// WithClock returns a copy of r whose "now" timestamp is provided by fn
+// instead of the real clock.
+func (r *Renderer) WithClock(fn func() time.Time) *Renderer {
+	cp := *r
+	cp.nowFn = fn
+	return &cp
+}
+
+// Render reads exactly one View from views, formats it, and writes it to
+// stdout. Returns when the View has been written, or when ctx is cancelled,
+// or when views closes without emitting (treated as an error — plain mode
+// expects a single snapshot to arrive).
+func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
+	select {
+	case v, ok := <-views:
+		if !ok {
+			return fmt.Errorf("plain: source closed before emitting a view")
+		}
+		now := time.Now()
+		if r.nowFn != nil {
+			now = r.nowFn()
+		}
+		_, err := fmt.Print(RenderSnapshot(v.Snapshot.RepoName, v.Snapshot, now, r.opts))
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Options configures RenderSnapshot. ShowSHAs surfaces a short commit hash
 // per row (off by default to mirror the TUI's commit-less layout). Limit caps
 // the number of commits rendered; zero means no cap.
-type PlainOptions struct {
+type Options struct {
 	ShowSHAs bool
 	Limit    int
 }
 
-// RenderPlain produces a static, ANSI-free snapshot of the same view the TUI
+// RenderSnapshot produces a static, ANSI-free snapshot of the same view the TUI
 // shows: a one-line status header, then HEAD / CI Passed / Deployed sections
 // matching the TUI's groupings and batch subheaders. Aimed at piped/agent
 // consumers — the row vocabulary (✓ ✗ … plus section names) is greppable
 // without needing key:value annotations.
-func RenderPlain(repoName string, snap core.Snapshot, now time.Time, opts PlainOptions) string {
+func RenderSnapshot(repoName string, snap core.Snapshot, now time.Time, opts Options) string {
 	commits := snap.Commits
 	if opts.Limit > 0 && len(commits) > opts.Limit {
 		commits = commits[:opts.Limit]
 	}
 	capped := core.Snapshot{Commits: commits}
 
-	g := GroupCommits(capped.Commits)
+	g := core.GroupCommits(capped.Commits)
 	indexBySHA := make(map[string]int, len(capped.Commits))
 	for i, c := range capped.Commits {
 		indexBySHA[c.SHA] = i
@@ -66,14 +116,14 @@ func RenderPlain(repoName string, snap core.Snapshot, now time.Time, opts PlainO
 	}
 	b.WriteString("\n")
 
-	statsByWeek := indexStatsByWeek(WeeklyStats(capped))
-	topWeekKey, topWeekStat, hasTopWeek := firstPassedWeekStat(g.Deployed, statsByWeek)
+	statsByWeek := core.IndexStatsByWeek(core.WeeklyStats(capped))
+	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
 		// Merge the topmost week's summary onto the section header row so we
 		// don't burn a line on a divider that's about to be followed by the
 		// batch subheader for the same week.
 		b.WriteString("Deployed  ·  ")
-		b.WriteString(weekDividerLabel(topWeekStat))
+		b.WriteString(core.WeekDividerLabel(topWeekStat))
 		b.WriteString("\n")
 	} else {
 		b.WriteString("Deployed\n")
@@ -85,10 +135,10 @@ func RenderPlain(repoName string, snap core.Snapshot, now time.Time, opts PlainO
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()
-			key := weekKey(year, week)
+			key := core.WeekKey(year, week)
 			if key != prevWeekKey {
 				if s, ok := statsByWeek[key]; ok {
-					b.WriteString(weekDividerLabel(s))
+					b.WriteString(core.WeekDividerLabel(s))
 					b.WriteString("\n")
 				}
 				prevWeekKey = key
@@ -104,20 +154,6 @@ func RenderPlain(repoName string, snap core.Snapshot, now time.Time, opts PlainO
 
 	return b.String()
 }
-
-// indexStatsByWeek builds a lookup map keyed by weekKey(year, week) so the
-// renderer can find a week's stats in O(1) while walking batches.
-func indexStatsByWeek(stats []WeekStat) map[int64]WeekStat {
-	out := make(map[int64]WeekStat, len(stats))
-	for _, s := range stats {
-		out[weekKey(s.Year, s.Week)] = s
-	}
-	return out
-}
-
-// weekKey is the same int64 packing WeeklyStats uses internally — kept in
-// one place so the renderer and the stats computation agree.
-func weekKey(year, week int) int64 { return int64(year)*100 + int64(week) }
 
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
 // Mirrors the TUI's header semantics: "started" and "skipped" events are
@@ -139,7 +175,7 @@ func plainBadge(status string) string {
 	}
 }
 
-func plainBatchSubheader(b DeployBatch, now time.Time, isLive bool) string {
+func plainBatchSubheader(b core.DeployBatch, now time.Time, isLive bool) string {
 	switch b.Status {
 	case "started":
 		return "  … deploying\n"
@@ -163,7 +199,7 @@ func plainBatchSubheader(b DeployBatch, now time.Time, isLive bool) string {
 	}
 }
 
-func plainRow(view core.CommitView, group *Groupings, index int, now time.Time, opts PlainOptions) string {
+func plainRow(view core.CommitView, group *core.Groupings, index int, now time.Time, opts Options) string {
 	icon := plainCIIcon(view.Events)
 	var b strings.Builder
 	b.WriteString("  ")

@@ -17,6 +17,10 @@ import (
 // which runs DeriveView on each one.
 type Snapshot struct {
 	Commits []CommitView
+	// RepoName is the human-readable name of the repository this snapshot
+	// was derived from, displayed by Renderers in their header. Set by the
+	// Source adapter; not derived from the data.
+	RepoName string
 }
 
 // Commit is the raw metadata for one commit, before any pipeline events

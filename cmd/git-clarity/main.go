@@ -18,6 +18,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/cache"
+	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/report"
@@ -43,7 +44,8 @@ func main() {
 type rootOptions struct {
 	plain    bool
 	showSHAs bool
-	limit    int // 0 == unlimited (sentinel); default is 100
+	limit    int    // 0 == unlimited (sentinel); default is 100
+	cacheDir string // --cache-dir override; "" means env-or-default
 }
 
 func dispatch(args []string) error {
@@ -69,13 +71,14 @@ func parseRootArgs(args []string) (rootOptions, error) {
 	plain := fs.Bool("plain", false, "force plain-text output (auto-enabled when stdout is not a tty)")
 	showSHAs := fs.Bool("show-shas", false, "include short commit SHA per row")
 	limit := fs.Int("limit", 100, "max commits to display; 0 means unlimited")
+	cacheDir := fs.String("cache-dir", "", "directory for clarity's local caches; overrides $CLARITY_CACHE_DIR and the default .git/clarity")
 	if err := fs.Parse(args); err != nil {
-		return rootOptions{}, fmt.Errorf("usage: git clarity [--plain] [--show-shas] [--limit N]: %w", err)
+		return rootOptions{}, fmt.Errorf("usage: git clarity [--plain] [--show-shas] [--limit N] [--cache-dir <path>]: %w", err)
 	}
 	if fs.NArg() != 0 {
 		return rootOptions{}, fmt.Errorf("unknown argument %q", fs.Arg(0))
 	}
-	return rootOptions{plain: *plain, showSHAs: *showSHAs, limit: *limit}, nil
+	return rootOptions{plain: *plain, showSHAs: *showSHAs, limit: *limit, cacheDir: *cacheDir}, nil
 }
 
 // isTerminal reports whether f is a real character device (a terminal). False
@@ -94,23 +97,32 @@ func runTUI(opts rootOptions) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		RepoName: filepath.Base(repoPath),
 		Remote:   "origin",
-		Branch:   "main",
+		Branch:   cfg.Branch,
 		Limit:    effectiveLimit(opts.limit),
 	})
 	if err != nil {
 		return err
 	}
 	// CachedLens wraps the bare Lens so the TUI can paint a stale view
-	// from .git/clarity/snapshot-cache.json.gz immediately, then replace
+	// from <cacheDir>/snapshot-cache.json.gz immediately, then replace
 	// it with the fresh fetch when the source's first emit lands. Plain
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
-	cf := cache.New(filepath.Join(repoPath, ".git", "clarity", "snapshot-cache.json.gz"))
+	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
+		Flag:     opts.cacheDir,
+		Env:      os.Getenv("CLARITY_CACHE_DIR"),
+		RepoRoot: repoPath,
+	})
+	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
 	lens := core.NewCachedLens(core.NewLens(src), cf)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
@@ -128,13 +140,17 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		RepoName: filepath.Base(repoPath),
 		Remote:   "origin",
-		Branch:   "main",
+		Branch:   cfg.Branch,
 		Limit:    effectiveLimit(opts.limit),
 	})
 	if err != nil {

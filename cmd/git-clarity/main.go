@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ezcdlabs/clarity/internal/adapters/ghsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
@@ -101,15 +102,14 @@ func runTUI(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
+	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
+		Flag:     opts.cacheDir,
+		Env:      os.Getenv("CLARITY_CACHE_DIR"),
+		RepoRoot: repoPath,
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := refsource.New(refsource.Options{
-		RepoPath: repoPath,
-		RepoName: filepath.Base(repoPath),
-		Remote:   "origin",
-		Branch:   cfg.Branch,
-		Limit:    effectiveLimit(opts.limit),
-	})
+	src, err := buildSource(cfg, opts, repoPath, cacheDir)
 	if err != nil {
 		return err
 	}
@@ -117,11 +117,6 @@ func runTUI(opts rootOptions) error {
 	// from <cacheDir>/snapshot-cache.json.gz immediately, then replace
 	// it with the fresh fetch when the source's first emit lands. Plain
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
-	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
-		Flag:     opts.cacheDir,
-		Env:      os.Getenv("CLARITY_CACHE_DIR"),
-		RepoRoot: repoPath,
-	})
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
 	lens := core.NewCachedLens(core.NewLens(src), cf)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
@@ -144,15 +139,14 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
+	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
+		Flag:     opts.cacheDir,
+		Env:      os.Getenv("CLARITY_CACHE_DIR"),
+		RepoRoot: repoPath,
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	src, err := refsource.New(refsource.Options{
-		RepoPath: repoPath,
-		RepoName: filepath.Base(repoPath),
-		Remote:   "origin",
-		Branch:   cfg.Branch,
-		Limit:    effectiveLimit(opts.limit),
-	})
+	src, err := buildSource(cfg, opts, repoPath, cacheDir)
 	if err != nil {
 		return err
 	}
@@ -161,6 +155,31 @@ func runPlain(opts rootOptions) error {
 	// truncate further" inside RenderSnapshot.
 	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).
 		Render(ctx, lens.Views(ctx))
+}
+
+// buildSource picks the inbound Source adapter based on `.ezcd.json`'s
+// clarity.github section: present → ghsource, absent → refsource (the
+// events-ref default). Same factory shape future identifiers like
+// `file:...` will plug into.
+func buildSource(cfg config.Config, opts rootOptions, repoPath, cacheDir string) (core.Source, error) {
+	if cfg.Clarity != nil && cfg.Clarity.GitHub != nil {
+		return ghsource.New(ghsource.Options{
+			RepoPath: repoPath,
+			RepoName: filepath.Base(repoPath),
+			Branch:   cfg.Branch,
+			Limit:    effectiveLimit(opts.limit),
+			Mapping:  cfg.Clarity.GitHub,
+			Cache:    cache.New(filepath.Join(cacheDir, "github-runs.json.gz")),
+			Client:   ghsource.NewCLIClient(repoPath),
+		})
+	}
+	return refsource.New(refsource.Options{
+		RepoPath: repoPath,
+		RepoName: filepath.Base(repoPath),
+		Remote:   "origin",
+		Branch:   cfg.Branch,
+		Limit:    effectiveLimit(opts.limit),
+	})
 }
 
 // effectiveLimit maps the CLI's "0 = unlimited" convention onto the source's

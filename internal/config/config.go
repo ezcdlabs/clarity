@@ -22,14 +22,20 @@ import (
 // watcher / refsource used before this loader existed.
 const DefaultBranch = "main"
 
-// Config is the parsed surface every caller in step 6 cares about.
-// Later steps add Pushq and Clarity sub-shapes when their consumers
-// land.
+// Config is the parsed surface every caller in step 6+ cares about.
+// Pushq (step 6) is intentionally absent until a clarity-side consumer
+// exists; Clarity (step 7) is populated when .ezcd.json's `clarity`
+// section is present.
 type Config struct {
 	// Branch is the trunk every clarity-aware tool operates on.
 	// Defaults to DefaultBranch when the file is absent or omits the
 	// field.
 	Branch string
+
+	// Clarity is the clarity-specific configuration. nil when the
+	// `clarity` section is omitted from .ezcd.json — callers dispatch
+	// on nil to mean "fall back to the events ref source".
+	Clarity *ClarityConfig
 }
 
 // Load reads `.ezcd.json` from repoRoot and returns its parsed Config.
@@ -52,7 +58,8 @@ func Load(repoRoot string) (Config, error) {
 	// about. Unknown top-level keys are silently ignored — that's the
 	// forward-compat contract.
 	var raw struct {
-		Branch string `json:"branch"`
+		Branch  string            `json:"branch"`
+		Clarity *rawClarityConfig `json:"clarity"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return Config{}, fmt.Errorf("parse .ezcd.json: %w", err)
@@ -60,5 +67,10 @@ func Load(repoRoot string) (Config, error) {
 	if raw.Branch != "" {
 		cfg.Branch = raw.Branch
 	}
+	clarity, err := raw.Clarity.hydrate()
+	if err != nil {
+		return Config{}, fmt.Errorf("parse .ezcd.json: %w", err)
+	}
+	cfg.Clarity = clarity
 	return cfg, nil
 }

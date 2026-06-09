@@ -22,6 +22,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
+	"github.com/ezcdlabs/clarity/internal/initcmd"
 	"github.com/ezcdlabs/clarity/internal/report"
 )
 
@@ -54,6 +55,9 @@ func dispatch(args []string) error {
 	if len(args) > 0 && args[0] == "report" {
 		return runReport(args[1:])
 	}
+	if len(args) > 0 && args[0] == "init" {
+		return runInit(args[1:])
+	}
 	opts, err := parseRootArgs(args)
 	if err != nil {
 		return err
@@ -64,6 +68,37 @@ func dispatch(args []string) error {
 		return runPlain(opts)
 	}
 	return runTUI(opts)
+}
+
+// runInit drives `git clarity init --github` — the interactive
+// workflow + jobs picker that writes .ezcd.json. The actual flow lives
+// in internal/initcmd so it can be tested with buffer-backed I/O; this
+// function just wires the production stdin / stdout / gh client.
+func runInit(args []string) error {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	github := fs.Bool("github", false, "configure the GitHub Actions source")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("usage: git clarity init --github: %w", err)
+	}
+	if !*github {
+		return fmt.Errorf("usage: git clarity init --github")
+	}
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return err
+	}
+	return initcmd.Run(initcmd.Options{
+		Client:    ghsource.NewCLIClient(repoPath),
+		In:        os.Stdin,
+		Out:       os.Stdout,
+		ConfigDir: repoPath,
+		Branch:    cfg.Branch,
+	})
 }
 
 func parseRootArgs(args []string) (rootOptions, error) {

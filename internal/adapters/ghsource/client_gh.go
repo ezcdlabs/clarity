@@ -97,24 +97,79 @@ func (c *CLIClient) fetchJobs(runID int64) ([]Job, error) {
 	return out, nil
 }
 
+// WorkflowSummary is the surface of one workflow needed by the init
+// discovery flow — enough to identify, pick, and look up jobs.
+type WorkflowSummary struct {
+	ID   int64
+	Name string
+	Path string
+}
+
+// ListWorkflows returns every workflow defined on the repo. Used by
+// `git clarity init --github` to populate the workflow picker.
+func (c *CLIClient) ListWorkflows() ([]WorkflowSummary, error) {
+	if err := c.ensureSlug(); err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("/repos/%s/actions/workflows", c.slug)
+	var resp struct {
+		Workflows []WorkflowSummary `json:"workflows"`
+	}
+	if err := c.ghJSON(&resp, "api", "--paginate", endpoint); err != nil {
+		return nil, fmt.Errorf("list workflows: %w", err)
+	}
+	return resp.Workflows, nil
+}
+
+// ListJobsInWorkflow returns the distinct job names from the most
+// recent run of the named workflow on the given branch. Used by the
+// init flow's per-stage job picker — "no runs yet" is reported as an
+// empty slice, not an error, so the user can still write a config
+// pointing at jobs they know will appear once a run lands.
+func (c *CLIClient) ListJobsInWorkflow(workflowID int64, branch string) ([]string, error) {
+	if err := c.ensureSlug(); err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("/repos/%s/actions/workflows/%d/runs?branch=%s&per_page=1",
+		c.slug, workflowID, url.QueryEscape(branch))
+	var runsResp struct {
+		Runs []struct {
+			ID int64 `json:"id"`
+		} `json:"workflow_runs"`
+	}
+	if err := c.ghJSON(&runsResp, "api", endpoint); err != nil {
+		return nil, fmt.Errorf("sample run for workflow %d: %w", workflowID, err)
+	}
+	if len(runsResp.Runs) == 0 {
+		return nil, nil
+	}
+	jobs, err := c.fetchJobs(runsResp.Runs[0].ID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	names := make([]string, 0, len(jobs))
+	for _, j := range jobs {
+		if seen[j.Name] {
+			continue
+		}
+		seen[j.Name] = true
+		names = append(names, j.Name)
+	}
+	return names, nil
+}
+
 // workflowID resolves a workflow name to its numeric ID, caching the
 // result across subsequent calls within the same process.
 func (c *CLIClient) workflowID(name string) (int64, error) {
 	if id, ok := c.wfIDs[name]; ok {
 		return id, nil
 	}
-	endpoint := fmt.Sprintf("/repos/%s/actions/workflows", c.slug)
-	var resp struct {
-		Workflows []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-			Path string `json:"path"`
-		} `json:"workflows"`
+	workflows, err := c.ListWorkflows()
+	if err != nil {
+		return 0, err
 	}
-	if err := c.ghJSON(&resp, "api", "--paginate", endpoint); err != nil {
-		return 0, fmt.Errorf("list workflows: %w", err)
-	}
-	for _, w := range resp.Workflows {
+	for _, w := range workflows {
 		// Match by display name first (what users put in .ezcd.json),
 		// falling back to filename so `clarity.github.ci.workflow:
 		// "ci.yml"` works too.

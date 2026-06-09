@@ -144,7 +144,7 @@ func runTUI(opts rootOptions) error {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := buildSource(cfg, opts, repoPath, cacheDir)
+	src, err := buildSource(ctx, cfg, opts, repoPath, cacheDir)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func runPlain(opts rootOptions) error {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	src, err := buildSource(cfg, opts, repoPath, cacheDir)
+	src, err := buildSource(ctx, cfg, opts, repoPath, cacheDir)
 	if err != nil {
 		return err
 	}
@@ -196,9 +196,15 @@ func runPlain(opts rootOptions) error {
 // clarity.github section: present → ghsource, absent → refsource (the
 // events-ref default). Same factory shape future identifiers like
 // `file:...` will plug into.
-func buildSource(cfg config.Config, opts rootOptions, repoPath, cacheDir string) (core.Source, error) {
+//
+// When the ghsource branch is taken we also run a pre-flight Validate
+// against the configured workflows so misconfigured / unauthenticated
+// invocations fail fast with a clear error, rather than silently
+// rendering an empty snapshot that the user has to chase. The cost is
+// one extra gh API call at startup.
+func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath, cacheDir string) (core.Source, error) {
 	if cfg.Clarity != nil && cfg.Clarity.GitHub != nil {
-		return ghsource.New(ghsource.Options{
+		src, err := ghsource.New(ghsource.Options{
 			RepoPath: repoPath,
 			RepoName: filepath.Base(repoPath),
 			Branch:   cfg.Branch,
@@ -207,6 +213,13 @@ func buildSource(cfg config.Config, opts rootOptions, repoPath, cacheDir string)
 			Cache:    cache.New(filepath.Join(cacheDir, "github-runs.json.gz")),
 			Client:   ghsource.NewCLIClient(repoPath),
 		})
+		if err != nil {
+			return nil, err
+		}
+		if err := src.Validate(ctx); err != nil {
+			return nil, fmt.Errorf("github actions source: %w", err)
+		}
+		return src, nil
 	}
 	return refsource.New(refsource.Options{
 		RepoPath: repoPath,

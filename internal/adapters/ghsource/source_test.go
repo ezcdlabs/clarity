@@ -23,20 +23,31 @@ import (
 // of poll outcomes (initial fetch, then a follow-up fetch with new
 // runs) without spinning up gh on PATH.
 type fakeGHClient struct {
-	mu     sync.Mutex
-	scripts map[string][][]ghsource.Run // workflow name → per-call returns
-	calls   map[string]int
+	mu          sync.Mutex
+	scripts     map[string][][]ghsource.Run // workflow name → per-call returns
+	calls       map[string]int
+	workflows   []ghsource.WorkflowSummary
+	workflowErr error
 }
 
 func newFakeGHClient() *fakeGHClient {
 	return &fakeGHClient{
 		scripts: map[string][][]ghsource.Run{},
 		calls:   map[string]int{},
+		// Tests that don't customise this still get a sensible default
+		// so Source.Validate doesn't fail on a missing workflow.
+		workflows: []ghsource.WorkflowSummary{
+			{ID: 1, Name: "CI", Path: ".github/workflows/ci.yml"},
+		},
 	}
 }
 
 func (f *fakeGHClient) script(workflow string, returns ...[]ghsource.Run) {
 	f.scripts[workflow] = append(f.scripts[workflow], returns...)
+}
+
+func (f *fakeGHClient) ListWorkflows() ([]ghsource.WorkflowSummary, error) {
+	return f.workflows, f.workflowErr
 }
 
 func (f *fakeGHClient) ListRuns(workflowName, branch string, since time.Time) ([]ghsource.Run, error) {

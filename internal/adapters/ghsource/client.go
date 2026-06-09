@@ -17,12 +17,28 @@ import "time"
 // — and so a future on-the-wire client (octokit-go, etc.) can drop in
 // without touching the source.
 type GHClient interface {
+	// ListWorkflows returns every workflow defined on the repo. Used
+	// by Source.Validate to check connectivity + that the configured
+	// workflow names actually exist.
+	ListWorkflows() ([]WorkflowSummary, error)
 	// ListRuns returns recent workflow runs for the named workflow on
 	// the given branch, ordered by UpdatedAt newest-first. Each run
 	// carries its Jobs eagerly so the source doesn't need a second
-	// round trip per run. since bounds the lookback window; pass the
-	// zero Time to disable the filter.
+	// round trip per run. since bounds the lookback window; the
+	// production impl currently ignores it (GH's runs endpoint
+	// doesn't expose an updated_at filter — we always fetch the most
+	// recent page and merge into the cache by run ID).
 	ListRuns(workflowName, branch string, since time.Time) ([]Run, error)
+}
+
+// WorkflowSummary is the surface of one workflow needed by Validate
+// and by the init discovery flow — enough to identify, pick, and look
+// up jobs. Lives here (not client_gh.go) so the GHClient interface
+// can reference it.
+type WorkflowSummary struct {
+	ID   int64
+	Name string
+	Path string
 }
 
 // Run is one GitHub Actions workflow run, plus its jobs. The shape is

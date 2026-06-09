@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -29,10 +30,23 @@ func NewCLIClient(repoPath string) *CLIClient {
 	return &CLIClient{repoPath: repoPath, wfIDs: map[string]int64{}}
 }
 
-// ListRuns hits GitHub for runs of one workflow on one branch with an
-// updated_at filter, then fans out a /jobs call per run to inline the
-// per-job timings the event derivation needs.
+// ListRuns hits GitHub for the most recent page of runs of one workflow
+// on one branch, then fans out a /jobs call per run to inline the per-
+// job timings the event derivation needs.
+//
+// The since parameter is currently ignored: GH's runs endpoint only
+// offers a `created` filter (not `updated_at`), and even that uses an
+// awkward `>=` syntax that the gh CLI's URL handling mangles. Instead
+// we fetch the most recent 100 runs every poll and let the cache merge
+// by run ID — newer runs supersede older copies, and historical runs
+// outside the 100-run window stay sticky in cache. Same shape the old
+// generate-backfill.sh script used and that's been proven in practice.
+//
+// Per-run /jobs failures are logged and skipped — a transient blip on
+// one run shouldn't discard the other 99 successful fetches.
 func (c *CLIClient) ListRuns(workflowName, branch string, since time.Time) ([]Run, error) {
+	_ = since // intentionally unused; see doc comment above.
+
 	if err := c.ensureSlug(); err != nil {
 		return nil, err
 	}
@@ -41,11 +55,13 @@ func (c *CLIClient) ListRuns(workflowName, branch string, since time.Time) ([]Ru
 		return nil, err
 	}
 
-	endpoint := fmt.Sprintf("/repos/%s/actions/workflows/%d/runs?branch=%s&per_page=100",
-		c.slug, wfID, url.QueryEscape(branch))
-	if !since.IsZero() {
-		endpoint += "&created=>=" + since.UTC().Format(time.RFC3339)
-	}
+	// url.Values gives us correct percent-encoding of every parameter
+	// value. Hand-rolling the query string here is what previously
+	// produced a literal "created=>=..." that confused the API.
+	params := url.Values{}
+	params.Set("branch", branch)
+	params.Set("per_page", "100")
+	endpoint := fmt.Sprintf("/repos/%s/actions/workflows/%d/runs?%s", c.slug, wfID, params.Encode())
 
 	var resp struct {
 		Runs []struct {
@@ -54,15 +70,19 @@ func (c *CLIClient) ListRuns(workflowName, branch string, since time.Time) ([]Ru
 			UpdatedAt time.Time `json:"updated_at"`
 		} `json:"workflow_runs"`
 	}
-	if err := c.ghJSON(&resp, "api", "--paginate", endpoint); err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+	if err := c.ghJSON(&resp, "api", endpoint); err != nil {
+		return nil, fmt.Errorf("list runs for workflow %q on %s: %w", workflowName, c.slug, err)
 	}
 
 	out := make([]Run, 0, len(resp.Runs))
 	for _, r := range resp.Runs {
 		jobs, err := c.fetchJobs(r.ID)
 		if err != nil {
-			return nil, fmt.Errorf("fetch jobs for run %d: %w", r.ID, err)
+			// One run's /jobs failure shouldn't take out the whole
+			// poll. Surface via stderr so users debugging "where are
+			// my events?" see something, but keep going.
+			fmt.Fprintf(os.Stderr, "ghsource: skip run %d: %v\n", r.ID, err)
+			continue
 		}
 		out = append(out, Run{
 			ID:        r.ID,
@@ -97,16 +117,9 @@ func (c *CLIClient) fetchJobs(runID int64) ([]Job, error) {
 	return out, nil
 }
 
-// WorkflowSummary is the surface of one workflow needed by the init
-// discovery flow — enough to identify, pick, and look up jobs.
-type WorkflowSummary struct {
-	ID   int64
-	Name string
-	Path string
-}
-
 // ListWorkflows returns every workflow defined on the repo. Used by
-// `git clarity init --github` to populate the workflow picker.
+// `git clarity init --github` to populate the workflow picker and by
+// Source.Validate to check connectivity + name resolution.
 func (c *CLIClient) ListWorkflows() ([]WorkflowSummary, error) {
 	if err := c.ensureSlug(); err != nil {
 		return nil, err

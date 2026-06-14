@@ -24,6 +24,18 @@ import (
 // pipeline events.
 const EventsRef = "refs/clarity/events"
 
+// maxReadRetries bounds how many times updateEventsRef re-fetches after a
+// transient "packfile not found" read error before giving up, so a genuinely
+// unreadable repo fails fast instead of looping forever.
+const maxReadRetries = 3
+
+// noAutoGC disables git's background gc/maintenance for a single invocation.
+// A `git fetch` otherwise spawns a detached `gc --auto` that can repack and
+// delete packfiles out from under the go-git read that immediately follows,
+// surfacing as dotgit.ErrPackfileNotFound. Prepended to every git command we
+// run so our own fetch/push never triggers the racing repack.
+var noAutoGC = []string{"-c", "gc.auto=0", "-c", "maintenance.auto=false"}
+
 // Event is a single pipeline event for a commit. Stage, Status and Time are
 // the stable core schema. CI is opportunistic metadata captured from the
 // environment that produced the event; it may be empty.
@@ -210,6 +222,7 @@ func WriteEvents(repoPath, remote string, eventsBySHA map[string][]Event) error 
 
 func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), message string) error {
 	defer deleteLocalEventsRef(repoPath)
+	readRetries := 0
 	for {
 		_ = fetchEventsRef(repoPath, remote) // may not exist yet; that's fine
 
@@ -220,6 +233,15 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 
 		files, parentHash, err := readEventsRefFiles(repo)
 		if err != nil {
+			// A concurrent git gc/repack can delete a packfile out from under
+			// go-git mid-read ("packfile not found"). The objects are still on
+			// the remote, so drop the stale local ref and re-fetch into a
+			// freshly-packed object store rather than failing the report.
+			if isPackfileNotFound(err) && readRetries < maxReadRetries {
+				readRetries++
+				_ = deleteLocalEventsRef(repoPath)
+				continue
+			}
 			return fmt.Errorf("read events ref: %w", err)
 		}
 
@@ -394,7 +416,7 @@ func buildNestedTree(repo *gogit.Repository, blobs map[string]plumbing.Hash, pre
 }
 
 func fetchEventsRef(repoPath, remote string) error {
-	cmd := exec.Command("git", "fetch", remote, "+"+EventsRef+":"+EventsRef)
+	cmd := exec.Command("git", append(noAutoGC, "fetch", remote, "+"+EventsRef+":"+EventsRef)...)
 	cmd.Dir = repoPath
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()
@@ -414,7 +436,7 @@ func pushEventsRef(repoPath, remote string) error {
 	// a hook gating real code pushes — tests, linters, etc. — has no business
 	// inspecting it and shouldn't be able to block clarity from recording an
 	// event.
-	cmd := exec.Command("git", "push", "--no-verify", remote, EventsRef+":"+EventsRef)
+	cmd := exec.Command("git", append(noAutoGC, "push", "--no-verify", remote, EventsRef+":"+EventsRef)...)
 	cmd.Dir = repoPath
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()
@@ -445,6 +467,19 @@ func isFastForwardRejected(err error) bool {
 		strings.Contains(msg, "reference already exists") ||
 		strings.Contains(msg, "incorrect old value provided") ||
 		strings.Contains(msg, "[rejected]")
+}
+
+// isPackfileNotFound reports whether err is go-git's transient
+// dotgit.ErrPackfileNotFound. It surfaces when a concurrent git gc/repack
+// deletes a .pack out from under an in-progress read: go-git has already
+// recorded the object's pack from its .idx, then fails to open the now-removed
+// .pack. The objects remain reachable on the remote, so the read is retried
+// after re-fetching into a freshly-packed object store.
+func isPackfileNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "packfile not found")
 }
 
 func isBrokenObjectError(err error) bool {

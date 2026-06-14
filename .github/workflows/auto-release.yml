@@ -1,0 +1,62 @@
+name: Auto Release
+
+# When release-worthy commits land on main, compute the next semantic version
+# from their Conventional Commit messages, push the tag, and publish the
+# release with goreleaser — all in one job.
+#
+# Why one job (rather than letting release.yml's tag trigger fire): a tag
+# pushed with the default GITHUB_TOKEN does NOT trigger another workflow, so a
+# separate tag-triggered release would silently never run without a PAT. Doing
+# the goreleaser step here keeps the whole flow on GITHUB_TOKEN with no extra
+# secrets. release.yml remains for manually-pushed tags.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# Serialise releases so two quick merges can't race on tagging / publishing.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Auto Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for version detection
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Determine next version
+        id: ver
+        run: echo "next=$(go run ./cmd/next-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Tag release
+        if: steps.ver.outputs.next != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.ver.outputs.next }}" -m "${{ steps.ver.outputs.next }}"
+          git push origin "${{ steps.ver.outputs.next }}"
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.ver.outputs.next != ''
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - name: No release needed
+        if: steps.ver.outputs.next == ''
+        run: echo "No feat/fix/breaking commits since the last tag — skipping release."

@@ -450,6 +450,37 @@ This mirrors the pattern pushq uses with its `pushqrefs` package — the ref for
 
 ---
 
+## Releasing
+
+Releases are cut automatically from `main`. Versioning follows
+[Conventional Commits](https://www.conventionalcommits.org): when commits land
+on `main`, `.github/workflows/auto-release.yml` derives the next semantic
+version from their messages, pushes the tag, and runs goreleaser to publish the
+GitHub release and update the Homebrew/Scoop taps.
+
+The bump is the highest implied by any commit since the last tag:
+
+- `fix:` → patch
+- `feat:` → minor
+- a `!` marker (`feat!:`) or a `BREAKING CHANGE:` footer → major
+- anything else (`docs:`, `refactor:`, `chore:`, `ci:`, `test:`, non-conventional) → no release
+
+A push to `main` with no release-worthy commits produces no tag and no release.
+The classification lives in `internal/release` (unit-tested) and is driven in CI
+by the non-shipped `cmd/next-version` helper, which prints the next tag (or
+nothing) from the git history.
+
+The whole flow runs on the default `GITHUB_TOKEN` plus the existing
+`TAP_GITHUB_TOKEN` secret — no personal access token is required. Tagging and
+publishing happen in the **same** job rather than via a separate tag-triggered
+workflow, because a tag pushed with `GITHUB_TOKEN` does not trigger another
+workflow run. `.github/workflows/release.yml` remains as the path for
+manually-pushed tags (e.g. `scripts/release.sh` from a maintainer's machine, or
+re-cutting a release), which a human credential's tag push still triggers
+normally.
+
+---
+
 ## Implementation Notes (Go)
 
 ### go-git vs shelling out

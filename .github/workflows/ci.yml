@@ -43,3 +43,58 @@ jobs:
           git config --global user.name "CI"
 
       - run: go test -tags ssh ./... -timeout 300s
+
+  # Auto-release: only after both test suites pass, and only for pushes to
+  # main. A failing build therefore never produces a tag. When a release-worthy
+  # commit (feat/fix/breaking, per Conventional Commits) lands green, the next
+  # semantic version is derived from every commit since the last tag, the tag
+  # is pushed, and goreleaser publishes the release + updates the taps.
+  #
+  # Tagging + publishing happen in this one job on the default GITHUB_TOKEN: a
+  # tag pushed with GITHUB_TOKEN does not trigger another workflow, so a
+  # separate tag-driven release would need a PAT. release.yml stays for
+  # manually-pushed tags (e.g. scripts/release.sh).
+  release:
+    name: Release
+    needs: [test, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for version detection
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Determine next version
+        id: ver
+        run: echo "next=$(go run ./cmd/next-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Tag release
+        if: steps.ver.outputs.next != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.ver.outputs.next }}" -m "${{ steps.ver.outputs.next }}"
+          git push origin "${{ steps.ver.outputs.next }}"
+
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.ver.outputs.next != ''
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - name: No release needed
+        if: steps.ver.outputs.next == ''
+        run: echo "No feat/fix/breaking commits since the last tag — skipping release."

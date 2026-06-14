@@ -479,10 +479,8 @@ The whole flow runs on the default `GITHUB_TOKEN` plus the existing
 `TAP_GITHUB_TOKEN` secret — no personal access token is required. Tagging and
 publishing happen in the **same** job rather than via a separate tag-triggered
 workflow, because a tag pushed with `GITHUB_TOKEN` does not trigger another
-workflow run. `.github/workflows/release.yml` remains as the path for
-manually-pushed tags (e.g. `scripts/release.sh` from a maintainer's machine, or
-re-cutting a release), which a human credential's tag push still triggers
-normally.
+workflow run. This is the only release path: pushing to `main` is how a release
+is cut, with no manual tagging step.
 
 ---
 

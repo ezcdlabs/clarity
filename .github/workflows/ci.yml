@@ -50,10 +50,10 @@ jobs:
   # semantic version is derived from every commit since the last tag, the tag
   # is pushed, and goreleaser publishes the release + updates the taps.
   #
-  # Tagging + publishing happen in this one job on the default GITHUB_TOKEN: a
-  # tag pushed with GITHUB_TOKEN does not trigger another workflow, so a
-  # separate tag-driven release would need a PAT. release.yml stays for
-  # manually-pushed tags (e.g. scripts/release.sh).
+  # Tagging + publishing happen in this one job on the default GITHUB_TOKEN.
+  # This is the only release path: a tag pushed with GITHUB_TOKEN does not
+  # trigger another workflow, so doing the tag + goreleaser steps together here
+  # avoids needing a separate tag-driven workflow (and a PAT to drive it).
   release:
     name: Release
     needs: [test, integration]

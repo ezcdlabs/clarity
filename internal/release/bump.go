@@ -1,8 +1,7 @@
 // Package release derives the next semantic-version tag from the Conventional
-// Commit messages landed since the previous tag. It is the auto-release
-// counterpart to scripts/release.sh's interactive picker: feat → minor,
-// fix → patch, a `!` marker or BREAKING CHANGE footer → major, everything
-// else → no release.
+// Commit messages landed since the previous tag, driving the auto-release job:
+// feat → minor, fix → patch, a `!` marker or BREAKING CHANGE footer → major,
+// everything else → no release.
 package release
 
 import (

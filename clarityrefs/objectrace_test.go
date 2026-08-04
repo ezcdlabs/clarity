@@ -2,6 +2,9 @@ package clarityrefs
 
 import (
 	"os"
+	"path/filepath"
+	"regexp"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -12,6 +15,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
+
+// objectDir matches a loose-object fan-out directory, .git/objects/<xx>.
+var objectDir = regexp.MustCompile(`^[0-9a-f]{2}$`)
 
 // racingStorer fails every nth object write the way a lost gc race does, and
 // succeeds on the immediate retry — matching what happens for real, where the
@@ -95,6 +101,109 @@ func TestWriteEvents_SurvivesObjectWriteRace(t *testing.T) {
 
 	// Survived isn't enough: every event has to land. The events ref is
 	// pushed and the local copy dropped, so read it back from origin.
+	if err := fetchEventsRef(clone.Path, "origin"); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	got, err := ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllEvents: %v", err)
+	}
+	for sha, want := range events {
+		if len(got[sha]) != len(want) {
+			t.Errorf("sha %s: got %d events, want %d", sha, len(got[sha]), len(want))
+		}
+	}
+}
+
+// looseObjects returns the ids of every loose object in the repository.
+func looseObjects(t *testing.T, repoPath string) map[string]bool {
+	t.Helper()
+	objects := filepath.Join(repoPath, ".git", "objects")
+	entries, err := os.ReadDir(objects)
+	if err != nil {
+		t.Fatalf("read objects dir: %v", err)
+	}
+	found := map[string]bool{}
+	for _, e := range entries {
+		if !e.IsDir() || !objectDir.MatchString(e.Name()) {
+			continue
+		}
+		loose, err := os.ReadDir(filepath.Join(objects, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, o := range loose {
+			found[e.Name()+o.Name()] = true
+		}
+	}
+	return found
+}
+
+// pruneNewLooseObjects deletes the loose objects that appeared since before
+// was taken, emulating what `git gc --prune=now` does to objects a write has
+// produced but not yet made reachable. Scoped to what the write created:
+// pruning indiscriminately would take the repository's own history with it,
+// which no gc would ever do.
+func pruneNewLooseObjects(t *testing.T, repoPath string, before map[string]bool) int {
+	t.Helper()
+	objects := filepath.Join(repoPath, ".git", "objects")
+	pruned := 0
+	for id := range looseObjects(t, repoPath) {
+		if before[id] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(objects, id[:2], id[2:])); err == nil {
+			pruned++
+		}
+	}
+	return pruned
+}
+
+// TestWriteEvents_RecoversWhenGCPrunesObjectsBeforePush covers the second way
+// a concurrent gc breaks a write, found while building the retry above.
+//
+// The objects a write creates — blobs, subtrees, the commit — are unreachable
+// until the events ref is moved to point at them. A gc pruning aggressively
+// enough to collect objects that young deletes them in that window, and the
+// push that follows fails locally while packing what it can no longer read.
+// Retrying the object write can't help: by then the objects are gone.
+//
+// Unlike the rmdir race this needs `gc --prune=now` or a configured
+// gc.pruneExpire — auto-gc's two-week default never collects an object this
+// young — so it is a narrower exposure, but a real one for repos whose
+// workflows run their own gc.
+//
+// Emptying the object store in the push seam reproduces it exactly: git
+// itself produces the failure, so the recovery is driven by the real error
+// rather than a guess at its wording.
+func TestWriteEvents_RecoversWhenGCPrunesObjectsBeforePush(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	preexisting := looseObjects(t, clone.Path)
+	original := pushEvents
+	var once sync.Once
+	pushEvents = func(repoPath, rem string) error {
+		once.Do(func() {
+			if pruneNewLooseObjects(t, repoPath, preexisting) == 0 {
+				t.Error("nothing was pruned — the test isn't reproducing the failure")
+			}
+		})
+		return original(repoPath, rem)
+	}
+	t.Cleanup(func() { pushEvents = original })
+
+	events := map[string][]Event{
+		"0123456789abcdef0123456789abcdef01234567": {
+			{Stage: "ci", Status: "passed", Time: time.Unix(1744120134, 0)},
+			{Stage: "deploy", Status: "passed", Time: time.Unix(1744120200, 0)},
+		},
+	}
+
+	if err := WriteEvents(clone.Path, "origin", events); err != nil {
+		t.Fatalf("WriteEvents must rebuild the pruned objects and retry, got: %v", err)
+	}
+
 	if err := fetchEventsRef(clone.Path, "origin"); err != nil {
 		t.Fatalf("fetch: %v", err)
 	}

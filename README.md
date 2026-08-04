@@ -117,6 +117,25 @@ Inputs:
 
 `actions/checkout` must run first so the action has a repository to push events from.
 
+### Troubleshooting: `report` fails with a rename or bad object error
+
+A report step that fails with one of these lost a race with `git gc`:
+
+```
+error: build tree: rename .git/objects/pack/tmp_obj_1741553381
+  .git/objects/9f/9edc86...: no such file or directory
+```
+
+```
+push events ref: fatal: bad tree object 5a8315cd2bc0...
+error: remote unpack failed: eof before pack header was fully read
+ ! [remote rejected] refs/clarity/events -> refs/clarity/events (unpacker error)
+```
+
+Both are fixed — **upgrade the pinned action ref to v0.1.6 or later**. Nothing needs configuring; older versions are affected regardless of settings.
+
+CI is where this shows up because a fresh `actions/checkout` has every object in a packfile and no `.git/objects/<xx>` directories at all, so nearly every event write has to create one. See [Surviving a concurrent gc](#surviving-a-concurrent-gc) for the mechanism. Versions before v0.1.3 are the most exposed: the racing gc there is one clarity spawns itself, so the failure needs no other git activity in the workflow at all.
+
 ---
 
 ## Design Document
@@ -564,10 +583,13 @@ for {
 
 CI is where this bites, because a fresh checkout has every object packed and no `.git/objects/<xx>` directories at all, so nearly every event write has to create one.
 
-Two layers of defence, because neither is sufficient alone:
+There is a second, narrower way a gc breaks a write. The objects a write creates are unreachable until the events ref moves to point at them; a gc pruning aggressively enough to collect objects that young deletes them in that window, and the push then fails locally while packing what it can no longer read. This one needs `--prune=now` or a configured `gc.pruneExpire` — auto-gc's two-week default never collects an object that young — so it only affects repos whose workflows run their own gc.
+
+Three layers of defence, because none is sufficient alone:
 
 - **Prevent the gc we cause.** Every git command clarity runs is prefixed with `-c gc.auto=0 -c maintenance.auto=false`. Without this, the `git fetch` at the top of the push loop spawns a detached `gc --auto` that then races the tree build a few statements later — clarity's own fetch is the most likely trigger of clarity's own failure.
-- **Tolerate the gc we don't.** Another job, another tool in the same workflow, or a repo with `gc.auto` configured can still start one. Each loose-object write retries a bounded number of times on a rename that failed because a path component vanished. Git objects are content-addressed, so a retried write is idempotent, and the retry re-creates the pruned directory. Retries are matched on the typed `*os.LinkError` rather than on message text, so an unrelated missing file still fails fast.
+- **Retry the write.** Another job, another tool in the same workflow, or a repo with `gc.auto` configured can still start one. Each loose-object write retries a bounded number of times on a rename that failed because a path component vanished. Git objects are content-addressed, so a retried write is idempotent, and the retry re-creates the pruned directory. Retries are matched on the typed `*os.LinkError` rather than on message text, so an unrelated missing file still fails fast.
+- **Rebuild after a prune.** Retrying the write cannot help once the objects are already gone, so a push that fails because the local store can no longer read what it is packing drops the local ref and rebuilds from scratch, a bounded number of times. The tree is derived from the events the caller supplied, so every pruned object is simply written again. Git's wording here varies by object type — `unable to read <id>` for a blob, `bad tree object <id>` for a tree, `bad object <id>` for a commit — and mentions gc in none of them, so the match keys on the shape they share: a diagnostic naming a raw object id.
 
 ---
 

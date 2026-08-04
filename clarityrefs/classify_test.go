@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -154,6 +155,82 @@ func TestIsPackfileNotFound(t *testing.T) {
 		got := isPackfileNotFound(fmt.Errorf("%s", c.msg))
 		if got != c.expected {
 			t.Errorf("isPackfileNotFound(%q) = %v, want %v", c.msg, got, c.expected)
+		}
+	}
+}
+
+// TestIsMissingLocalObject documents what `git push` reports when a gc has
+// pruned objects this write created but had not yet made reachable. Each case
+// is a message observed from real git, one per object type the write
+// produces: blobs, the subtrees above them, and the commit itself.
+//
+// The wording differs per type and none of it mentions gc, so the match is on
+// the shape git uses for an unreadable object — a diagnostic naming a raw
+// object id. When a new variant turns up at runtime, add the case here first.
+func TestIsMissingLocalObject(t *testing.T) {
+	const push = "push events ref: exit status 1\n%s\n" +
+		"error: remote unpack failed: eof before pack header was fully read\n" +
+		" ! [rejected] refs/clarity/events -> refs/clarity/events (unpacker error)"
+
+	cases := []struct {
+		name     string
+		msg      string
+		expected bool
+	}{
+		{
+			name:     "blob pruned",
+			msg:      fmt.Sprintf(push, "fatal: unable to read 1e0cc372331e3a39d4fc68004e6aac0bded258ad"),
+			expected: true,
+		},
+		{
+			name:     "tree pruned",
+			msg:      fmt.Sprintf(push, "fatal: bad tree object 5a8315cd2bc01c22ef5f057ff3c9fff67103da66"),
+			expected: true,
+		},
+		{
+			name:     "commit pruned",
+			msg:      fmt.Sprintf(push, "fatal: bad object 648fb6396609169bb455f6939d8796366f570cc2"),
+			expected: true,
+		},
+		{
+			name:     "sha256 object ids",
+			msg:      "fatal: bad object " + strings.Repeat("a", 64),
+			expected: true,
+		},
+		// Rejections handled by their own recovery must not be captured here.
+		{
+			name:     "fast-forward rejection",
+			msg:      "exit status 1\n ! [rejected] refs/clarity/events -> refs/clarity/events (non-fast-forward)",
+			expected: false,
+		},
+		{
+			name:     "remote fsck rejection",
+			msg:      "remote: error: object abc: fullPathname: contains full pathnames\nremote: fatal: fsck error in packed object",
+			expected: false,
+		},
+		// "unable to read" appears in unrelated git diagnostics; without an
+		// object id it is not this failure.
+		{
+			name:     "unable to read without an object id",
+			msg:      "fatal: unable to read current working directory: Permission denied",
+			expected: false,
+		},
+		{
+			name:     "authentication failure",
+			msg:      "fatal: could not read Username for 'https://github.com': No such device or address",
+			expected: false,
+		},
+		{
+			name:     "connection refused",
+			msg:      "connection refused",
+			expected: false,
+		},
+	}
+
+	for _, c := range cases {
+		if got := isMissingLocalObject(fmt.Errorf("%s", c.msg)); got != c.expected {
+			t.Errorf("%s: isMissingLocalObject(%q) = %v, want %v",
+				c.name, c.msg, got, c.expected)
 		}
 	}
 }

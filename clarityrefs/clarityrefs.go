@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -29,6 +30,11 @@ const EventsRef = "refs/clarity/events"
 // transient "packfile not found" read error before giving up, so a genuinely
 // unreadable repo fails fast instead of looping forever.
 const maxReadRetries = 3
+
+// maxWriteRetries bounds how many times updateEventsRef rebuilds and re-pushes
+// after a concurrent gc pruned the objects it had just written, so a repo with
+// a gc running continuously fails with the real error instead of looping.
+const maxWriteRetries = 3
 
 // noAutoGC disables git's background gc/maintenance for a single invocation.
 // A `git fetch` otherwise spawns a detached `gc --auto` that can repack and
@@ -224,6 +230,7 @@ func WriteEvents(repoPath, remote string, eventsBySHA map[string][]Event) error 
 func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), message string) error {
 	defer deleteLocalEventsRef(repoPath)
 	readRetries := 0
+	writeRetries := 0
 	for {
 		_ = fetchEventsRef(repoPath, remote) // may not exist yet; that's fine
 
@@ -288,7 +295,7 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 			return fmt.Errorf("set local ref: %w", err)
 		}
 
-		pushErr := pushEventsRef(repoPath, remote)
+		pushErr := pushEvents(repoPath, remote)
 		if pushErr == nil {
 			return nil
 		}
@@ -296,6 +303,18 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 			continue
 		}
 		if isBrokenObjectError(pushErr) {
+			_ = deleteLocalEventsRef(repoPath)
+			continue
+		}
+		// An aggressive concurrent gc can prune the objects this iteration
+		// wrote before the ref moved to make them reachable, leaving the push
+		// unable to read what it is packing. Drop the local ref so the next
+		// pass re-fetches a clean store, and rebuild — the tree comes from the
+		// caller's events, so every pruned object is written again. Bounded:
+		// if a gc keeps collecting under us, surface the error rather than
+		// loop.
+		if isMissingLocalObject(pushErr) && writeRetries < maxWriteRetries {
+			writeRetries++
 			_ = deleteLocalEventsRef(repoPath)
 			continue
 		}
@@ -432,6 +451,12 @@ func fetchEventsRef(repoPath, remote string) error {
 	return nil
 }
 
+// pushEvents is the push step of the write loop. A var so tests can empty the
+// object store between the tree build and the push, reproducing what an
+// aggressive concurrent gc does to objects this write has not yet made
+// reachable.
+var pushEvents = pushEventsRef
+
 func pushEventsRef(repoPath, remote string) error {
 	// --no-verify skips the user's pre-push hook. The events ref is internal
 	// bookkeeping (event JSON files keyed by commit SHA), not user code, so
@@ -482,6 +507,34 @@ func isPackfileNotFound(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "packfile not found")
+}
+
+// missingLocalObjectRe matches git's diagnostics for an object it cannot read
+// out of the local store, keyed on the shape they share: a message naming a
+// raw object id. The wording varies by object type — "unable to read <id>"
+// for a blob, "bad tree object <id>" for a tree, "bad object <id>" for a
+// commit — and none of it mentions gc. Requiring the object id keeps
+// unrelated "unable to read ..." diagnostics out.
+var missingLocalObjectRe = regexp.MustCompile(`(?:bad object|bad tree object|unable to read) [0-9a-f]{40,64}\b`)
+
+// isMissingLocalObject reports whether a push failed because objects the
+// commit references are no longer in the local object store.
+//
+// The objects a write creates are unreachable until the events ref is moved
+// to point at them. A gc pruning aggressively enough to collect objects that
+// young — `--prune=now`, or a configured gc.pruneExpire; auto-gc's two-week
+// default never does — deletes them in that window, and the push then fails
+// locally while packing what it can no longer read.
+//
+// Recovery is to drop the local ref, re-fetch and rebuild: the tree is
+// derived from the events map the caller supplied, so every pruned object is
+// simply written again. Retrying the object write cannot help here — by the
+// time the push runs, the objects are already gone.
+func isMissingLocalObject(err error) bool {
+	if err == nil {
+		return false
+	}
+	return missingLocalObjectRe.MatchString(err.Error())
 }
 
 func isBrokenObjectError(err error) bool {

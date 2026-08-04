@@ -317,7 +317,7 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 
 	timer := ""
 	if group != nil {
-		if d, frozen, ok := group.LeadTime(index, view.Time, now); ok {
+		if d, frozen, ok := group.LeadTime(index, now); ok {
 			// Gray while ticking; blue once the deploy that pushed this
 			// commit to production fires, so the lead-time "blooms" blue
 			// exactly when it freezes — matching the Deployed section's

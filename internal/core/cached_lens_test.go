@@ -49,7 +49,7 @@ func TestCachedLens_NoCache_EmitsFreshOnly(t *testing.T) {
 
 	cf := cache.New(filepath.Join(t.TempDir(), "snapshot.json.gz"))
 	inner := newFakeViewProducer()
-	cl := core.NewCachedLens(inner, cf)
+	cl := core.NewCachedLens(inner, cf, core.DefaultLeadTimeMode)
 	out := cl.Views(ctx)
 
 	go inner.emit(core.View{Snapshot: core.Snapshot{RepoName: "fresh"}})
@@ -86,7 +86,7 @@ func TestCachedLens_WithCache_EmitsStaleFirstThenFresh(t *testing.T) {
 	}
 
 	inner := newFakeViewProducer()
-	cl := core.NewCachedLens(inner, cf)
+	cl := core.NewCachedLens(inner, cf, core.DefaultLeadTimeMode)
 	out := cl.Views(ctx)
 
 	first := readView(t, out)
@@ -118,7 +118,7 @@ func TestCachedLens_WritesFreshToCache(t *testing.T) {
 
 	cf := cache.New(filepath.Join(t.TempDir(), "snapshot.json.gz"))
 	inner := newFakeViewProducer()
-	cl := core.NewCachedLens(inner, cf)
+	cl := core.NewCachedLens(inner, cf, core.DefaultLeadTimeMode)
 	out := cl.Views(ctx)
 
 	go inner.emit(core.View{Snapshot: core.Snapshot{RepoName: "fresh"}})

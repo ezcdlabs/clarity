@@ -152,8 +152,9 @@ func runTUI(opts rootOptions) error {
 	// from <cacheDir>/snapshot-cache.json.gz immediately, then replace
 	// it with the fresh fetch when the source's first emit lands. Plain
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
+	mode := leadTimeMode(cfg)
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
-	lens := core.NewCachedLens(core.NewLens(src), cf)
+	lens := core.NewCachedLens(core.NewLens(src, mode), cf, mode)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
 
@@ -185,7 +186,7 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	lens := core.NewLens(src)
+	lens := core.NewLens(src, leadTimeMode(cfg))
 	// Limit is already applied by the source; passing 0 here means "don't
 	// truncate further" inside RenderSnapshot.
 	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).
@@ -427,6 +428,16 @@ func parseReportArgs(args []string) (report.Options, error) {
 		opts.Time = t
 	}
 	return opts, nil
+}
+
+// leadTimeMode reads the configured lead time mode, falling back to the
+// default when .ezcd.json has no clarity section at all. The value is
+// validated at load time, so anything reaching here is already a known mode.
+func leadTimeMode(cfg config.Config) core.LeadTimeMode {
+	if cfg.Clarity == nil {
+		return core.DefaultLeadTimeMode
+	}
+	return cfg.Clarity.LeadTime
 }
 
 func repoRoot() (string, error) {

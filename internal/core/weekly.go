@@ -39,7 +39,16 @@ type WeekStat struct {
 // Deploys counts distinct DeployBatch entries with Status == "passed". A
 // started-or-failed batch is not a deploy.
 func WeeklyStats(snap Snapshot) []WeekStat {
-	g := GroupCommits(snap.Commits)
+	return WeeklyStatsMode(snap, DefaultLeadTimeMode)
+}
+
+// WeeklyStatsMode is WeeklyStats under an explicit LeadTimeMode. Which
+// commits contribute a lead time, and what it is measured from, come from the
+// same precomputed starts the per-row renderer reads — so the average is
+// always "the mean of the lead times visible in the Deployed section", under
+// any mode.
+func WeeklyStatsMode(snap Snapshot, mode LeadTimeMode) []WeekStat {
+	g := GroupCommitsMode(snap.Commits, mode)
 
 	type bucket struct {
 		deploys       int
@@ -59,14 +68,18 @@ func WeeklyStats(snap Snapshot) []WeekStat {
 		return bk
 	}
 
-	for i, c := range snap.Commits {
+	for i := range snap.Commits {
 		deployedAt := g.DeployedAtIndex(i)
-		if deployedAt.IsZero() || c.Time.IsZero() {
+		start := g.leadStartAt(i)
+		// Zero start = the mode excludes this commit. A deploy at or before
+		// the start = a non-positive interval, excluded for the same reason
+		// Groupings.LeadTime refuses to render one.
+		if deployedAt.IsZero() || start.IsZero() || !deployedAt.After(start) {
 			continue
 		}
 		year, week := deployedAt.UTC().ISOWeek()
 		bk := getOrCreate(int64(year)*100 + int64(week))
-		bk.totalLeadNs += int64(deployedAt.Sub(c.Time))
+		bk.totalLeadNs += int64(deployedAt.Sub(start))
 		bk.leadCommitCnt++
 	}
 

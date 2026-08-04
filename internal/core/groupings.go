@@ -37,6 +37,13 @@ type Groupings struct {
 	// deploy:passed time if fix-forwarded. Zero when commit i has not yet
 	// been deployed.
 	deployedAt []time.Time
+
+	// leadStart[i] is the instant commit i's lead time is measured from,
+	// per the configured LeadTimeMode. Zero means the commit has no lead
+	// time: it renders without one and contributes nothing to the weekly
+	// average. Precomputed here so the per-row display and the weekly
+	// aggregate cannot disagree about which commits count.
+	leadStart []time.Time
 }
 
 // DeployBatch is a subgroup within Deployed (or InFlight): one deploy
@@ -52,11 +59,21 @@ type DeployBatch struct {
 // section boundary between CI Passed and Deployed is the deploy:passed line —
 // in-flight (started/failed) batches stay above the line as InFlight, sitting
 // at the bottom of CI Passed in the rendered TUI.
+// GroupCommits groups under DefaultLeadTimeMode. Grouping itself doesn't
+// depend on the lead time mode — only which commits carry a lead time does —
+// so callers that don't configure one (the demo binary, most tests) use this.
 func GroupCommits(commits []CommitView) Groupings {
+	return GroupCommitsMode(commits, DefaultLeadTimeMode)
+}
+
+// GroupCommitsMode classifies commits (newest-first) into lifecycle groups,
+// computing lead time starts under the given mode.
+func GroupCommitsMode(commits []CommitView, mode LeadTimeMode) Groupings {
 	g := Groupings{
 		ciLine:           -1,
 		deployPassedLine: -1,
 		deployedAt:       make([]time.Time, len(commits)),
+		leadStart:        leadStarts(commits, mode),
 	}
 
 	// Pass 1 — compute the lines and per-commit deployedAt.
@@ -178,17 +195,54 @@ func (g Groupings) DeployedAtIndex(index int) time.Time {
 	return g.deployedAt[index]
 }
 
-// LeadTime returns the elapsed time from the commit's authoring to either
-// the deploy that pushed it to production (frozen=true) or the current moment
-// (frozen=false). Returns ok=false when the commit time is unknown.
-func (g Groupings) LeadTime(index int, commitTime, now time.Time) (time.Duration, bool, bool) {
-	if commitTime.IsZero() {
+// LeadTime returns the elapsed time from where the configured LeadTimeMode
+// starts measuring commit[index] to either the deploy that pushed it to
+// production (frozen=true) or the current moment (frozen=false).
+//
+// ok=false means the commit has no lead time and should render without one:
+// its start is unknown, or the mode excludes it, or the frozen interval would
+// not be positive.
+//
+// That last case is dropped rather than clamped, because every way of
+// producing it is a data artefact rather than a fast delivery. A rebased or
+// amended commit can carry an author date later than the deploy that shipped
+// it. A commit can inherit a deploy from a newer commit that landed earlier.
+// And in LeadPipeline a team reporting only terminal events has its start
+// land on the deploy itself, making the interval exactly zero — the mode has
+// nothing to measure, which is not the same as measuring nothing. Letting any
+// of them through would drag the average below what the pipeline actually
+// achieves.
+//
+// The live (unfrozen) branch is deliberately laxer: a timer that has just
+// started legitimately reads zero, and will tick.
+func (g Groupings) LeadTime(index int, now time.Time) (time.Duration, bool, bool) {
+	if index < 0 || index >= len(g.leadStart) {
 		return 0, false, false
 	}
-	if index >= 0 && index < len(g.deployedAt) && !g.deployedAt[index].IsZero() {
-		return g.deployedAt[index].Sub(commitTime), true, true
+	start := g.leadStart[index]
+	if start.IsZero() {
+		return 0, false, false
 	}
-	return now.Sub(commitTime), false, true
+	if deployedAt := g.deployedAt[index]; !deployedAt.IsZero() {
+		if !deployedAt.After(start) {
+			return 0, false, false
+		}
+		return deployedAt.Sub(start), true, true
+	}
+	if now.Before(start) {
+		return 0, false, false
+	}
+	return now.Sub(start), false, true
+}
+
+// leadStartAt returns the lead time start for commit index, or the zero time
+// when it has none. Used by WeeklyStats so the aggregate counts exactly the
+// commits the per-row renderer shows a lead time for.
+func (g Groupings) leadStartAt(index int) time.Time {
+	if index < 0 || index >= len(g.leadStart) {
+		return time.Time{}
+	}
+	return g.leadStart[index]
 }
 
 // IsStaleStage reports whether commit[index]'s status for the given stage

@@ -85,7 +85,7 @@ func TestDeriveView_PopulatesAllFields(t *testing.T) {
 			}},
 	}}
 
-	view := core.DeriveView(snap)
+	view := core.DeriveView(snap, core.DefaultLeadTimeMode)
 	if &view.Snapshot != &view.Snapshot { /* keeps the linter happy */
 	}
 	if len(view.Groups.Head) != 1 || view.Groups.Head[0].SHA != "head" {

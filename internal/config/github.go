@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 // ClarityConfig is the `clarity` section of .ezcd.json. Optional —
@@ -11,6 +13,11 @@ import (
 // would slot in alongside.
 type ClarityConfig struct {
 	GitHub *GitHubConfig
+
+	// LeadTime selects which commits contribute a lead time and what it is
+	// measured from. Absent from the file ⇒ core.DefaultLeadTimeMode, so an
+	// existing config keeps producing the numbers it always has.
+	LeadTime core.LeadTimeMode
 }
 
 // GitHubConfig maps the two clarity lifecycle stages (CI, deploy) onto
@@ -82,7 +89,8 @@ func (j *JobSet) UnmarshalJSON(data []byte) error {
 // from the exported ClarityConfig so json struct tags don't leak into the
 // public type signature.
 type rawClarityConfig struct {
-	GitHub *rawGitHubConfig `json:"github"`
+	GitHub   *rawGitHubConfig `json:"github"`
+	LeadTime string           `json:"leadTime"`
 }
 
 type rawGitHubConfig struct {
@@ -104,7 +112,11 @@ func (r *rawClarityConfig) hydrate() (*ClarityConfig, error) {
 	if r == nil {
 		return nil, nil
 	}
-	out := &ClarityConfig{}
+	mode, err := core.ParseLeadTimeMode(r.LeadTime)
+	if err != nil {
+		return nil, fmt.Errorf("clarity.leadTime: %w", err)
+	}
+	out := &ClarityConfig{LeadTime: mode}
 	if r.GitHub != nil {
 		gh := &GitHubConfig{}
 		ci, err := hydrateStage("ci", r.GitHub.CI)

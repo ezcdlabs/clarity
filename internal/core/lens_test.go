@@ -30,7 +30,7 @@ func TestLens_RunsDeriveViewOnEachSnapshot(t *testing.T) {
 	defer cancel()
 
 	src := newFakeSource()
-	lens := core.NewLens(src)
+	lens := core.NewLens(src, core.DefaultLeadTimeMode)
 	views := lens.Views(ctx)
 
 	go src.emit(snap)
@@ -58,7 +58,7 @@ func TestLens_RunsDeriveViewOnEachSnapshot(t *testing.T) {
 func TestLens_ClosesViewsWhenSourceCloses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	src := newFakeSource()
-	lens := core.NewLens(src)
+	lens := core.NewLens(src, core.DefaultLeadTimeMode)
 	views := lens.Views(ctx)
 
 	// Cancelling the context closes the fake source, which should propagate

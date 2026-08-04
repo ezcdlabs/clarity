@@ -27,14 +27,19 @@ type HeaderStatus struct {
 	Deploy string
 }
 
-// DeriveView builds View from Snapshot. Pure function. Used by the Lens
-// to produce streamed views and by the demo binary to derive a View from
-// a hand-built Snapshot without going through Source adapters.
-func DeriveView(snap Snapshot) View {
+// DeriveView builds View from Snapshot under the given LeadTimeMode. Pure
+// function. Used by the Lens to produce streamed views and by the demo binary
+// to derive a View from a hand-built Snapshot without going through Source
+// adapters.
+//
+// The mode is the only knob: it decides which commits carry a lead time and
+// what that time is measured from. Everything else in a View is derived the
+// same way regardless.
+func DeriveView(snap Snapshot, mode LeadTimeMode) View {
 	return View{
 		Snapshot: snap,
-		Groups:   GroupCommits(snap.Commits),
-		Weekly:   WeeklyStats(snap),
+		Groups:   GroupCommitsMode(snap.Commits, mode),
+		Weekly:   WeeklyStatsMode(snap, mode),
 		Header:   buildHeaderStatus(snap.Commits),
 	}
 }

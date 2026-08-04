@@ -10,11 +10,17 @@ import "context"
 // startup.
 type Lens struct {
 	source Source
+	mode   LeadTimeMode
 }
 
-// NewLens returns a Lens that derives views from the given Source.
-func NewLens(source Source) *Lens {
-	return &Lens{source: source}
+// NewLens returns a Lens that derives views from the given Source under the
+// given LeadTimeMode. An empty mode means DefaultLeadTimeMode, so callers
+// that don't configure lead time can pass the zero value.
+func NewLens(source Source, mode LeadTimeMode) *Lens {
+	if mode == "" {
+		mode = DefaultLeadTimeMode
+	}
+	return &Lens{source: source, mode: mode}
 }
 
 // Views starts the upstream Source and returns a channel of derived
@@ -26,7 +32,7 @@ func (l *Lens) Views(ctx context.Context) <-chan View {
 		defer close(out)
 		for snap := range l.source.Watch(ctx) {
 			select {
-			case out <- DeriveView(snap):
+			case out <- DeriveView(snap, l.mode):
 			case <-ctx.Done():
 				return
 			}

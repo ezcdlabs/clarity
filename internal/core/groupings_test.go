@@ -232,7 +232,7 @@ func TestLeadTime_NotDeployed_LiveAgainstNow(t *testing.T) {
 		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{ev("ci", "started", 50)}},
 	}
 	g := core.GroupCommits(commits)
-	d, frozen, ok := g.LeadTime(0, commitTime, now)
+	d, frozen, ok := g.LeadTime(0, now)
 	if !ok {
 		t.Fatal("expected lead time to be available")
 	}
@@ -256,7 +256,7 @@ func TestLeadTime_DeployStarted_StillLive(t *testing.T) {
 		}},
 	}
 	g := core.GroupCommits(commits)
-	_, frozen, ok := g.LeadTime(0, commitTime, now)
+	_, frozen, ok := g.LeadTime(0, now)
 	if !ok {
 		t.Fatal("expected lead time")
 	}
@@ -276,7 +276,7 @@ func TestLeadTime_Deployed_FrozenAtDeployTime(t *testing.T) {
 		}},
 	}
 	g := core.GroupCommits(commits)
-	d, frozen, ok := g.LeadTime(0, commitTime, now)
+	d, frozen, ok := g.LeadTime(0, now)
 	if !ok || !frozen {
 		t.Fatal("expected frozen lead time")
 	}
@@ -295,7 +295,7 @@ func TestLeadTime_FixForwardedCommit_FrozenAtNewerDeploy(t *testing.T) {
 		{SHA: "older", Time: olderCommitTime},
 	}
 	g := core.GroupCommits(commits)
-	d, frozen, ok := g.LeadTime(1, olderCommitTime, time.Unix(9999, 0))
+	d, frozen, ok := g.LeadTime(1, time.Unix(9999, 0))
 	if !ok || !frozen {
 		t.Fatal("expected frozen lead time")
 	}
@@ -318,7 +318,7 @@ func TestLeadTime_OwnDeploy_NotOverriddenByNewerDeploy(t *testing.T) {
 		}},
 	}
 	g := core.GroupCommits(commits)
-	d, frozen, ok := g.LeadTime(1, olderCommitTime, time.Unix(9999, 0))
+	d, frozen, ok := g.LeadTime(1, time.Unix(9999, 0))
 	if !ok || !frozen {
 		t.Fatal("expected frozen lead time")
 	}
@@ -331,7 +331,7 @@ func TestLeadTime_OwnDeploy_NotOverriddenByNewerDeploy(t *testing.T) {
 func TestLeadTime_ZeroCommitTime_NotAvailable(t *testing.T) {
 	commits := []core.CommitView{{SHA: "a"}}
 	g := core.GroupCommits(commits)
-	_, _, ok := g.LeadTime(0, time.Time{}, time.Unix(100, 0))
+	_, _, ok := g.LeadTime(0, time.Unix(100, 0))
 	if ok {
 		t.Error("expected ok=false when commit time is zero")
 	}

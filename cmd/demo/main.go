@@ -82,7 +82,7 @@ func play(s *Scenario) error {
 			if snap.RepoName == "" {
 				snap.RepoName = s.Repo
 			}
-			views <- core.DeriveView(snap)
+			views <- core.DeriveView(snap, core.DefaultLeadTimeMode)
 			time.Sleep(f.Hold)
 		}
 		close(views)

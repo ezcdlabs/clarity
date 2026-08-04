@@ -214,7 +214,7 @@ func plainRow(view core.CommitView, group *core.Groupings, index int, now time.T
 	b.WriteString(view.Subject)
 
 	if group != nil {
-		if d, _, ok := group.LeadTime(index, view.Time, now); ok {
+		if d, _, ok := group.LeadTime(index, now); ok {
 			b.WriteString("  ")
 			b.WriteString(core.FormatElapsed(d))
 		}

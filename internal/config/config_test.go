@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ezcdlabs/clarity/internal/config"
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 // TestLoad_NoFile is the must-not-error path that protects every existing
@@ -97,5 +98,66 @@ func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("writeFile: %v", err)
+	}
+}
+
+// TestLoad_LeadTime_Absent protects existing installs: a clarity section
+// without a leadTime key must keep producing the numbers it always has,
+// rather than silently switching anyone's DORA metrics on upgrade.
+func TestLoad_LeadTime_Absent(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".ezcd.json", `{"clarity": {}}`)
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Clarity == nil {
+		t.Fatal("expected a clarity section")
+	}
+	if cfg.Clarity.LeadTime != core.DefaultLeadTimeMode {
+		t.Errorf("leadTime = %q, want the default %q",
+			cfg.Clarity.LeadTime, core.DefaultLeadTimeMode)
+	}
+}
+
+// TestLoad_LeadTime_Modes checks each documented value round-trips from the
+// file into the typed mode callers dispatch on.
+func TestLoad_LeadTime_Modes(t *testing.T) {
+	cases := map[string]core.LeadTimeMode{
+		"all":      core.LeadAll,
+		"reported": core.LeadReported,
+		"pipeline": core.LeadPipeline,
+	}
+	for raw, want := range cases {
+		dir := t.TempDir()
+		writeFile(t, dir, ".ezcd.json", `{"clarity": {"leadTime": "`+raw+`"}}`)
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load(%q): %v", raw, err)
+		}
+		if cfg.Clarity.LeadTime != want {
+			t.Errorf("leadTime %q parsed as %q, want %q", raw, cfg.Clarity.LeadTime, want)
+		}
+	}
+}
+
+// TestLoad_LeadTime_Invalid fails at load rather than falling back to a
+// default. A typo in this key silently changes what the DORA numbers mean,
+// which is exactly the kind of thing a user should be told about at the point
+// they can still see the file they just edited.
+func TestLoad_LeadTime_Invalid(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".ezcd.json", `{"clarity": {"leadTime": "pipelien"}}`)
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("expected an error for an unknown leadTime value")
+	}
+	for _, want := range []string{"leadTime", "pipelien", "pipeline"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
 	}
 }

@@ -54,7 +54,37 @@ When `stdout` is not a terminal (e.g. piped to another command, redirected to a 
 
 The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
 
-The Deployed section also surfaces per-ISO-week DORA throughput inline: a `W<year>-<NN>  N deploys  Xh Ym avg` summary on each week boundary. The topmost week shares the `Deployed` section header row; older weeks below get their own dividers as you scroll history. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" is the standard DORA lead time — average of `(deploy_time − commit_time)` across every commit that reached production in the week. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
+The Deployed section also surfaces per-ISO-week DORA throughput inline: a `W<year>-<NN>  N deploys  Xh Ym avg` summary on each week boundary. The topmost week shares the `Deployed` section header row; older weeks below get their own dividers as you scroll history. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" averages the per-commit lead times shown on the right of each row — see [Lead time](#lead-time) for what those measure and how to change it. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
+
+### Lead time
+
+Each row's right-hand column is that commit's lead time, and the weekly `avg` is the mean of the ones visible in the Deployed section. What "lead time" starts from is configurable, because the honest answer depends on what you intend the number to change:
+
+```json
+{ "clarity": { "leadTime": "pipeline" } }
+```
+
+| Mode | Which commits count | Measured from |
+| --- | --- | --- |
+| `all` (default) | every commit that reached production | its authoring time |
+| `reported` | commits carrying at least one pipeline event | its authoring time |
+| `pipeline` | commits carrying at least one pipeline event | its earliest event |
+
+**Why the choice exists.** CI usually runs on the pushed head, not on every commit in a push. A developer who makes five small commits and pushes them together produces one commit with events and four without — but all five reached production, so under `all` they contribute five samples, each carrying however long the work sat unpushed. The average ends up describing commit-and-push habits as much as the pipeline. Someone who commits on Friday and pushes on Monday moves the team's number more than any pipeline change would.
+
+`all` is the default so that upgrading never silently moves anyone's numbers.
+
+`reported` removes the multiplier — one sample per pushed batch instead of one per commit — but not the magnitude. The surviving commit is still timed from when it was authored, so the Friday-to-Monday gap is still in the average, just once instead of five times. Choose it to keep the DORA definition intact and only stop the double-counting.
+
+`pipeline` is the one to choose if the number is meant to drive pipeline work. Time spent unpushed, in review, or otherwise before CI took the code stops counting. Three consequences, all deliberate:
+
+- It is **not** DORA lead time for changes, which includes commit-to-deploy precisely because unpushed work is real delay in the value stream. Don't report it as DORA.
+- Anything before the first event is invisible, **including runner queueing** — which is genuine pipeline performance you stop seeing. `ci started` is reported from inside the job, so a saturated runner pool looks free.
+- The number depends on reporting discipline. A team reporting only `ci passed` and `deploy passed` measures from the *end* of CI and gets a much smaller number than one that also reports `ci started`.
+
+**Commits without a lead time still appear in the log.** Under `reported` and `pipeline` they render without a right-hand column and contribute nothing to the average. The intent is to stop them skewing the number, not to hide that they shipped.
+
+**Non-positive intervals are dropped, not clamped.** A rebased or amended commit can carry an author date later than the deploy that shipped it; a commit can inherit a deploy from a newer commit that landed earlier; and under `pipeline`, a team reporting only terminal events has its start land on the deploy itself. All three produce a zero or negative interval, none of them represent fast delivery, and a run of them would quietly report a perfect pipeline. Such commits contribute nothing.
 
 ### Reporting from CI: `git clarity report <stage> <status>`
 
@@ -178,7 +208,7 @@ Clarity answers that question directly. The top row of the TUI is the most recen
 
 The events data clarity captures naturally supports two of the four DORA metrics out of the box:
 
-- **Lead time for changes** — time from commit to deploy, derivable from the timestamps of the first event and the `deploy passed` event for each commit
+- **Lead time for changes** — time from commit to deploy, derived per commit from its authoring time (or its first pipeline event) and the `deploy passed` event that shipped it. Which commits count and where the clock starts is configurable — see [Lead time](#lead-time), including why only the default mode is DORA's definition
 - **Deployment frequency** — count of `deploy passed` events per unit time
 
 The remaining two — **mean time to recovery** and **change failure rate** — require additional event semantics (e.g. tagging deploys that failed in production, marking commits as hotfixes) and are tracked as Future Work. The data model is designed to accommodate them when the time comes.

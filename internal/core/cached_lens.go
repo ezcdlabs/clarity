@@ -29,13 +29,20 @@ type ViewProducer interface {
 type CachedLens struct {
 	inner ViewProducer
 	cache *cache.File
+	mode  LeadTimeMode
 }
 
 // NewCachedLens returns a CachedLens wrapping inner and persisting
 // snapshots to cf. The cache file may be missing on first run — CachedLens
 // simply skips the stale emission in that case.
-func NewCachedLens(inner ViewProducer, cf *cache.File) *CachedLens {
-	return &CachedLens{inner: inner, cache: cf}
+// The mode must match the one the inner ViewProducer uses, so the stale view
+// painted at startup measures lead time the same way the fresh view that
+// replaces it will. An empty mode means DefaultLeadTimeMode.
+func NewCachedLens(inner ViewProducer, cf *cache.File, mode LeadTimeMode) *CachedLens {
+	if mode == "" {
+		mode = DefaultLeadTimeMode
+	}
+	return &CachedLens{inner: inner, cache: cf, mode: mode}
 }
 
 // Views streams Views to the caller. Emissions happen in this order:
@@ -87,7 +94,7 @@ func (c *CachedLens) readStale() (View, bool) {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return View{}, false
 	}
-	v := DeriveView(snap)
+	v := DeriveView(snap, c.mode)
 	v.Stale = true
 	return v, true
 }

@@ -267,6 +267,20 @@ func runReport(args []string) error {
 	if isBatchInvocation(args) {
 		return runReportBatch(args)
 	}
+	return runReportTo(os.Stdout, args, report.Run)
+}
+
+// runReportTo is runReport with its output sink and the write itself injected,
+// so the surrounding reporting behaviour can be tested without a remote.
+//
+// It echoes the fully-resolved invocation before writing. A report that fails
+// leaves the stage unrecorded, and nothing retries it later — the commit keeps
+// showing as in-flight in the TUI until someone writes the event by hand. The
+// echo puts the command to do that in the log up front, which matters because
+// a step that is killed or times out never reaches the failure path at all.
+// On failure the same command is repeated in the error, where anyone reading
+// a red log is already looking.
+func runReportTo(out io.Writer, args []string, write func(report.Options) (string, error)) error {
 	opts, err := parseReportArgs(args)
 	if err != nil {
 		return err
@@ -277,15 +291,22 @@ func runReport(args []string) error {
 	}
 	opts.RepoPath = repoPath
 	opts.Remote = "origin"
-	sha, err := report.Run(opts)
+
+	opts, err = report.Resolve(opts)
 	if err != nil {
 		return err
+	}
+	fmt.Fprintf(out, "running: %s\n", report.CommandLine(opts))
+
+	sha, err := write(opts)
+	if err != nil {
+		return report.FailureError(opts, err)
 	}
 	short := sha
 	if len(short) > 8 {
 		short = short[:8]
 	}
-	fmt.Printf("wrote event: %s %s %s\n", short, opts.Stage, opts.Status)
+	fmt.Fprintf(out, "wrote event: %s %s %s\n", short, opts.Stage, opts.Status)
 	return nil
 }
 

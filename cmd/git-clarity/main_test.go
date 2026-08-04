@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ezcdlabs/clarity/internal/report"
 )
 
 func TestParseReportArgs_BarePositional(t *testing.T) {
@@ -255,5 +259,96 @@ func TestIsBatchInvocation(t *testing.T) {
 		if got := isBatchInvocation(tc.args); got != tc.want {
 			t.Errorf("isBatchInvocation(%v) = %v, want %v", tc.args, got, tc.want)
 		}
+	}
+}
+
+// TestRunReport_EchoesFullyExplicitCommand checks the first thing a report
+// invocation prints is the fully-resolved form of itself. A CI step that is
+// killed or times out never reaches its error path, so the recovery command
+// has to be in the log before the write is attempted, not only after it fails.
+func TestRunReport_EchoesFullyExplicitCommand(t *testing.T) {
+	var out bytes.Buffer
+	var got report.Options
+	write := func(o report.Options) (string, error) {
+		got = o
+		return o.SHA, nil
+	}
+
+	args := []string{"--sha", "abc1234", "--at", "2026-08-04T12:30:05Z", "deploy", "passed"}
+	if err := runReportTo(&out, args, write); err != nil {
+		t.Fatalf("runReportTo: %v", err)
+	}
+
+	want := "running: git clarity report --sha abc1234 --at 2026-08-04T12:30:05Z deploy passed"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("expected the echoed command %q in:\n%s", want, out.String())
+	}
+	// The echo has to describe the event actually written, or it is worse
+	// than useless as a retry instruction.
+	if got.SHA != "abc1234" {
+		t.Errorf("wrote SHA %q, want the echoed abc1234", got.SHA)
+	}
+}
+
+// TestRunReport_EchoesResolvedValues checks the echo is the *resolved* form
+// even when the caller supplied neither flag — echoing back a bare
+// `report deploy passed` would give the user nothing to retry with, since
+// re-running it later resolves a different SHA and timestamp.
+func TestRunReport_EchoesResolvedValues(t *testing.T) {
+	t.Setenv("GITHUB_SHA", "fedcba9876543210fedcba9876543210fedcba98")
+	var out bytes.Buffer
+	write := func(o report.Options) (string, error) { return o.SHA, nil }
+
+	if err := runReportTo(&out, []string{"deploy", "passed"}, write); err != nil {
+		t.Fatalf("runReportTo: %v", err)
+	}
+
+	line := out.String()
+	if !strings.Contains(line, "--sha fedcba9876543210fedcba9876543210fedcba98") {
+		t.Errorf("expected the resolved SHA in the echo:\n%s", line)
+	}
+	if !strings.Contains(line, "--at 20") {
+		t.Errorf("expected a resolved --at timestamp in the echo:\n%s", line)
+	}
+}
+
+// TestRunReport_FailureCarriesRetryCommand is the reported symptom: a deploy
+// report that fails leaves the commit spinning in the TUI, with nothing in
+// the log saying how to put the event back.
+func TestRunReport_FailureCarriesRetryCommand(t *testing.T) {
+	var out bytes.Buffer
+	write := func(report.Options) (string, error) {
+		return "", errors.New("push events ref: exit status 1")
+	}
+
+	args := []string{"--sha", "abc1234", "--at", "2026-08-04T12:30:05Z", "deploy", "passed"}
+	err := runReportTo(&out, args, write)
+	if err == nil {
+		t.Fatal("expected the failure to surface")
+	}
+	msg := err.Error()
+
+	if !strings.Contains(msg, "failed to report deploy passed") {
+		t.Errorf("expected the failure to name the stage and status:\n%s", msg)
+	}
+	if !strings.Contains(msg, "git clarity report --sha abc1234 --at 2026-08-04T12:30:05Z deploy passed") {
+		t.Errorf("expected the retry command in the failure:\n%s", msg)
+	}
+}
+
+// TestRunReport_SuccessIsUnchanged guards the confirmation line the echo sits
+// above — the new output adds to it rather than replacing it.
+func TestRunReport_SuccessIsUnchanged(t *testing.T) {
+	var out bytes.Buffer
+	write := func(report.Options) (string, error) {
+		return "9f9edc8673b331befd2adda3eadb62effde0fbe9", nil
+	}
+
+	args := []string{"--sha", "9f9edc8673b331befd2adda3eadb62effde0fbe9", "ci", "passed"}
+	if err := runReportTo(&out, args, write); err != nil {
+		t.Fatalf("runReportTo: %v", err)
+	}
+	if !strings.Contains(out.String(), "wrote event: 9f9edc86 ci passed") {
+		t.Errorf("expected the confirmation line:\n%s", out.String())
 	}
 }

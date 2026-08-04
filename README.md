@@ -412,6 +412,30 @@ Examples:
    e. If rejected (not fast-forward): fetch, replay commit, retry
 6. Exit
 
+### Recovering a failed report
+
+A dropped report does not correct itself. Nothing retries it later, so the stage stays unrecorded and the TUI shows that commit as in-flight indefinitely — a deploy that finished hours ago still spinning. The failures that cause this are usually transient and environmental, which means the recovery is genuinely just writing the same event again.
+
+So every report echoes the fully-resolved form of itself before writing, and repeats it if the write fails:
+
+```
+$ git clarity report deploy passed
+running: git clarity report --sha 9f9edc86... --at 2026-08-04T12:30:05Z deploy passed
+error: failed to report deploy passed: push events ref: exit status 1
+...
+
+The event was not recorded — 9f9edc86 will keep showing as in-flight in
+`git clarity` until it is. Re-run this once the problem is fixed:
+
+  git clarity report --sha 9f9edc86... --at 2026-08-04T12:30:05Z deploy passed
+```
+
+Both, not one or the other: the echo is in the log before anything can go wrong, which is what a step that gets killed or times out needs, since it never reaches its own failure path. The repeat on failure puts the command where someone reading a red log is already looking.
+
+The echoed command reproduces the event rather than approximating it. `--sha` and `--at` pin the two values that would otherwise resolve differently later — re-running a bare `git clarity report deploy passed` next week records today's deploy at next week's timestamp, which silently corrupts DORA lead time. Because the payload stores its timestamp as Unix seconds, a second-precision `--at` round-trips exactly, and event filenames are content-addressed, so re-running from the same environment collapses into a no-op instead of a duplicate.
+
+One caveat: the auto-detected `ci` metadata block is part of that content. Re-running from a laptop, or from a different CI run, produces a second event file for the same logical event. The stage, status and timestamp are what the TUI renders, so the view is correct either way — but the events ref will hold both.
+
 ### Authentication in CI
 
 Uses whatever git credentials are already available to the CI runner. In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed.

@@ -49,20 +49,9 @@ func Run(opts Options) (string, error) {
 	if err := validateStageStatus(opts.Stage, opts.Status); err != nil {
 		return "", err
 	}
-	if opts.Time.IsZero() {
-		opts.Time = time.Now()
-	}
-	if opts.Remote == "" {
-		opts.Remote = "origin"
-	}
-
-	sha := opts.SHA
-	if sha == "" {
-		s, err := resolveSHA(opts.RepoPath)
-		if err != nil {
-			return "", err
-		}
-		sha = s
+	opts, err := Resolve(opts)
+	if err != nil {
+		return "", err
 	}
 
 	event := clarityrefs.Event{
@@ -71,10 +60,108 @@ func Run(opts Options) (string, error) {
 		Time:   opts.Time,
 		CI:     ci.Detect(),
 	}
-	if err := clarityrefs.WriteEvent(opts.RepoPath, opts.Remote, sha, event); err != nil {
+	if err := clarityrefs.WriteEvent(opts.RepoPath, opts.Remote, opts.SHA, event); err != nil {
 		return "", err
 	}
-	return sha, nil
+	return opts.SHA, nil
+}
+
+// Resolve fills in the values Run would otherwise derive internally: the
+// commit SHA (from the CI environment, else HEAD), the event timestamp, and
+// the remote. Exported so a caller can learn what a report is *about* to
+// write before it writes it — which is what makes CommandLine able to echo an
+// invocation that reproduces the event exactly.
+//
+// Resolving is idempotent: applying it to already-resolved Options is a
+// no-op, so Run can call it unconditionally.
+func Resolve(opts Options) (Options, error) {
+	if opts.Time.IsZero() {
+		opts.Time = time.Now()
+	}
+	if opts.Remote == "" {
+		opts.Remote = "origin"
+	}
+	if opts.SHA == "" {
+		sha, err := resolveSHA(opts.RepoPath)
+		if err != nil {
+			return opts, err
+		}
+		opts.SHA = sha
+	}
+	return opts, nil
+}
+
+// CommandLine renders opts as the fully-explicit `git clarity report`
+// invocation that writes this exact event.
+//
+// The point is that it can be copy-pasted to recover from a failed report. An
+// event's on-disk payload stores its timestamp as Unix seconds, so a
+// second-precision RFC3339 --at round-trips exactly, and event filenames are
+// content-addressed — meaning a re-run from the same environment produces the
+// same file and collapses into a no-op rather than a duplicate. Sub-second
+// precision is dropped for the same reason: keeping it would print a command
+// that writes a different event from the one it claims to reproduce.
+//
+// The timestamp is rendered in UTC whatever the runner's zone. The event
+// records an instant, so the offset carries no information, and a stable
+// rendering keeps pasted commands comparable across machines.
+func CommandLine(opts Options) string {
+	return fmt.Sprintf("git clarity report --sha %s --at %s %s %s",
+		opts.SHA,
+		opts.Time.UTC().Truncate(time.Second).Format(time.RFC3339),
+		opts.Stage,
+		opts.Status,
+	)
+}
+
+// FailureError wraps a failed report with the command that puts the event
+// back.
+//
+// A dropped report is not a self-correcting condition: nothing retries it
+// later, so the stage stays unrecorded and the TUI shows the commit as
+// in-flight indefinitely — a deploy that finished hours ago still spinning.
+// The failure is also usually transient and environmental (a push race, a
+// network blip), so the recovery is genuinely just running the same event
+// again, and the message says so with a command rather than a description.
+//
+// The cause stays unwrappable, so callers can still inspect it.
+func FailureError(opts Options, err error) error {
+	// Trimmed because the cause is usually git's own multi-line stderr,
+	// which ends in blank lines that would otherwise push the recovery
+	// command away from the text introducing it.
+	cause := strings.TrimSpace(err.Error())
+	return &failureError{
+		cause: err,
+		msg: fmt.Sprintf(
+			"failed to report %s %s: %s\n\n"+
+				"The event was not recorded — %s will keep showing as in-flight in\n"+
+				"`git clarity` until it is. Re-run this once the problem is fixed:\n\n"+
+				"  %s\n",
+			opts.Stage, opts.Status, cause,
+			shortSHA(opts.SHA),
+			CommandLine(opts),
+		),
+	}
+}
+
+// failureError carries the rendered advice while keeping the underlying cause
+// inspectable. A plain fmt.Errorf can't do both: %w embeds the cause's text
+// verbatim, blank lines and all.
+type failureError struct {
+	msg   string
+	cause error
+}
+
+func (e *failureError) Error() string { return e.msg }
+func (e *failureError) Unwrap() error { return e.cause }
+
+// shortSHA abbreviates a commit SHA for prose, matching how the TUI and the
+// report confirmation line display one.
+func shortSHA(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
 }
 
 // validateStageStatus enforces the closed sets shared by Run and RunBatch.

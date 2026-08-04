@@ -18,6 +18,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // EventsRef is the canonical ref under which clarity stores per-commit
@@ -247,7 +248,8 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 
 		mutate(files)
 
-		treeHash, err := buildTree(repo, files)
+		st := writeStorer(repo)
+		treeHash, err := buildTree(st, files)
 		if err != nil {
 			return fmt.Errorf("build tree: %w", err)
 		}
@@ -272,11 +274,11 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 			commit.ParentHashes = []plumbing.Hash{parentHash}
 		}
 
-		enc := repo.Storer.NewEncodedObject()
+		enc := st.NewEncodedObject()
 		if err := commit.Encode(enc); err != nil {
 			return fmt.Errorf("encode commit: %w", err)
 		}
-		commitHash, err := repo.Storer.SetEncodedObject(enc)
+		commitHash, err := storeObject(st, enc)
 		if err != nil {
 			return fmt.Errorf("store commit: %w", err)
 		}
@@ -344,10 +346,10 @@ func readEventsRefFiles(repo *gogit.Repository) (map[string][]byte, plumbing.Has
 // buildTree creates the blob objects and constructs a fully nested git tree.
 // Per-directory subtrees (rather than flat entries with slashes in their name)
 // are required to pass GitHub's receive.fsckObjects "fullPathname" check.
-func buildTree(repo *gogit.Repository, files map[string][]byte) (plumbing.Hash, error) {
+func buildTree(st storer.EncodedObjectStorer, files map[string][]byte) (plumbing.Hash, error) {
 	blobs := make(map[string]plumbing.Hash, len(files))
 	for p, content := range files {
-		enc := repo.Storer.NewEncodedObject()
+		enc := st.NewEncodedObject()
 		enc.SetType(plumbing.BlobObject)
 		w, err := enc.Writer()
 		if err != nil {
@@ -357,16 +359,16 @@ func buildTree(repo *gogit.Repository, files map[string][]byte) (plumbing.Hash, 
 			return plumbing.ZeroHash, err
 		}
 		w.Close()
-		h, err := repo.Storer.SetEncodedObject(enc)
+		h, err := storeObject(st, enc)
 		if err != nil {
 			return plumbing.ZeroHash, err
 		}
 		blobs[p] = h
 	}
-	return buildNestedTree(repo, blobs, "")
+	return buildNestedTree(st, blobs, "")
 }
 
-func buildNestedTree(repo *gogit.Repository, blobs map[string]plumbing.Hash, prefix string) (plumbing.Hash, error) {
+func buildNestedTree(st storer.EncodedObjectStorer, blobs map[string]plumbing.Hash, prefix string) (plumbing.Hash, error) {
 	dirs := make(map[string]struct{})
 	var entries []object.TreeEntry
 
@@ -394,7 +396,7 @@ func buildNestedTree(repo *gogit.Repository, blobs map[string]plumbing.Hash, pre
 		if prefix != "" {
 			sub = prefix + "/" + dir
 		}
-		h, err := buildNestedTree(repo, blobs, sub)
+		h, err := buildNestedTree(st, blobs, sub)
 		if err != nil {
 			return plumbing.ZeroHash, err
 		}
@@ -408,11 +410,11 @@ func buildNestedTree(repo *gogit.Repository, blobs map[string]plumbing.Hash, pre
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 
 	tree := &object.Tree{Entries: entries}
-	enc := repo.Storer.NewEncodedObject()
+	enc := st.NewEncodedObject()
 	if err := tree.Encode(enc); err != nil {
 		return plumbing.ZeroHash, err
 	}
-	return repo.Storer.SetEncodedObject(enc)
+	return storeObject(st, enc)
 }
 
 func fetchEventsRef(repoPath, remote string) error {

@@ -558,6 +558,17 @@ for {
 }
 ```
 
+### Surviving a concurrent gc
+
+`git gc` and clarity's writes contend for the same object store, and the loser is always clarity. go-git stores a loose object by streaming it to `.git/objects/pack/tmp_obj_*` and renaming it into `.git/objects/<xx>/<rest>`; go-billy creates the destination's parent directory immediately before the rename. `git gc` rmdirs empty `.git/objects/<xx>` directories — at its default two-week prune expiry, not just under `--prune=now` — so a gc landing between those two syscalls makes the rename fail with `no such file or directory`. The read side has its own version of this: a gc that repacks mid-read deletes a packfile go-git has already resolved from its `.idx`, surfacing as `packfile not found`.
+
+CI is where this bites, because a fresh checkout has every object packed and no `.git/objects/<xx>` directories at all, so nearly every event write has to create one.
+
+Two layers of defence, because neither is sufficient alone:
+
+- **Prevent the gc we cause.** Every git command clarity runs is prefixed with `-c gc.auto=0 -c maintenance.auto=false`. Without this, the `git fetch` at the top of the push loop spawns a detached `gc --auto` that then races the tree build a few statements later — clarity's own fetch is the most likely trigger of clarity's own failure.
+- **Tolerate the gc we don't.** Another job, another tool in the same workflow, or a repo with `gc.auto` configured can still start one. Each loose-object write retries a bounded number of times on a rename that failed because a path component vanished. Git objects are content-addressed, so a retried write is idempotent, and the retry re-creates the pruned directory. Retries are matched on the typed `*os.LinkError` rather than on message text, so an unrelated missing file still fails fast.
+
 ---
 
 ## What This Is Not

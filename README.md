@@ -597,6 +597,14 @@ is cut, with no manual tagging step.
 
 ## Implementation Notes (Go)
 
+### Acceptance tests
+
+`internal/acceptance` wires the real composition — `.ezcd.json` on disk, `config.Load`, the Lens, the renderers — and asserts on rendered output rather than on derived values. It exists because unit tests per layer are not sufficient to show a feature works.
+
+`clarity.leadTime` proved that. Core computed all three modes correctly and had tests to prove it; both renderers then rebuilt their own groupings from the raw snapshot and threw the configured `View` away. Every unit test passed and the setting did nothing at all. The bug lived precisely in the seam that no single-layer test looked at.
+
+The rule that falls out: **a renderer consumes the `View` it is handed and never re-derives from `Snapshot`.** The derivation layer is the single source of grouping, lead time and DORA truth — that's what `View`'s doc comment always claimed, and what the renderers quietly violated. Anything configurable needs a test that crosses from the config file to the thing a user reads, because that is the only place the claim can be checked.
+
 ### go-git vs shelling out
 
 Use `go-git` for: fetching, reading the events ref, walking the commit log, reading event files from the tree.

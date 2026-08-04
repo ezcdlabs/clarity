@@ -15,6 +15,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/ezcdlabs/clarity/internal/core"
 )
 
 // DefaultBranch is the trunk-branch name used when the file is absent or
@@ -36,6 +38,17 @@ type Config struct {
 	// `clarity` section is omitted from .ezcd.json — callers dispatch
 	// on nil to mean "fall back to the events ref source".
 	Clarity *ClarityConfig
+}
+
+// LeadTimeMode returns the configured lead time mode, falling back to the
+// default when the file has no clarity section at all. Lives here rather than
+// at the call site so every caller — the TUI, plain mode, tests — resolves it
+// the same way.
+func (c Config) LeadTimeMode() core.LeadTimeMode {
+	if c.Clarity == nil {
+		return core.DefaultLeadTimeMode
+	}
+	return c.Clarity.LeadTime
 }
 
 // Load reads `.ezcd.json` from repoRoot and returns its parsed Config.

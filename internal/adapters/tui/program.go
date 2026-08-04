@@ -126,7 +126,7 @@ func (m Model) renderBody() string {
 	if m.nowFn != nil {
 		now = m.nowFn()
 	}
-	return RenderSnapshot(m.view.Snapshot, m.width, now, m.spinnerIdx)
+	return RenderSnapshot(m.view, m.width, now, m.spinnerIdx)
 }
 
 func (m Model) View() tea.View {

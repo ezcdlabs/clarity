@@ -52,7 +52,7 @@ func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 		if r.nowFn != nil {
 			now = r.nowFn()
 		}
-		_, err := fmt.Print(RenderSnapshot(v.Snapshot.RepoName, v.Snapshot, now, r.opts))
+		_, err := fmt.Print(RenderSnapshot(v.Snapshot.RepoName, v, now, r.opts))
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -72,27 +72,36 @@ type Options struct {
 // matching the TUI's groupings and batch subheaders. Aimed at piped/agent
 // consumers — the row vocabulary (✓ ✗ … plus section names) is greppable
 // without needing key:value annotations.
-func RenderSnapshot(repoName string, snap core.Snapshot, now time.Time, opts Options) string {
-	commits := snap.Commits
-	if opts.Limit > 0 && len(commits) > opts.Limit {
-		commits = commits[:opts.Limit]
-	}
-	capped := core.Snapshot{Commits: commits}
-
-	g := core.GroupCommits(capped.Commits)
-	indexBySHA := make(map[string]int, len(capped.Commits))
-	for i, c := range capped.Commits {
+func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options) string {
+	// Grouping, lead times and weekly stats all come from the View. Deriving
+	// them here instead would silently ignore the caller's configuration —
+	// which is exactly how `clarity.leadTime` first shipped doing nothing.
+	snap := view.Snapshot
+	g := view.Groups
+	indexBySHA := make(map[string]int, len(snap.Commits))
+	for i, c := range snap.Commits {
 		indexBySHA[c.SHA] = i
 	}
 
+	// Limit now filters the rows rendered rather than truncating the data
+	// before grouping. Commits arrive newest-first, so this keeps the same
+	// "N newest" selection — but a display limit no longer changes which
+	// section a commit lands in or what the weekly average says.
+	included := func(sha string) bool {
+		return opts.Limit <= 0 || indexBySHA[sha] < opts.Limit
+	}
+
 	var b strings.Builder
-	b.WriteString(plainHeader(repoName, capped))
+	b.WriteString(plainHeader(repoName, snap))
 	b.WriteString("\n\n")
 
 	writeSection := func(label string, commits []core.CommitView) {
 		b.WriteString(label)
 		b.WriteString("\n")
 		for _, c := range commits {
+			if !included(c.SHA) {
+				continue
+			}
 			b.WriteString(plainRow(c, &g, indexBySHA[c.SHA], now, opts))
 			b.WriteString("\n")
 		}
@@ -104,19 +113,25 @@ func RenderSnapshot(repoName string, snap core.Snapshot, now time.Time, opts Opt
 	b.WriteString("CI Passed")
 	b.WriteString("\n")
 	for _, c := range g.CIPassed {
+		if !included(c.SHA) {
+			continue
+		}
 		b.WriteString(plainRow(c, &g, indexBySHA[c.SHA], now, opts))
 		b.WriteString("\n")
 	}
 	for _, batch := range g.InFlight {
 		b.WriteString(plainBatchSubheader(batch, now, false))
 		for _, c := range batch.Commits {
+			if !included(c.SHA) {
+				continue
+			}
 			b.WriteString(plainRow(c, &g, indexBySHA[c.SHA], now, opts))
 			b.WriteString("\n")
 		}
 	}
 	b.WriteString("\n")
 
-	statsByWeek := core.IndexStatsByWeek(core.WeeklyStats(capped))
+	statsByWeek := core.IndexStatsByWeek(view.Weekly)
 	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
 		// Merge the topmost week's summary onto the section header row so we

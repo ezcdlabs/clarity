@@ -105,8 +105,12 @@ func RenderRow(view core.CommitView, width int) string {
 // now drives the live half of the timer; pass time.Time{} for tests that
 // don't care about timer values (timers won't render for commits with no
 // Time set anyway).
-func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int) string {
-	g := core.GroupCommits(snap.Commits)
+func RenderSnapshot(view core.View, width int, now time.Time, spinnerIdx int) string {
+	// Grouping, lead times and weekly stats all come from the View. Deriving
+	// them here instead would silently ignore the caller's configuration —
+	// which is exactly how `clarity.leadTime` first shipped doing nothing.
+	snap := view.Snapshot
+	g := view.Groups
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
 		indexBySHA[c.SHA] = i
@@ -148,7 +152,7 @@ func RenderSnapshot(snap core.Snapshot, width int, now time.Time, spinnerIdx int
 	// production; subsequent batches are settled history. The Deployed header
 	// also carries the TOPMOST week's DORA summary on its right side (saving
 	// a row) — only older weeks need standalone week dividers below.
-	statsByWeek := core.IndexStatsByWeek(core.WeeklyStats(snap))
+	statsByWeek := core.IndexStatsByWeek(view.Weekly)
 	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
 		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))

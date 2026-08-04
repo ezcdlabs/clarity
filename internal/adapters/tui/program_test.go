@@ -43,7 +43,7 @@ func TestModel_BeforeFirstSnapshot_ShowsLoading(t *testing.T) {
 // After the first snapshot arrives — even an empty one — the loading
 // placeholder is gone and the structural dividers take over instead.
 func TestModel_AfterEmptySnapshot_ShowsDividersNotLoading(t *testing.T) {
-	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: core.Snapshot{}}))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(view(core.Snapshot{})))
 	out := m.View().Content
 	if strings.Contains(strings.ToLower(out), "loading") {
 		t.Errorf("should no longer show loading once a snapshot has arrived, got:\n%s", out)
@@ -62,7 +62,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 				Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)}}},
 		},
 	}
-	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: snap}))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(view(snap)))
 	out := m.View().Content
 	if !strings.Contains(out, "alice") {
 		t.Errorf("expected commit author rendered, got:\n%s", out)
@@ -76,7 +76,7 @@ func TestModel_AfterPopulatedSnapshot_RendersCommits(t *testing.T) {
 // repo name travels on the Snapshot, so we send one through Update to put
 // the name into the model before asserting the View output.
 func TestModel_HeaderShowsRepoName(t *testing.T) {
-	m, _ := newModel("").Update(tui.ViewMsg(core.View{Snapshot: withRepo(core.Snapshot{}, "my-cool-repo")}))
+	m, _ := newModel("").Update(tui.ViewMsg(view(withRepo(core.Snapshot{}, "my-cool-repo"))))
 	out := m.View().Content
 	if !strings.Contains(out, "my-cool-repo") {
 		t.Errorf("expected repo name in header, got:\n%s", out)
@@ -93,7 +93,7 @@ func TestModel_HeaderShowsCIAndDeployBadges(t *testing.T) {
 			}},
 		},
 	}
-	m, _ := newModel("clarity").Update(tui.ViewMsg(core.View{Snapshot: snap}))
+	m, _ := newModel("clarity").Update(tui.ViewMsg(view(snap)))
 	out := m.View().Content
 	if !strings.Contains(strings.ToLower(out), "ci") {
 		t.Errorf("expected 'ci' badge in header, got:\n%s", out)
@@ -120,7 +120,7 @@ func TestModel_TallContent_ClipsThenScrolls(t *testing.T) {
 
 	// Tiny terminal — 10 rows total, leaving ~8 for the body.
 	m := tui.New().WithSize(80, 10)
-	m2, _ := m.Update(tui.ViewMsg(core.View{Snapshot: snap}))
+	m2, _ := m.Update(tui.ViewMsg(view(snap)))
 	beforeScroll := m2.View().Content
 
 	// We can't fit all 30 authors in 10 rows, so some must be missing.

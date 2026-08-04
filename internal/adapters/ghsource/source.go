@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"time"
@@ -48,6 +49,12 @@ type Options struct {
 	Lookback time.Duration
 	// Clock defaults to clock.Real().
 	Clock clock.Clock
+	// Logger receives non-fatal diagnostic lines from the polling
+	// loop — ListRuns failures, transient gh-CLI hiccups. nil ⇒
+	// silent. The CLI plumbs this at a file in <cache-dir> so TUI
+	// users can debug without the alt-screen rendering being
+	// corrupted by mid-frame writes to stderr.
+	Logger io.Writer
 }
 
 // Source is the GH-Actions Source adapter. Satisfies core.Source.
@@ -83,6 +90,9 @@ func New(opts Options) (*Source, error) {
 	}
 	if opts.RepoName == "" {
 		opts.RepoName = filepath.Base(opts.RepoPath)
+	}
+	if opts.Logger == nil {
+		opts.Logger = io.Discard
 	}
 	s := &Source{opts: opts, cache: map[int64]Run{}}
 	if opts.Cache != nil {
@@ -134,7 +144,10 @@ func (s *Source) pollOnce() {
 		if err != nil {
 			// Polling errors are not fatal — keep the stale cache,
 			// try again next tick. (A connectivity blip shouldn't
-			// kill the TUI.)
+			// kill the TUI.) But do log them so the user can debug
+			// "where are my events?" by tailing the log file.
+			fmt.Fprintf(s.opts.Logger, "%s ListRuns(%q, %q): %v\n",
+				time.Now().UTC().Format(time.RFC3339), m.Workflow, s.opts.Branch, err)
 			continue
 		}
 		for _, r := range runs {

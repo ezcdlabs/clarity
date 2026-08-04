@@ -202,8 +202,20 @@ func runPlain(opts rootOptions) error {
 // invocations fail fast with a clear error, rather than silently
 // rendering an empty snapshot that the user has to chase. The cost is
 // one extra gh API call at startup.
+//
+// Non-fatal poll diagnostics (skipped runs, transient gh blips) go to
+// <cache-dir>/ghsource.log instead of stderr so the TUI's alt-screen
+// rendering isn't trashed by mid-frame writes.
 func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath, cacheDir string) (core.Source, error) {
 	if cfg.Clarity != nil && cfg.Clarity.GitHub != nil {
+		logFile, err := openGHSourceLog(cacheDir)
+		if err != nil {
+			return nil, fmt.Errorf("open ghsource log: %w", err)
+		}
+		// We intentionally don't Close logFile — buildSource doesn't
+		// own the Source's lifetime, and the OS reclaims the file
+		// handle on process exit. Pre-mature close would silently
+		// drop log lines from the polling goroutine.
 		src, err := ghsource.New(ghsource.Options{
 			RepoPath: repoPath,
 			RepoName: filepath.Base(repoPath),
@@ -211,7 +223,8 @@ func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoP
 			Limit:    effectiveLimit(opts.limit),
 			Mapping:  cfg.Clarity.GitHub,
 			Cache:    cache.New(filepath.Join(cacheDir, "github-runs.json.gz")),
-			Client:   ghsource.NewCLIClient(repoPath),
+			Client:   ghsource.NewCLIClient(repoPath).WithLogger(logFile),
+			Logger:   logFile,
 		})
 		if err != nil {
 			return nil, err
@@ -228,6 +241,17 @@ func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoP
 		Branch:   cfg.Branch,
 		Limit:    effectiveLimit(opts.limit),
 	})
+}
+
+// openGHSourceLog opens <cacheDir>/ghsource.log in append mode,
+// creating parent dirs as needed. Used for non-fatal diagnostics from
+// the ghsource polling loop so the TUI's alt-screen stays clean.
+func openGHSourceLog(cacheDir string) (*os.File, error) {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(filepath.Join(cacheDir, "ghsource.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 }
 
 // effectiveLimit maps the CLI's "0 = unlimited" convention onto the source's

@@ -318,6 +318,44 @@ Deployed
 
 Updates live as the underlying refs change. Polls the remote every 5 seconds (configurable) using git's lightweight `info/refs` endpoint to check whether the events ref or branch tip has moved, and only does a full fetch when SHAs differ.
 
+### GitHub Actions as a live source
+
+Teams who haven't yet added the `ezcdlabs/clarity` action to their workflows can point the TUI straight at the GitHub Actions API instead of the events ref. Add a `clarity.github` section to `.ezcd.json` mapping each stage to a workflow and the jobs that signal its start and completion:
+
+```json
+{
+  "clarity": {
+    "github": {
+      "ci": { "workflow": "CI", "jobs": ["build", "test"] },
+      "deploy": {
+        "workflow": "Deploy",
+        "jobs": { "started": ["approve"], "completed": ["release"] }
+      }
+    }
+  }
+}
+```
+
+`jobs` accepts either shape: a single array (the same set gates both start and completion) or `{started, completed}` for distinct sets. Either stage may be omitted. `git clarity init --github` writes this file interactively — it discovers your workflows and jobs via `gh` and asks which ones map to CI and Deploy.
+
+When the section is present, `git clarity` derives its view from GitHub Actions runs (via the `gh` CLI, using its existing auth) rather than from `refs/clarity/events`.
+
+### Local state: the cache directory
+
+Clarity keeps its local state in `<repo>/.git/clarity`, overridable with `--cache-dir <path>` or `$CLARITY_CACHE_DIR` (flag wins over env wins over default). Point it at a mounted volume when running in an ephemeral container, otherwise incremental polling starts cold on every restart.
+
+The directory holds:
+
+| File                       | Contents                                                              |
+| -------------------------- | --------------------------------------------------------------------- |
+| `snapshot-cache.json.gz`   | Last rendered snapshot, replayed at startup so the TUI paints instantly while a fresh fetch is in flight |
+| `github-runs.json.gz`      | Mirror of raw GitHub Actions run data, so polls stay incremental       |
+| `ghsource.log`             | Non-fatal diagnostics from the GitHub poller                           |
+
+All three are safe to `rm` — they're rebuilt on the next run.
+
+`ghsource.log` is where to look when the GitHub source renders fewer events than expected. Transient failures (a rate-limited API call, one run whose `/jobs` fetch failed) are deliberately non-fatal: the poller keeps the stale cache and retries on the next tick rather than killing the TUI. Those failures can't go to stderr — mid-frame writes corrupt the TUI's alt-screen — so they land in this file, one timestamped line each. Fatal startup errors (bad config, `gh` not authenticated) still fail loudly on stderr before the TUI starts.
+
 ### Authentication
 
 Uses whatever git auth the user already has configured (SSH agent, git credential helper). No tokens or env vars required when run inside a repo the user can already pull from.

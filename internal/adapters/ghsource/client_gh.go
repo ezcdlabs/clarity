@@ -3,8 +3,8 @@ package ghsource
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -22,12 +22,31 @@ type CLIClient struct {
 	repoPath string
 	slug     string           // cached "owner/name"
 	wfIDs    map[string]int64 // workflow name → ID, lazily populated
+	logger   io.Writer        // non-fatal diagnostics; defaults to io.Discard
 }
 
 // NewCLIClient returns a CLIClient bound to a local repository (used to
-// resolve the GitHub owner/name slug via `gh repo view`).
+// resolve the GitHub owner/name slug via `gh repo view`). Diagnostics
+// (skipped runs, transient errors) are discarded by default — call
+// WithLogger to route them somewhere visible.
 func NewCLIClient(repoPath string) *CLIClient {
-	return &CLIClient{repoPath: repoPath, wfIDs: map[string]int64{}}
+	return &CLIClient{
+		repoPath: repoPath,
+		wfIDs:    map[string]int64{},
+		logger:   io.Discard,
+	}
+}
+
+// WithLogger returns the client with its diagnostic logger replaced —
+// callers point this at a file under the cache dir so the TUI's
+// alt-screen rendering isn't corrupted by mid-frame writes. Returns
+// the same receiver so it chains nicely with NewCLIClient.
+func (c *CLIClient) WithLogger(w io.Writer) *CLIClient {
+	if w == nil {
+		w = io.Discard
+	}
+	c.logger = w
+	return c
 }
 
 // ListRuns hits GitHub for the most recent page of runs of one workflow
@@ -79,9 +98,12 @@ func (c *CLIClient) ListRuns(workflowName, branch string, since time.Time) ([]Ru
 		jobs, err := c.fetchJobs(r.ID)
 		if err != nil {
 			// One run's /jobs failure shouldn't take out the whole
-			// poll. Surface via stderr so users debugging "where are
-			// my events?" see something, but keep going.
-			fmt.Fprintf(os.Stderr, "ghsource: skip run %d: %v\n", r.ID, err)
+			// poll. Log to the configured logger so users debugging
+			// "where are my events?" see something, but keep going.
+			// Stderr would corrupt the TUI's alt-screen — the CLI
+			// points logger at a file under <cache-dir>.
+			fmt.Fprintf(c.logger, "%s skip run %d: %v\n",
+				time.Now().UTC().Format(time.RFC3339), r.ID, err)
 			continue
 		}
 		out = append(out, Run{

@@ -28,6 +28,7 @@ type fakeGHClient struct {
 	calls       map[string]int
 	workflows   []ghsource.WorkflowSummary
 	workflowErr error
+	runsErr     error // when set, ListRuns returns it
 }
 
 func newFakeGHClient() *fakeGHClient {
@@ -53,6 +54,9 @@ func (f *fakeGHClient) ListWorkflows() ([]ghsource.WorkflowSummary, error) {
 func (f *fakeGHClient) ListRuns(workflowName, branch string, since time.Time) ([]ghsource.Run, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.runsErr != nil {
+		return nil, f.runsErr
+	}
 	idx := f.calls[workflowName]
 	queue := f.scripts[workflowName]
 	if idx >= len(queue) {

@@ -259,8 +259,11 @@ instant first paint (TUI, web). It:
    to the cache.
 
 **Plain mode** does NOT use `CachedLens` — scripts and agents need
-fresh data. The bare `Lens` still writes the cache as a side effect, so a
-plain run keeps the cache warm for the next TUI run.
+fresh data. Cache writes live in the decorator rather than the bare
+`Lens`, so a plain run neither reads nor warms the snapshot cache. (The
+plan originally had `Lens` write it as a side effect; implementation
+kept the core free of the cache entirely, which is the better boundary
+— the price is that a plain run doesn't warm the next TUI run.)
 
 **Renderers** check `View.Stale` and may show a small "refreshing…"
 indicator (TUI: right of header; web: spinner; plain: ignored).
@@ -327,6 +330,25 @@ incremental polling. Two overrides:
 Resolution order: flag → env var → default. Both cache files
 (`snapshot-cache.json.gz` and `github-runs.json.gz`) live inside the
 resolved directory.
+
+### Diagnostics log
+
+The resolved directory also holds `ghsource.log` — not a cache, but it
+shares the location because it shares the "local, disposable, per-repo"
+lifetime.
+
+Non-fatal failures in the gh polling loop (a `ListRuns` call that
+rate-limits, one run whose `/jobs` fetch fails) must not kill the TUI:
+the adapter keeps its stale cache and retries next tick. But they also
+can't go to stderr — the TUI runs in an alt-screen, and a mid-frame
+write corrupts the render. So `ghsource.Options.Logger` takes an
+`io.Writer` (nil ⇒ `io.Discard`) that the composition root points at
+this file in append mode; `CLIClient.WithLogger` does the same for
+failures that occur below the `Source`. Each line is RFC3339-stamped.
+
+Fatal errors keep their existing behaviour — `ghsource.New` and the
+first workflow-listing call still fail the process loudly before the
+TUI starts.
 
 ## Adapters
 

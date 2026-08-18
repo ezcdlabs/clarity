@@ -1,6 +1,17 @@
 # Architecture refactor — hexagonal core, pluggable sources/renderers
 
-Working plan, not yet implemented. Treat as a target.
+**Status: steps 1–8 have landed; steps 9–10 have not.** The port shape, the
+core/adapter split, `CachedLens` + `View.Stale`, the `.ezcd.json` loader, the
+ghsource adapter and `git clarity init --github` are all in the tree. For how
+those behave today, read the code and README.md — this doc is the reasoning
+that produced them, kept for the trade-offs it records, and it is not
+maintained as a description of the current system.
+
+Still a target: `copy-events` + the `EventWriter` adapter (step 9) and the web
+renderer / Docker forwarder (step 10). See [Sequencing](#sequencing-work-plan).
+
+Where the implementation chose differently from the plan, the section says so
+inline.
 
 ## Motivation
 
@@ -628,6 +639,11 @@ config-driven — they're separate `copy-events` invocations.
 
 ## Limit / scrollback
 
+> **Diverged in implementation.** The default stayed at 100; `--limit 0` is
+> the opt-in for unbounded
+> ([main.go](../cmd/git-clarity/main.go#L109)). The cost analysis below still
+> holds — it is why `0` is safe to offer — but the default was never flipped.
+
 Default `--limit` becomes effectively unbounded ("load everything" — same
 UX as `git log`). The bubble-tea viewport handles arbitrary content length;
 it only renders the visible portion. `--limit N` stays available as a
@@ -769,10 +785,10 @@ coupling.
 
 Worth a release note when this lands:
 
-- **`--limit` default flips from 100 to unbounded.** Big repos pay a
-  one-time startup cost (~1s per 10k commits); scroll becomes
-  `git log`-style infinite. `--limit N` still available as an escape
-  hatch.
+- ~~**`--limit` default flips from 100 to unbounded.**~~ Not done — the
+  default is still 100, so there is no behaviour change to note. `--limit 0`
+  opts into unbounded and pays the one-time startup cost (~1s per 10k
+  commits).
 - **TUI shows a "refreshing…" indicator** while a stale cached view
   is being revalidated. First-paint feels instant on repeat
   invocations; the indicator disappears as soon as the fresh fetch

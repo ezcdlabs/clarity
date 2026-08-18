@@ -99,10 +99,10 @@ func TestGroupCommits_DeployStarted_GoesToInFlight(t *testing.T) {
 // coexist with an in-flight batch at the bottom.
 func TestGroupCommits_IdleAboveInFlight(t *testing.T) {
 	commits := []core.CommitView{
-		cv("d", ev("ci", "passed", 400)),                                // idle, newer
-		cv("c", ev("ci", "passed", 300)),                                // idle, newer
-		cv("b", ev("ci", "passed", 200), ev("deploy", "started", 280)),  // in-flight anchor
-		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // already deployed
+		cv("d", ev("ci", "passed", 400)),                               // idle, newer
+		cv("c", ev("ci", "passed", 300)),                               // idle, newer
+		cv("b", ev("ci", "passed", 200), ev("deploy", "started", 280)), // in-flight anchor
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),  // already deployed
 	}
 	got := core.GroupCommits(commits)
 	if len(got.CIPassed) != 2 || got.CIPassed[0].SHA != "d" || got.CIPassed[1].SHA != "c" {
@@ -123,8 +123,8 @@ func TestGroupCommits_IdleAboveInFlight(t *testing.T) {
 func TestGroupCommits_StartedAndPassed_DifferentSections(t *testing.T) {
 	commits := []core.CommitView{
 		cv("c", ev("ci", "passed", 300), ev("deploy", "started", 350)), // started → InFlight
-		cv("b", ev("ci", "passed", 200)),                                // belongs to c's in-flight batch
-		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),   // passed → Deployed
+		cv("b", ev("ci", "passed", 200)),                               // belongs to c's in-flight batch
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),  // passed → Deployed
 	}
 	got := core.GroupCommits(commits)
 	if len(got.InFlight) != 1 || got.InFlight[0].Status != "started" {

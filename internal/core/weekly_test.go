@@ -59,9 +59,9 @@ func TestWeeklyStats_MultipleDeploys_SameWeek_AveragesLeadTime(t *testing.T) {
 	// Two separate deploys in the same week — same week bucket, deploy count
 	// counts batches (2), lead time averages across both commits.
 	c1 := utc(2026, 1, 5, 9)
-	d1 := utc(2026, 1, 5, 10)  // 1h lead
+	d1 := utc(2026, 1, 5, 10) // 1h lead
 	c2 := utc(2026, 1, 6, 9)
-	d2 := utc(2026, 1, 6, 12)  // 3h lead
+	d2 := utc(2026, 1, 6, 12) // 3h lead
 	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("c2", c2, d2), // newest first in snapshot order
 		commit("c1", c1, d1),
@@ -144,8 +144,8 @@ func TestWeeklyStats_OlderBatchWithoutRecordedDeploy_StillContributesToAvg(t *te
 	// same week's average. "Deploys" count stays strict at 1 — only the
 	// actually-recorded passed batch is a deploy.
 	cNewer := utc(2026, 1, 5, 9)
-	dNewer := utc(2026, 1, 5, 10)   // newest passed deploy, week 2
-	cOlder := utc(2026, 1, 1, 0)    // 4 days earlier than dNewer
+	dNewer := utc(2026, 1, 5, 10) // newest passed deploy, week 2
+	cOlder := utc(2026, 1, 1, 0)  // 4 days earlier than dNewer
 	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("newer", cNewer, dNewer),
 		// Older: deploy:started exists but no recorded terminal. Inherits

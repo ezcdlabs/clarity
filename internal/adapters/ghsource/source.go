@@ -283,4 +283,3 @@ func (s *Source) saveCache() {
 	}
 	_ = s.opts.Cache.Write(data)
 }
-

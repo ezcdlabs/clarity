@@ -17,9 +17,9 @@ import (
 // inherit a deploy time by fix-forward, because the deploy that shipped the
 // head shipped them too.
 func batchPush() core.Snapshot {
-	friday := utc(2026, 1, 2, 17)  // authored Friday 17:00
-	monday := utc(2026, 1, 5, 9)   // pushed Monday 09:00, CI starts
-	deploy := utc(2026, 1, 5, 10)  // deployed Monday 10:00
+	friday := utc(2026, 1, 2, 17) // authored Friday 17:00
+	monday := utc(2026, 1, 5, 9)  // pushed Monday 09:00, CI starts
+	deploy := utc(2026, 1, 5, 10) // deployed Monday 10:00
 
 	head := core.CommitView{
 		SHA:  "head",

@@ -30,10 +30,10 @@ import (
 // Per-row status icons carry their meaning via shape (✓ / ✗ / spinner / ·),
 // not hue — colour reinforces only the cases where the user needs to notice.
 var (
-	colorRed    = lipgloss.Color("1")
-	colorGreen  = lipgloss.Color("2")
-	colorGray   = lipgloss.Color("8")
-	colorBlue   = lipgloss.Color("12")
+	colorRed   = lipgloss.Color("1")
+	colorGreen = lipgloss.Color("2")
+	colorGray  = lipgloss.Color("8")
+	colorBlue  = lipgloss.Color("12")
 	// colorYellowLight / colorYellowDark are the two raw ANSI yellows the CI
 	// Passed divider accent picks between. They're plain ANSI basic colors
 	// (not wrapped) so lipgloss emits an SGR escape that the terminal themes
@@ -374,4 +374,3 @@ func ciIcon(events []clarityrefs.Event, group *core.Groupings, index int, spinne
 	}
 	return lipgloss.NewStyle().Foreground(color).Render(glyph)
 }
-

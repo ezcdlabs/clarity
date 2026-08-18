@@ -69,7 +69,6 @@ func TestRenderRow_RunningShowsSpinner(t *testing.T) {
 	}
 }
 
-
 // --- RenderSnapshot ----------------------------------------------------------
 
 func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {

@@ -50,7 +50,7 @@ func batchedPushSnapshot() core.Snapshot {
 		RepoName: "clarity",
 		Commits: []core.CommitView{
 			{
-				SHA: "aaa1111111111111111111111111111111111111",
+				SHA:    "aaa1111111111111111111111111111111111111",
 				Author: "alice", Subject: "pushed head", Time: authored,
 				Events: []clarityrefs.Event{
 					{Stage: "ci", Status: "started", Time: ciStarted},
@@ -59,7 +59,7 @@ func batchedPushSnapshot() core.Snapshot {
 				},
 			},
 			{
-				SHA: "bbb2222222222222222222222222222222222222",
+				SHA:    "bbb2222222222222222222222222222222222222",
 				Author: "bob", Subject: "swept along", Time: time.Unix(900, 0),
 				// No events: CI ran on the head, not on this commit.
 			},

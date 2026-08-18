@@ -21,11 +21,11 @@ var zeroTime time.Time
 //     jobs.Started().
 //   - Terminal signal: max(completed_at) across jobs whose names are in
 //     jobs.Completed(). Conclusion aggregation:
-//       any of {failure, timed_out, cancelled} → "failed"
-//       all "success"                          → "passed"
-//       any still-running (Conclusion == "")    → no terminal event
-//                                                 (the run hasn't decided)
-//       anything else (skipped, neutral, …)    → no terminal event
+//     any of {failure, timed_out, cancelled} → "failed"
+//     all "success"                          → "passed"
+//     any still-running (Conclusion == "")    → no terminal event
+//     (the run hasn't decided)
+//     anything else (skipped, neutral, …)    → no terminal event
 //
 // Per-run events are appended to the per-SHA slice, so the same SHA
 // retried on a new run produces additional events in chronological

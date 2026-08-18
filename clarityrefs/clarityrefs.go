@@ -481,6 +481,23 @@ func deleteLocalEventsRef(repoPath string) error {
 	return repo.Storer.RemoveReference(plumbing.ReferenceName(EventsRef))
 }
 
+// isFastForwardRejected reports whether a push failed because another writer
+// got there first, which the retry loop recovers from by re-fetching and
+// replaying the commit on the new tip.
+//
+// The rejection has two shapes. When the client can see it is behind from the
+// ref advertisement it declines locally and prints "[rejected] ... (fetch
+// first)". When two pushes are in flight at once neither client knows it is
+// behind, so the loser's compare-and-swap is refused by the server:
+//
+//	! [remote rejected] refs/clarity/events -> refs/clarity/events
+//	  (cannot lock ref 'refs/clarity/events': is at a9f4824... but expected 1668810...)
+//
+// Note the "remote" inside the brackets: matching "[rejected]" does not see
+// that line, which is why "cannot lock ref" is matched in its own right. The
+// match stays on the lock failure rather than on "[remote rejected]" — a
+// remote fsck rejection is worded the same way and needs the local ref
+// dropped, which this recovery does not do.
 func isFastForwardRejected(err error) bool {
 	if err == nil {
 		return false
@@ -493,6 +510,7 @@ func isFastForwardRejected(err error) bool {
 		strings.Contains(msg, "failed to update ref") ||
 		strings.Contains(msg, "reference already exists") ||
 		strings.Contains(msg, "incorrect old value provided") ||
+		strings.Contains(msg, "cannot lock ref") ||
 		strings.Contains(msg, "[rejected]")
 }
 

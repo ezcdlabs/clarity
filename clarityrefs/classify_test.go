@@ -118,6 +118,20 @@ func TestIsFastForwardRejected(t *testing.T) {
 		// git CLI rejection messages (git push --porcelain output)
 		{"exit status 1\n ! [rejected]        refs/clarity/events -> refs/clarity/events (fetch first)", true},
 		{"exit status 1\n ! [rejected]        refs/clarity/events -> refs/clarity/events (non-fast-forward)", true},
+		// Observed from GitHub Actions: two jobs pushing at once, and the
+		// loser's compare-and-swap is refused by the *remote*, which reports
+		// it as a lock failure naming both ref values. Note "[remote
+		// rejected]" — the plain "[rejected]" match never sees this line.
+		{"exit status 1\nTo https://github.com/Rafiki-Works/app-v2\n" +
+			" ! [remote rejected] refs/clarity/events -> refs/clarity/events " +
+			"(cannot lock ref 'refs/clarity/events': is at a9f4824bf9165cde14f8ffd67bfd1c7129321039 " +
+			"but expected 1668810d1e2f4448d940486d2718decdeeece9b4)\n" +
+			"error: failed to push some refs to 'https://github.com/Rafiki-Works/app-v2'", true},
+		// A remote rejection that is NOT a lost race must keep routing to its
+		// own recovery: the fsck path deletes the local ref before retrying,
+		// which a plain fast-forward retry would not do.
+		{"exit status 1\nremote: fatal: fsck error in packed object\n" +
+			" ! [remote rejected] refs/clarity/events -> refs/clarity/events (unpacker error)", false},
 		// non-retryable errors must not be swallowed
 		{"authentication required", false},
 		{"connection refused", false},

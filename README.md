@@ -639,6 +639,23 @@ for {
 }
 ```
 
+A lost race has two shapes, and both must be recognised as retryable. When the
+client can already tell it is behind from the ref advertisement it declines the
+push itself: `! [rejected] ... (fetch first)`. When two jobs push at the same
+instant neither client knows it is behind, so the loser's compare-and-swap is
+refused by the *server*, which reports it as a lock failure:
+
+```
+ ! [remote rejected] refs/clarity/events -> refs/clarity/events
+   (cannot lock ref 'refs/clarity/events': is at a9f4824... but expected 1668810...)
+```
+
+Note the `remote` inside the brackets — matching `[rejected]` never sees that
+line. The second shape is matched on `cannot lock ref` rather than on
+`[remote rejected]`, because a remote fsck rejection is worded the same way and
+needs a different recovery (dropping the local ref, not just replaying the
+commit).
+
 ### Surviving a concurrent gc
 
 `git gc` and clarity's writes contend for the same object store, and the loser is always clarity. go-git stores a loose object by streaming it to `.git/objects/pack/tmp_obj_*` and renaming it into `.git/objects/<xx>/<rest>`; go-billy creates the destination's parent directory immediately before the rename. `git gc` rmdirs empty `.git/objects/<xx>` directories — at its default two-week prune expiry, not just under `--prune=now` — so a gc landing between those two syscalls makes the rename fail with `no such file or directory`. The read side has its own version of this: a gc that repacks mid-read deletes a packfile go-git has already resolved from its `.idx`, surfacing as `packfile not found`.

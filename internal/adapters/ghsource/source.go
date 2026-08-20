@@ -163,7 +163,8 @@ func (s *Source) pollOnce() {
 // sends it. Returns false when ctx was cancelled mid-send so the
 // caller exits.
 func (s *Source) emit(ctx context.Context, out chan<- core.Snapshot) bool {
-	commits, err := gitlog.Walk(s.opts.RepoPath, s.opts.Branch, s.opts.Limit)
+	limit := gitlog.Resolve(s.opts.Limit)
+	commits, more, err := gitlog.Walk(s.opts.RepoPath, s.opts.Branch, limit)
 	if err != nil {
 		// Skip this tick; keep watching.
 		return true
@@ -171,6 +172,8 @@ func (s *Source) emit(ctx context.Context, out chan<- core.Snapshot) bool {
 	events := s.deriveAllEvents()
 	snap := core.BuildSnapshot(commits, events)
 	snap.RepoName = s.opts.RepoName
+	snap.Truncated = more
+	snap.Limit = limit
 	select {
 	case out <- snap:
 		return true

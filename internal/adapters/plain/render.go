@@ -167,6 +167,13 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 		b.WriteString("\n")
 	}
 
+	// Same note the TUI closes with, bare. Piped output has no scrollbar to
+	// hint that the list was cut, so it matters at least as much here.
+	if view.Snapshot.Truncated {
+		b.WriteString(core.LimitNoticeLabel(view.Snapshot.Limit))
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 

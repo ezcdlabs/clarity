@@ -191,3 +191,63 @@ func TestWeeklyStats_ISOWeekBoundary(t *testing.T) {
 		t.Errorf("expected weeks (2, 1) newest-first, got (%d, %d)", got[0].Week, got[1].Week)
 	}
 }
+
+// TestWeeklyStats_DropsThePartialWeekWhenTruncated covers the one week a
+// --limit makes a liar of.
+//
+// The commit walk stops at the limit, which almost always lands mid-week.
+// The oldest week in the window is therefore missing however many deploys
+// fell below the cut, but its divider states a count as fact — "2 deploys ·
+// avg 3h" for a week that really had nine. Rather than render a number that
+// is wrong in a way the reader cannot see, the derivation drops that bucket
+// and the renderers fall through to showing no divider for it.
+//
+// Only the OLDEST bucket is dropped, and only when the snapshot is
+// truncated: it is the one the window boundary is guaranteed to cut through.
+func TestWeeklyStats_DropsThePartialWeekWhenTruncated(t *testing.T) {
+	// Week 2 and week 3 of 2026, newest first.
+	newer := commit("newer", utc(2026, 1, 12, 9), utc(2026, 1, 15, 10))
+	older := commit("older", utc(2026, 1, 5, 9), utc(2026, 1, 8, 10))
+
+	full := core.Snapshot{Commits: []core.CommitView{newer, older}}
+	if got := core.WeeklyStats(full); len(got) != 2 {
+		t.Fatalf("untruncated snapshot must keep every week, got %d: %+v", len(got), got)
+	}
+
+	cut := core.Snapshot{Commits: []core.CommitView{newer, older}, Truncated: true}
+	got := core.WeeklyStats(cut)
+	if len(got) != 1 {
+		t.Fatalf("truncated snapshot must drop the oldest week, got %d: %+v", len(got), got)
+	}
+	if got[0].Week != 3 {
+		t.Errorf("the surviving week must be the newer one (3), got %d", got[0].Week)
+	}
+}
+
+// TestWeeklyStats_TruncatedSingleWeekDropsEverything is the degenerate case:
+// when the window holds only one week and is cut off, there is no week we can
+// state a complete count for. Emitting nothing is correct — the renderers
+// already handle a missing bucket by rendering no divider at all.
+func TestWeeklyStats_TruncatedSingleWeekDropsEverything(t *testing.T) {
+	a := commit("a", utc(2026, 1, 5, 9), utc(2026, 1, 8, 10))
+	b := commit("b", utc(2026, 1, 6, 9), utc(2026, 1, 8, 11))
+	snap := core.Snapshot{Commits: []core.CommitView{b, a}, Truncated: true}
+
+	if got := core.WeeklyStats(snap); len(got) != 0 {
+		t.Errorf("expected no complete weeks, got %d: %+v", len(got), got)
+	}
+}
+
+// TestWeeklyStats_UntruncatedIsUnaffected pins that the whole-history case —
+// --limit 0, or a repo smaller than the limit — still reports its oldest
+// week. That week is genuinely complete: the window ends because the repo
+// does.
+func TestWeeklyStats_UntruncatedIsUnaffected(t *testing.T) {
+	a := commit("a", utc(2026, 1, 5, 9), utc(2026, 1, 8, 10))
+	snap := core.Snapshot{Commits: []core.CommitView{a}}
+
+	got := core.WeeklyStats(snap)
+	if len(got) != 1 {
+		t.Fatalf("expected the oldest week to survive, got %d: %+v", len(got), got)
+	}
+}

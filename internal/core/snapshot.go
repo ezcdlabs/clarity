@@ -21,6 +21,18 @@ type Snapshot struct {
 	// was derived from, displayed by Renderers in their header. Set by the
 	// Source adapter; not derived from the data.
 	RepoName string
+	// Truncated reports that the branch has more commits than Commits
+	// holds — the walk stopped at Limit rather than at the root commit.
+	// Set by the Source adapter, which is the only layer that can see
+	// past the cut. Two things depend on it: WeeklyStats drops its
+	// oldest bucket (the window boundary cuts through that week, so its
+	// counts would understate), and Renderers close the list with a note
+	// saying the limit, not the history, is what ended it.
+	Truncated bool
+	// Limit is the commit cap that produced this snapshot, carried so
+	// Renderers can name it in that note. Meaningless when Truncated is
+	// false.
+	Limit int
 }
 
 // Commit is the raw metadata for one commit, before any pipeline events

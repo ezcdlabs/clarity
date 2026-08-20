@@ -256,3 +256,32 @@ func TestRenderPlain_NoColor(t *testing.T) {
 func view(snap core.Snapshot) core.View {
 	return core.DeriveView(snap, core.DefaultLeadTimeMode)
 }
+
+// TestRenderPlain_TruncatedListEndsWithTheLimitNotice mirrors the TUI notice
+// in plain mode. Piped output is read without a scrollbar to hint at the
+// cut, so if anything the ambiguity is worse here.
+func TestRenderPlain_TruncatedListEndsWithTheLimitNotice(t *testing.T) {
+	snap := core.Snapshot{
+		Commits: []core.CommitView{{
+			SHA: fakeSHA1, Author: "alice", Subject: "x",
+			Time: time.Unix(100, 0),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: time.Unix(200, 0)},
+				{Stage: "deploy", Status: "passed", Time: time.Unix(300, 0)},
+			},
+		}},
+		Truncated: true,
+		Limit:     25,
+	}
+
+	out := plain.RenderSnapshot("clarity", view(snap), time.Unix(400, 0), plain.Options{})
+	if !strings.Contains(out, "25") || !strings.Contains(out, "--limit") {
+		t.Errorf("expected the limit notice naming 25 and --limit, got:\n%s", out)
+	}
+
+	snap.Truncated = false
+	out = plain.RenderSnapshot("clarity", view(snap), time.Unix(400, 0), plain.Options{})
+	if strings.Contains(out, "--limit") {
+		t.Errorf("a complete list must not mention the limit, got:\n%s", out)
+	}
+}

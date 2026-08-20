@@ -13,7 +13,8 @@ import (
 // in the sense that it never touches the remote — callers (Source.Watch)
 // are responsible for fetching first.
 func BuildSnapshot(repoPath, branch string, limit int) (core.Snapshot, error) {
-	commits, err := gitlog.Walk(repoPath, branch, limit)
+	limit = gitlog.Resolve(limit)
+	commits, more, err := gitlog.Walk(repoPath, branch, limit)
 	if err != nil {
 		return core.Snapshot{}, err
 	}
@@ -21,5 +22,11 @@ func BuildSnapshot(repoPath, branch string, limit int) (core.Snapshot, error) {
 	if err != nil {
 		return core.Snapshot{}, fmt.Errorf("read events: %w", err)
 	}
-	return core.BuildSnapshot(commits, core.Events(eventsByCommit)), nil
+	snap := core.BuildSnapshot(commits, core.Events(eventsByCommit))
+	// The adapter is the only layer that can see past the cut, so it is the
+	// one that records it: the core gets a Snapshot that knows whether it is
+	// the whole history.
+	snap.Truncated = more
+	snap.Limit = limit
+	return snap, nil
 }

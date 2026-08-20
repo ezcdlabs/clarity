@@ -50,11 +50,13 @@ This opens an alt-screen TUI showing the most recent commits on `main` with thei
 When `stdout` is not a terminal (e.g. piped to another command, redirected to a file, or invoked by an agent), `git clarity` automatically switches to a static plain-text rendering of the same view — header line plus HEAD / CI Passed / Deployed sections, no animation, no ANSI escapes. Force it in an interactive terminal with `--plain`. Two more flags shape the output in either mode:
 
 - `--show-shas` — include a short commit SHA per row. Off by default in both TUI and plain modes; agents acting on specific commits should turn this on.
-- `--limit N` — cap how many commits are walked. Defaults to 100; pass `0` for unlimited.
+- `--limit N` — cap how many commits are walked. Defaults to 100; pass `0` for unlimited. When the cap is what ended the list, the last line says so and names the limit, so the bottom of a truncated scroll can't be mistaken for the start of the repository.
 
 The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
 
 The Deployed section also surfaces per-ISO-week DORA throughput inline: a `W<year>-<NN>  N deploys  Xh Ym avg` summary on each week boundary. The topmost week shares the `Deployed` section header row; older weeks below get their own dividers as you scroll history. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" averages the per-commit lead times shown on the right of each row — see [Lead time](#lead-time) for what those measure and how to change it. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
+
+The oldest week in a truncated window gets **no** divider. `--limit` almost always cuts mid-week, so that week is missing however many deploys fell below the cap — and unlike a missing row, an undercounted aggregate is wrong in a way the reader cannot see. Dropping it is the honest option: a divider that isn't there prompts a `--limit 0`, whereas "2 deploys" for a week that had nine just gets believed. Weeks above the boundary are kept; they can only be short by a commit authored below the cut but deployed inside the window, which is the long-lead case `--limit 0` also answers.
 
 ### Lead time
 

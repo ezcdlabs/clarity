@@ -639,15 +639,22 @@ config-driven — they're separate `copy-events` invocations.
 
 ## Limit / scrollback
 
-> **Diverged in implementation.** The default stayed at 100; `--limit 0` is
-> the opt-in for unbounded
-> ([main.go](../cmd/git-clarity/main.go#L109)). The cost analysis below still
-> holds — it is why `0` is safe to offer — but the default was never flipped.
+> **Settled differently from the original plan.** The default stays at 100.
+> `--limit 0` is the opt-in for walking everything.
 
-Default `--limit` becomes effectively unbounded ("load everything" — same
-UX as `git log`). The bubble-tea viewport handles arbitrary content length;
-it only renders the visible portion. `--limit N` stays available as a
-faster-startup escape hatch for very large repos.
+The plan called for flipping the default to unbounded ("load everything" —
+same UX as `git log`). It wasn't worth it. Clarity is a "what is in flight
+right now" view; the cost analysis below shows unbounded is *affordable*,
+but affordable is not the same as useful, and nobody scrolls ten thousand
+commits back to check a deploy from two years ago. `--limit 0` covers the
+case that does.
+
+What the cap actually costs is the DORA aggregate at the window boundary,
+and that is fixed independently of the default: the oldest week's divider is
+dropped rather than shown undercounted, and the list closes with a note
+naming the limit that ended it. Both apply at any `--limit`, which flipping
+the default would not have — a user passing `--limit 50` had the same
+problem.
 
 `gogit` walks 10k commits in ~1s; events ref parse is already unbounded;
 memory cost ~1.2MB per 10k commits in rendered string form. Acceptable.
@@ -786,9 +793,10 @@ coupling.
 Worth a release note when this lands:
 
 - ~~**`--limit` default flips from 100 to unbounded.**~~ Not done — the
-  default is still 100, so there is no behaviour change to note. `--limit 0`
-  opts into unbounded and pays the one-time startup cost (~1s per 10k
-  commits).
+  default is still 100. `--limit 0` opts into unbounded and pays the
+  one-time startup cost (~1s per 10k commits). What did change: a truncated
+  list now says so on its last line, and drops the boundary week's DORA
+  divider instead of showing a partial count.
 - **TUI shows a "refreshing…" indicator** while a stale cached view
   is being revalidated. First-paint feels instant on repeat
   invocations; the indicator disappears as soon as the fresh fetch

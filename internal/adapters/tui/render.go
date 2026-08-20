@@ -182,7 +182,32 @@ func RenderSnapshot(view core.View, width int, now time.Time, spinnerIdx int) st
 		b.WriteString("\n")
 	}
 
+	if view.Snapshot.Truncated {
+		b.WriteString(renderLimitNotice(view.Snapshot.Limit, width))
+	}
+
 	return b.String()
+}
+
+// renderLimitNotice closes a truncated list with the reason it ended. It
+// borrows renderWeekDivider's grammar — gray dashes, italic gray label,
+// right-aligned — because it is the same kind of thing: peripheral context
+// about the rows above it, not a row in its own right. Someone scrolling for
+// a specific commit should be able to ignore it; someone who has hit the
+// bottom and not found what they came for should find their answer in it.
+func renderLimitNotice(limit int, width int) string {
+	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
+	labelStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
+	label := labelStyle.Render(core.LimitNoticeLabel(limit))
+
+	const trailing = 4
+	tail := dashStyle.Render(strings.Repeat("─", trailing))
+	used := lipgloss.Width(label) + trailing + 2
+	if width <= used {
+		return label + " " + tail + "\n"
+	}
+	leading := dashStyle.Render(strings.Repeat("─", width-used))
+	return leading + " " + label + " " + tail + "\n"
 }
 
 // renderWeekDivider is the less-prominent sibling of renderSectionDivider:

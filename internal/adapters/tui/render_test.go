@@ -369,3 +369,58 @@ func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 func view(snap core.Snapshot) core.View {
 	return core.DeriveView(snap, core.DefaultLeadTimeMode)
 }
+
+// --- Limit notice -------------------------------------------------------------
+
+// truncatedSnap is a snapshot the walk cut short at limit, with one deployed
+// commit so the list has a bottom to close off.
+func truncatedSnap(limit int) core.Snapshot {
+	return core.Snapshot{
+		Commits: []core.CommitView{{
+			SHA: "abc", Author: "alice", Subject: "x",
+			Time: time.Unix(100, 0),
+			Events: []clarityrefs.Event{
+				ev("ci", "passed", 200), ev("deploy", "passed", 300),
+			},
+		}},
+		Truncated: true,
+		Limit:     limit,
+	}
+}
+
+// TestRenderSnapshot_TruncatedListEndsWithTheLimitNotice covers the note that
+// closes a cut-off list. Without it the bottom of the scroll is ambiguous in
+// the worst way: it looks exactly like the start of the repository, so a
+// missing deploy reads as "never happened" rather than "below your limit".
+//
+// The note has to name the limit that produced the cut — a bare "there is
+// more" leaves the reader without the number they need to change.
+func TestRenderSnapshot_TruncatedListEndsWithTheLimitNotice(t *testing.T) {
+	out := tui.RenderSnapshot(view(truncatedSnap(100)), 80, time.Time{}, 0)
+
+	if !strings.Contains(out, "100") {
+		t.Errorf("notice must name the limit that cut the list:\n%s", out)
+	}
+	if !strings.Contains(out, "--limit") {
+		t.Errorf("notice must name the flag to change:\n%s", out)
+	}
+	// It closes the list, so it must be the last thing rendered.
+	trimmed := strings.TrimRight(out, "\n")
+	lastLine := trimmed[strings.LastIndexByte(trimmed, '\n')+1:]
+	if !strings.Contains(lastLine, "--limit") {
+		t.Errorf("notice must be the final line, got %q", lastLine)
+	}
+}
+
+// TestRenderSnapshot_UntruncatedListHasNoNotice pins the other half: when the
+// list ended because the history did, there is nothing to explain and no
+// reason to spend a line.
+func TestRenderSnapshot_UntruncatedListHasNoNotice(t *testing.T) {
+	snap := truncatedSnap(100)
+	snap.Truncated = false
+
+	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	if strings.Contains(out, "--limit") {
+		t.Errorf("a complete list must not mention the limit:\n%s", out)
+	}
+}

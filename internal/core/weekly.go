@@ -94,6 +94,17 @@ func WeeklyStatsMode(snap Snapshot, mode LeadTimeMode) []WeekStat {
 
 	sort.Slice(keys, func(i, j int) bool { return keys[i] > keys[j] })
 
+	// A truncated window cuts through its oldest week, so that bucket is
+	// missing however many deploys fell below the limit. Drop it rather
+	// than report a count that is wrong in a way the reader cannot see —
+	// both renderers already treat a missing bucket as "render no divider".
+	// Newer buckets are kept: they can only be short by a commit authored
+	// before the cut but deployed inside the window, which is the rare
+	// long-lead case, and --limit 0 is the answer to that.
+	if snap.Truncated && len(keys) > 0 {
+		keys = keys[:len(keys)-1]
+	}
+
 	out := make([]WeekStat, 0, len(keys))
 	for _, k := range keys {
 		year := int(k / 100)
@@ -159,4 +170,18 @@ func WeekDividerLabel(s WeekStat) string {
 	}
 	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
 		s.Year, s.Week, s.Deploys, deploysLabel, FormatElapsed(s.AvgLead))
+}
+
+// LimitNoticeLabel formats the note that closes a truncated commit list
+// ("--limit 100 reached · raise it, or --limit 0 for all commits"). Shared
+// by both renderers so the wording stays in one place, the same way
+// WeekDividerLabel is.
+//
+// It names the active limit because that is the number the reader has to
+// change, and it names --limit 0 because "raise it" alone leaves them
+// guessing at how high. Without this line the bottom of a cut list is
+// indistinguishable from the start of the repository — which is the reading
+// that turns a deploy below the cut into a deploy that never happened.
+func LimitNoticeLabel(limit int) string {
+	return fmt.Sprintf("--limit %d reached · raise it, or --limit 0 for all commits", limit)
 }

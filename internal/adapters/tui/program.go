@@ -150,8 +150,8 @@ func (m Model) View() tea.View {
 // header.
 func renderHeader(view core.View, width int) string {
 	snap := view.Snapshot
-	ciStatus := core.CurrentStageStatus(snap.Commits, "ci")
-	deployStatus := core.CurrentStageStatus(snap.Commits, "deploy")
+	ciStatus := view.Header.CI
+	deployStatus := view.Header.Deploy
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	if ciStatus == "failed" || deployStatus == "failed" {

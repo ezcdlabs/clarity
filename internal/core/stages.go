@@ -94,15 +94,30 @@ func CIStatus(events []clarityrefs.Event) string {
 	return latest.Status
 }
 
-// CurrentStageStatus returns the latest *resolved* (passed or failed) event
-// status for the given stage anywhere in the snapshot, or "" if no resolved
-// events exist. "started" and "skipped" events are intentionally ignored so
-// header badges hold their colour through transient retries instead of
-// flickering to neutral every time a build kicks off.
+// CurrentStageStatus returns the status of the given stage on the newest
+// commit that has resolved it, or "" if no commit has. Commits arrive
+// newest-first (Snapshot's documented order), so the walk stops at the first
+// commit carrying a resolved event for the stage; within that commit the
+// latest resolved event wins.
+//
+// Two rules are doing work here, and they pull in different directions:
+//
+//   - Only "passed" and "failed" resolve a stage. "started" and "skipped" are
+//     ignored so header badges hold their colour through transient retries
+//     instead of flickering to neutral every time a build kicks off — and so a
+//     commit whose deploy was skipped doesn't blank out the badge the commit
+//     below it earned.
+//   - Recency is measured in commits, not in timestamps. Two pushes close
+//     together put two CI runs in flight at once, and the older commit's run
+//     can report *after* the newer one's: push a bad commit, revert it 60s
+//     later, and the revert goes green three seconds before the bad commit
+//     goes red. Picking the globally-latest event by timestamp would paint the
+//     header red for a commit that is no longer HEAD and was already reverted.
+//     The newest commit that has an answer is the one the header speaks for.
 func CurrentStageStatus(commits []CommitView, stage string) string {
-	var latest clarityrefs.Event
-	found := false
 	for _, c := range commits {
+		var latest clarityrefs.Event
+		found := false
 		for _, e := range c.Events {
 			if e.Stage != stage {
 				continue
@@ -115,9 +130,9 @@ func CurrentStageStatus(commits []CommitView, stage string) string {
 				found = true
 			}
 		}
+		if found {
+			return latest.Status
+		}
 	}
-	if !found {
-		return ""
-	}
-	return latest.Status
+	return ""
 }

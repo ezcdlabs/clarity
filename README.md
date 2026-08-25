@@ -334,6 +334,17 @@ The trade-off is that events aren't directly inspectable with `git notes show`. 
 
 For each commit, the renderer walks all event files under `events/<sha>/`, sorts by timestamp, and computes the latest status per stage. This is what makes clarity feel different from a "run history" view — retries don't clutter the timeline; the user sees the current state of each stage per commit.
 
+### The header badges
+
+The `ci: ✓ · deploy: ✓` badges on the header line summarise the whole branch in two characters, so which event they speak for matters. Each badge takes **the status of that stage on the newest commit that has resolved it** — not the latest event for the stage overall.
+
+Two rules follow from that, and they pull in different directions:
+
+- **Only `passed` and `failed` resolve a stage.** `started` and `skipped` are ignored, so a badge holds its colour through a retry instead of flickering to neutral every time a build kicks off, and a commit whose deploy was skipped doesn't blank out the badge the commit below it earned. A stage no commit has ever resolved renders neutral.
+- **Recency is measured in commits, not timestamps.** Two pushes close together put two CI runs in flight at once, and the older commit's run can finish *last*: push a bad commit, revert it 60 seconds later, and the revert reports green seconds before the bad commit reports red. Ranking events by timestamp would then paint the header red for a commit that is no longer HEAD and was already reverted — while `deploy` stayed green, because the bad commit never emitted a deploy event to overtake with (its deploy job `needs: build`, so it was skipped). That asymmetry between the two badges is the signature of the bug. The newest commit with an answer is the one the header speaks for; a commit that has gone quiet on a stage defers to the one below it.
+
+Per-commit rows are unaffected — they were always scoped to their own commit.
+
 ### Fetch refspec
 
 The events ref isn't fetched by default. The first time `git clarity` runs in a repo, it ensures the fetch refspec is configured:

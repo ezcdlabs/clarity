@@ -92,7 +92,7 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 	}
 
 	var b strings.Builder
-	b.WriteString(plainHeader(repoName, snap))
+	b.WriteString(plainHeader(repoName, view.Header))
 	b.WriteString("\n\n")
 
 	writeSection := func(label string, commits []core.CommitView) {
@@ -178,11 +178,11 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 }
 
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
-// Mirrors the TUI's header semantics: "started" and "skipped" events are
-// ignored so the badge holds its colour across transient retries.
-func plainHeader(repoName string, snap core.Snapshot) string {
-	ci := plainBadge(core.CurrentStageStatus(snap.Commits, "ci"))
-	deploy := plainBadge(core.CurrentStageStatus(snap.Commits, "deploy"))
+// The statuses arrive already resolved on View.Header — see "The header
+// badges" in README.md for which event each one speaks for.
+func plainHeader(repoName string, h core.HeaderStatus) string {
+	ci := plainBadge(h.CI)
+	deploy := plainBadge(h.Deploy)
 	return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, deploy)
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ type Options struct {
 	Status   string    // required
 	Time     time.Time // defaults to time.Now()
 	SHA      string    // defaults to env (GITHUB_SHA / CI_COMMIT_SHA), then HEAD
+	Target   string    // optional, deploy only — which deployable this is about
 }
 
 // validStages is the closed set of stage names clarity recognises. Trunk-based
@@ -46,7 +48,7 @@ var validStatuses = map[string]bool{
 // the SHA the event was attached to so callers (e.g. the binary) can echo it
 // back to the user for confirmation.
 func Run(opts Options) (string, error) {
-	if err := validateStageStatus(opts.Stage, opts.Status); err != nil {
+	if err := validateReport(opts.Stage, opts.Status, opts.Target); err != nil {
 		return "", err
 	}
 	opts, err := Resolve(opts)
@@ -58,6 +60,7 @@ func Run(opts Options) (string, error) {
 		Stage:  opts.Stage,
 		Status: opts.Status,
 		Time:   opts.Time,
+		Target: opts.Target,
 		CI:     ci.Detect(),
 	}
 	if err := clarityrefs.WriteEvent(opts.RepoPath, opts.Remote, opts.SHA, event); err != nil {
@@ -106,12 +109,18 @@ func Resolve(opts Options) (Options, error) {
 // records an instant, so the offset carries no information, and a stable
 // rendering keeps pasted commands comparable across machines.
 func CommandLine(opts Options) string {
-	return fmt.Sprintf("git clarity report --sha %s --at %s %s %s",
+	line := fmt.Sprintf("git clarity report --sha %s --at %s %s %s",
 		opts.SHA,
 		opts.Time.UTC().Truncate(time.Second).Format(time.RFC3339),
 		opts.Stage,
 		opts.Status,
 	)
+	// Only append a target when there is one: a trailing empty argument would
+	// re-report into a flow named "" rather than the untargeted deploy.
+	if opts.Target != "" {
+		line += " " + opts.Target
+	}
+	return line
 }
 
 // FailureError wraps a failed report with the command that puts the event
@@ -181,6 +190,32 @@ func validateStageStatus(stage, status string) error {
 	return nil
 }
 
+// validateReport checks a stage/status pair plus the optional deploy target.
+//
+// The target is rejected outright for ci, with the reason rather than just the
+// rule. Someone adding `ci passed ios` to a pipeline is reaching for something
+// the tool deliberately cannot do, and a bare "invalid argument" would leave
+// them no way to understand why.
+func validateReport(stage, status, target string) error {
+	if err := validateStageStatus(stage, status); err != nil {
+		return err
+	}
+	if target == "" {
+		return nil
+	}
+	if err := validateTargetFormat(target); err != nil {
+		return err
+	}
+	if stage != "deploy" {
+		return fmt.Errorf(`%s takes no target — %q
+
+  A target that can pass CI on its own isn't integrated with the rest of
+  the repo. CI answers one question for the whole commit; only deploy
+  fans out.`, stage, target)
+	}
+	return nil
+}
+
 // BatchEvent is one input event for a batch invocation. All fields are
 // required — backfill callers must supply explicit SHA and timestamp since
 // the live environment doesn't reflect the historical run.
@@ -189,6 +224,12 @@ type BatchEvent struct {
 	Time   time.Time
 	Stage  string
 	Status string
+	Target string
+	// Line is the 1-based input line this event was read from, so an error
+	// points at the line someone can actually go and look at. A slice index
+	// drifts from it by however many blank lines were skipped, which in a
+	// generated thousand-line backfill is the whole job of finding the fault.
+	Line int
 }
 
 // BatchOptions configures a RunBatch invocation.
@@ -212,18 +253,19 @@ func RunBatch(opts BatchOptions, events []BatchEvent) error {
 	eventsBySHA := make(map[string][]clarityrefs.Event, len(events))
 	for i, be := range events {
 		if be.SHA == "" {
-			return fmt.Errorf("event %d: sha is required", i)
+			return fmt.Errorf("%s: sha is required", be.where(i))
 		}
 		if be.Time.IsZero() {
-			return fmt.Errorf("event %d: time is required", i)
+			return fmt.Errorf("%s: time is required", be.where(i))
 		}
-		if err := validateStageStatus(be.Stage, be.Status); err != nil {
-			return fmt.Errorf("event %d: %w", i, err)
+		if err := validateReport(be.Stage, be.Status, be.Target); err != nil {
+			return fmt.Errorf("%s: %w", be.where(i), err)
 		}
 		eventsBySHA[be.SHA] = append(eventsBySHA[be.SHA], clarityrefs.Event{
 			Stage:  be.Stage,
 			Status: be.Status,
 			Time:   be.Time,
+			Target: be.Target,
 		})
 	}
 	return clarityrefs.WriteEvents(opts.RepoPath, opts.Remote, eventsBySHA)
@@ -245,4 +287,59 @@ func resolveSHA(repoPath string) (string, error) {
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// Validate reports whether an Options describes a legal event, so a caller can
+// refuse an invocation before echoing or writing anything. Run applies the
+// same check; this exposes it to the CLI, which needs to fail earlier.
+func Validate(opts Options) error {
+	return validateReport(opts.Stage, opts.Status, opts.Target)
+}
+
+// maxTargetLen bounds a target name. Nothing legitimate is near it; the cap
+// exists because a target becomes a flow label in a strip that has to fit a
+// terminal row.
+const maxTargetLen = 64
+
+// targetPattern is the accepted shape: the punctuation real target names use —
+// dashes, dots, slashes, underscores, plus, colon, at. A leading `@` is allowed
+// for scoped package names; a leading `-` is not, so a mistyped flag can never
+// be mistaken for a target.
+var targetPattern = regexp.MustCompile(`^[A-Za-z0-9@][A-Za-z0-9._/+:@-]*$`)
+
+// validateTargetFormat constrains what may be written as a target.
+//
+// Strictness here is unusually cheap and unusually valuable, because the
+// events ref is append-only and content-addressed: a target written once is a
+// flow label forever, with no edit and no delete. A stray " ios " becomes a
+// second flow that the declared `ios` can never claim, an embedded newline
+// splits the deploy strip across two rows, and an ANSI escape is emitted
+// straight to the reader's terminal.
+//
+// The accepted set is deliberately the same as the shell-word-safe set. The
+// echoed recovery command is a command line, and its documented purpose is to
+// be re-runnable verbatim — which it cannot be for anything needing quoting.
+func validateTargetFormat(target string) error {
+	if strings.TrimSpace(target) != target || strings.ContainsAny(target, " \t\r\n") {
+		return fmt.Errorf("target %q contains whitespace — targets are identifiers, "+
+			"and the echoed recovery command has to survive a shell as one word", target)
+	}
+	if len(target) > maxTargetLen {
+		return fmt.Errorf("target is too long (%d characters, limit %d)", len(target), maxTargetLen)
+	}
+	if !targetPattern.MatchString(target) {
+		return fmt.Errorf("target %q has characters clarity won't write — use letters, digits, "+
+			"and . _ / + : @ -, not starting with a dash. Events are append-only, "+
+			"so a stray label can't be taken back", target)
+	}
+	return nil
+}
+
+// where names an event in an error: its input line when the caller tracked
+// one, otherwise its position in the batch.
+func (b BatchEvent) where(index int) string {
+	if b.Line > 0 {
+		return fmt.Sprintf("line %d", b.Line)
+	}
+	return fmt.Sprintf("event %d", index)
 }

@@ -101,11 +101,43 @@ func TestParseReportArgs_RejectsMissingPositional(t *testing.T) {
 	for _, tc := range [][]string{
 		{},
 		{"ci"},
-		{"ci", "passed", "extra"},
+		// A third positional is now the deploy target, so the arity error
+		// starts at four. Whether a target is legal for this stage is a
+		// question for validation, which can explain itself.
+		{"ci", "passed", "ios", "extra"},
 		{"--sha", "abc"},
 	} {
 		if _, err := parseReportArgs(tc); err == nil {
 			t.Errorf("expected error for args %v", tc)
+		}
+	}
+}
+
+// TestRunReport_RejectsATargetOnCI is the end-to-end half: the CLI must refuse
+// before writing anything, and before echoing a command that would re-run the
+// same mistake. The message has to teach, because someone reaching for
+// `ci passed ios` is reaching for something the tool deliberately cannot do.
+func TestRunReport_RejectsATargetOnCI(t *testing.T) {
+	var out bytes.Buffer
+	called := false
+	write := func(report.Options) (string, error) {
+		called = true
+		return "", nil
+	}
+
+	err := runReportTo(&out, []string{"ci", "passed", "ios"}, write)
+	if err == nil {
+		t.Fatal("expected an error reporting a target on ci")
+	}
+	if called {
+		t.Error("an event was written despite the invalid invocation")
+	}
+	if out.Len() != 0 {
+		t.Errorf("echoed a command for an invocation it refuses: %q", out.String())
+	}
+	for _, want := range []string{"ci takes no target", "integrated"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q:\n%s", want, err)
 		}
 	}
 }
@@ -444,5 +476,180 @@ func assertDeclaredFlows(t *testing.T, view core.View) {
 	if view.Flows[0].Name != "web" || view.Flows[1].Name != "ios" {
 		t.Errorf("flows are %q/%q, want web/ios — the declared config did not reach the lens",
 			view.Flows[0].Name, view.Flows[1].Name)
+	}
+}
+
+// TestParseReportArgs_Target covers the third positional argument. Arity is
+// the whole check: a target is only meaningful for deploy, and `ci passed ios`
+// has to fail in the pipeline that wrote it rather than quietly recording an
+// event nobody can explain later.
+func TestParseReportArgs_Target(t *testing.T) {
+	cases := []struct {
+		name       string
+		args       []string
+		wantTarget string
+		wantErr    string
+	}{
+		{name: "deploy with a target", args: []string{"deploy", "passed", "ios"}, wantTarget: "ios"},
+		{name: "deploy without a target", args: []string{"deploy", "passed"}, wantTarget: ""},
+		{name: "ci without a target", args: []string{"ci", "passed"}, wantTarget: ""},
+		{
+			name: "flags still parse before the positionals",
+			args: []string{"--sha", "abc", "deploy", "passed", "android"}, wantTarget: "android",
+		},
+		{
+			name:    "a fourth positional is rejected",
+			args:    []string{"deploy", "passed", "ios", "extra"},
+			wantErr: "usage",
+		},
+		{
+			name:    "no positionals at all",
+			args:    []string{},
+			wantErr: "usage",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts, err := parseReportArgs(c.args)
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("got error %v, want one mentioning %q", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if opts.Target != c.wantTarget {
+				t.Errorf("Target = %q, want %q", opts.Target, c.wantTarget)
+			}
+		})
+	}
+}
+
+// The usage line must show the target, or the only way to discover the
+// argument is to read the docs.
+func TestParseReportArgs_UsageMentionsTheTarget(t *testing.T) {
+	_, err := parseReportArgs(nil)
+	if err == nil {
+		t.Fatal("expected a usage error")
+	}
+	if !strings.Contains(err.Error(), "target") {
+		t.Errorf("usage does not mention the target argument: %v", err)
+	}
+}
+
+// Backfill has to be able to reproduce a targeted deploy, or migrating a
+// monorepo's history would flatten every flow into the untargeted one.
+func TestParseBatchLine_Target(t *testing.T) {
+	ev, err := parseBatchLine(`{"sha":"abc","at":"2024-04-08T15:48:54Z","stage":"deploy","status":"passed","target":"ios"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.Target != "ios" {
+		t.Errorf("Target = %q, want ios", ev.Target)
+	}
+
+	bare, err := parseBatchLine(`{"sha":"abc","at":"2024-04-08T15:48:54Z","stage":"deploy","status":"passed"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if bare.Target != "" {
+		t.Errorf("untargeted line gained a target: %q", bare.Target)
+	}
+}
+
+// An explicitly empty target is the shell case a pipeline actually hits:
+// `git clarity report deploy passed "$TARGET"` with TARGET unset. Recording an
+// untargeted deploy there, with a zero exit, puts the event in the wrong flow
+// and says nothing about it.
+func TestParseReportArgs_RejectsAnExplicitlyEmptyTarget(t *testing.T) {
+	if _, err := parseReportArgs([]string{"deploy", "passed", ""}); err == nil {
+		t.Fatal("an empty target argument was accepted")
+	} else if !strings.Contains(err.Error(), "omit the argument") {
+		t.Errorf("error does not say what to do instead: %v", err)
+	}
+
+	// Omitting it entirely is still the way to report the untargeted deploy.
+	opts, err := parseReportArgs([]string{"deploy", "passed"})
+	if err != nil || opts.Target != "" {
+		t.Errorf("omitting the target should report untargeted, got %+v (err %v)", opts, err)
+	}
+}
+
+// A batch error has to name the line someone can go and look at. Blank lines
+// are skipped during parsing, so a slice index drifts from the input line by
+// however many were skipped — and a generated backfill is exactly where that
+// difference costs real time.
+func TestReadBatchEvents_CarriesLineNumbers(t *testing.T) {
+	in := "\n\n" + `{"sha":"abc","at":"2024-04-08T15:48:54Z","stage":"deploy","status":"passed"}` + "\n"
+	events, err := readBatchEvents(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("readBatchEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(events))
+	}
+	if events[0].Line != 3 {
+		t.Errorf("event records line %d, want 3 — two blank lines were skipped before it", events[0].Line)
+	}
+}
+
+// TestCheckDeclaredTarget is where declaring flows pays off: a typo in a
+// pipeline fails that pipeline, rather than surfacing days later as a flow
+// nobody deploys to and nobody can delete.
+func TestCheckDeclaredTarget(t *testing.T) {
+	declared := `{"clarity": {"deploys": [{"name": "web", "targets": ["", "web"]}, "ios"]}}`
+
+	cases := []struct {
+		name    string
+		config  string
+		target  string
+		wantErr string
+	}{
+		{name: "a declared target", config: declared, target: "ios"},
+		{name: "a declared alias", config: declared, target: "web"},
+		{name: "no target at all", config: declared, target: ""},
+		{name: "nothing declared keeps the open vocabulary", config: `{"clarity": {}}`, target: "anything"},
+		{name: "no config file at all", config: "", target: "anything"},
+		{
+			name: "an undeclared target", config: declared, target: "android",
+			wantErr: "not declared",
+		},
+		{
+			name: "a typo", config: declared, target: "isos",
+			wantErr: "isos",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if c.config != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(c.config), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := checkDeclaredTarget(dir, c.target)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error %q does not mention %q", err, c.wantErr)
+			}
+			// The alternatives have to be listed, or the user is guessing.
+			for _, want := range []string{"web", "ios"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error does not list declared flow %q: %v", want, err)
+				}
+			}
+		})
 	}
 }

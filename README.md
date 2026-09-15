@@ -832,6 +832,28 @@ read like. The batch JSONL form carries it as a `"target"` field, and the
 `ezcdlabs/clarity` action takes a `target:` input alongside its existing
 `stage` / `status` pair.
 
+**What may be written.** A target is an identifier: letters, digits, and
+`. _ / + : @ -`, not starting with a dash, up to 64 characters. Whitespace,
+control characters and ANSI escapes are refused. Strictness here is cheap and
+the alternative is not — the events ref is append-only and content-addressed,
+so a target written once is a flow label forever, with no edit and no delete. A
+stray `" ios "` becomes a second flow the declared `ios` can never claim, an
+embedded newline splits the deploy strip across two rows, and an escape
+sequence is emitted straight to the reader's terminal.
+
+The accepted set is deliberately the shell-word-safe set, because the echoed
+recovery command is a command line and its whole purpose is being re-runnable
+verbatim.
+
+An explicitly empty target — `report deploy passed ""`, which is what an unset
+`$TARGET` expands to — is an error rather than a silent untargeted deploy.
+Omitting the argument is how the untargeted deploy is reported.
+
+When `.ezcd.json` declares flows, a target none of them claims is refused at
+write time, so a typo fails the pipeline that made it instead of appearing days
+later as a flow nobody deploys to. A repo declaring nothing keeps the open
+vocabulary, since discovery is the zero-setup path.
+
 Supplying one for `ci` is rejected, with the reason rather than just the rule:
 
 ```

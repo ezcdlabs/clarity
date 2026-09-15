@@ -292,6 +292,16 @@ func runReportTo(out io.Writer, args []string, write func(report.Options) (strin
 	opts.RepoPath = repoPath
 	opts.Remote = "origin"
 
+	// Validate before the echo. The echoed line exists so a failed report can
+	// be re-run verbatim, and echoing an invocation that is itself the mistake
+	// would invite exactly that.
+	if err := report.Validate(opts); err != nil {
+		return err
+	}
+	if err := checkDeclaredTarget(repoPath, opts.Target); err != nil {
+		return err
+	}
+
 	opts, err = report.Resolve(opts)
 	if err != nil {
 		return err
@@ -368,6 +378,10 @@ func readBatchEvents(r io.Reader) ([]report.BatchEvent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %w", lineNum, err)
 		}
+		// Carry the line number so a validation failure downstream points at
+		// the same line the parse errors above do, rather than at a slice
+		// index that blank lines have already shifted.
+		ev.Line = lineNum
 		events = append(events, ev)
 	}
 	if err := sc.Err(); err != nil {
@@ -382,6 +396,7 @@ func parseBatchLine(line string) (report.BatchEvent, error) {
 		At     string `json:"at"`
 		Stage  string `json:"stage"`
 		Status string `json:"status"`
+		Target string `json:"target"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return report.BatchEvent{}, fmt.Errorf("invalid JSON: %w", err)
@@ -395,6 +410,7 @@ func parseBatchLine(line string) (report.BatchEvent, error) {
 		Time:   t,
 		Stage:  raw.Stage,
 		Status: raw.Status,
+		Target: raw.Target,
 	}, nil
 }
 
@@ -402,22 +418,41 @@ func parseBatchLine(line string) (report.BatchEvent, error) {
 // Flags must come before the positional <stage> <status> args. `--sha` and
 // `--at` are migration overrides: --sha takes precedence over GITHUB_SHA /
 // CI_COMMIT_SHA / HEAD, and --at (RFC3339) replaces the default time.Now().
+// reportUsage is the one-line synopsis shown for every malformed invocation.
+// The target is listed so the argument is discoverable from the error rather
+// than only from the docs.
+const reportUsage = "usage: git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status> [<target>]"
+
 func parseReportArgs(args []string) (report.Options, error) {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	sha := fs.String("sha", "", "explicit commit SHA (overrides GITHUB_SHA / CI_COMMIT_SHA / HEAD)")
 	at := fs.String("at", "", "explicit event timestamp in RFC3339 (overrides time.Now())")
 	if err := fs.Parse(args); err != nil {
-		return report.Options{}, fmt.Errorf("usage: git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>: %w", err)
+		return report.Options{}, fmt.Errorf("%s: %w", reportUsage, err)
 	}
 	rest := fs.Args()
-	if len(rest) != 2 {
-		return report.Options{}, fmt.Errorf("usage: git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>")
+	if len(rest) < 2 || len(rest) > 3 {
+		return report.Options{}, fmt.Errorf("%s", reportUsage)
 	}
 	opts := report.Options{
 		Stage:  rest[0],
 		Status: rest[1],
 		SHA:    *sha,
+	}
+	// The optional third positional names the deployable. Positional rather
+	// than a flag because it is a fixed-arity part of what is being reported,
+	// and `report deploy passed ios` is what a pipeline step should read like.
+	if len(rest) == 3 {
+		// An explicitly empty argument is not the same as no argument. It is
+		// what `report deploy passed "$TARGET"` produces with TARGET unset,
+		// and silently recording an untargeted deploy there would put the
+		// event in the wrong flow with a zero exit code.
+		if rest[2] == "" {
+			return report.Options{}, fmt.Errorf(
+				"target is empty — omit the argument entirely to report the untargeted deploy")
+		}
+		opts.Target = rest[2]
 	}
 	if *at != "" {
 		t, err := time.Parse(time.RFC3339, *at)
@@ -451,4 +486,42 @@ func lensFor(cfg config.Config, src core.Source) *core.Lens {
 func cachedLensFor(cfg config.Config, src core.Source, cf *cache.File) *core.CachedLens {
 	mode, flows := cfg.LeadTimeMode(), cfg.Deploys()
 	return core.NewCachedLens(core.NewLens(src, mode, flows), cf, mode, flows)
+}
+
+// checkDeclaredTarget refuses a target the repo's config doesn't declare.
+//
+// Declaring flows is what turns .ezcd.json into an expectation, and this is
+// where that expectation pays: a typo fails the pipeline that made it, loudly,
+// instead of appearing days later as a mysterious extra tab that nobody
+// deploys to. Events are append-only, so the alternative is a stray flow
+// nobody can remove.
+//
+// A repo that declares nothing keeps the open vocabulary by design — discovery
+// is the zero-setup path and must not require a config file to work.
+func checkDeclaredTarget(repoPath, target string) error {
+	if target == "" {
+		return nil
+	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return err
+	}
+	flows := cfg.Deploys()
+	if len(flows) == 0 {
+		return nil
+	}
+	for _, f := range flows {
+		if f.Claims(target) {
+			return nil
+		}
+	}
+
+	declared := make([]string, 0, len(flows))
+	for _, f := range flows {
+		declared = append(declared, f.Name)
+	}
+	return fmt.Errorf("target %q is not declared in .ezcd.json — this repo declares: %s\n\n"+
+		"  Add it to clarity.deploys, or fix the typo. Events are append-only, so an\n"+
+		"  undeclared target would show up as a flow nobody can remove.",
+		target, strings.Join(declared, ", "))
 }

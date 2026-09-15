@@ -19,6 +19,10 @@ inputs:
     description: 'Status to report (started, passed, failed, skipped). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
     required: false
     default: ''
+  target:
+    description: 'Which deployable this deploy event is about, for a repo that ships several from one trunk (e.g. `ios`). Valid only with `stage: deploy` — CI answers one question for the whole commit and never fans out. Omit it to report the untargeted deploy.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -33,4 +37,20 @@ runs:
     - name: Report event
       if: ${{ inputs.stage != '' && inputs.status != '' }}
       shell: bash
-      run: git clarity report "${{ inputs.stage }}" "${{ inputs.status }}"
+      # Inputs go through env, never interpolated into the script body. `${{ }}`
+      # is substituted into the text before bash parses it, so surrounding
+      # quotes are not protection — a value containing $(...) would run. The
+      # install step above already does it this way.
+      env:
+        INPUT_STAGE: ${{ inputs.stage }}
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_TARGET: ${{ inputs.target }}
+      # The target is a trailing positional, so an unset input has to be
+      # omitted rather than passed as an empty argument: `report deploy passed
+      # ""` is an explicit empty target and clarity refuses it.
+      run: |
+        if [ -n "$INPUT_TARGET" ]; then
+          git clarity report "$INPUT_STAGE" "$INPUT_STATUS" "$INPUT_TARGET"
+        else
+          git clarity report "$INPUT_STAGE" "$INPUT_STATUS"
+        fi

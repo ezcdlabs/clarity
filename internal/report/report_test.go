@@ -614,3 +614,170 @@ func TestFailureError(t *testing.T) {
 		t.Error("expected the cause to remain unwrappable")
 	}
 }
+
+// TestRun_WritesTheTargetOntoTheEvent is the assertion the whole feature rests
+// on: the target has to survive all the way onto the ref. Everything upstream
+// can parse and validate it correctly and the event can still land untargeted,
+// in which case every deploy collapses back into one flow and the failure is
+// invisible until someone wonders why their iOS tab is empty.
+func TestRun_WritesTheTargetOntoTheEvent(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	head := headSHA(t, clone.Path)
+
+	if _, err := report.Run(report.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Stage:    "deploy",
+		Status:   "passed",
+		Target:   "ios",
+	}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	fetchEventsRef(t, clone.Path)
+	got, err := clarityrefs.ReadEvents(clone.Path, head)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(got))
+	}
+	if got[0].Target != "ios" {
+		t.Errorf("event Target = %q, want ios — the target did not reach the ref", got[0].Target)
+	}
+}
+
+// Two targets reported in the same second must both survive. Event filenames
+// are content-addressed, so this is the case where a target dropped anywhere in
+// the write path shows up as a lost event rather than a mislabelled one.
+func TestRun_TargetsDoNotCollideWithinASecond(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	head := headSHA(t, clone.Path)
+	at := time.Unix(1744120134, 0)
+
+	for _, target := range []string{"ios", "android"} {
+		if _, err := report.Run(report.Options{
+			RepoPath: clone.Path,
+			Remote:   "origin",
+			Stage:    "deploy",
+			Status:   "passed",
+			Time:     at,
+			Target:   target,
+		}); err != nil {
+			t.Fatalf("Run(%s) failed: %v", target, err)
+		}
+	}
+
+	fetchEventsRef(t, clone.Path)
+	got, err := clarityrefs.ReadEvents(clone.Path, head)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 events for two targets at the same instant, got %d: %+v", len(got), got)
+	}
+}
+
+// TestRunBatch_WritesTargetsOntoEvents covers the backfill path, which is the
+// whole point of batch mode: migrating a monorepo's history. A target dropped
+// here flattens every historical deploy into the untargeted flow, and because
+// events are append-only the only fix is a second, wrong history beside it.
+func TestRunBatch_WritesTargetsOntoEvents(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	head := headSHA(t, clone.Path)
+	at := time.Unix(1744120134, 0)
+
+	err := report.RunBatch(report.BatchOptions{RepoPath: clone.Path, Remote: "origin"}, []report.BatchEvent{
+		{SHA: head, Time: at, Stage: "deploy", Status: "passed", Target: "ios"},
+		{SHA: head, Time: at, Stage: "deploy", Status: "passed", Target: "android"},
+		{SHA: head, Time: at, Stage: "ci", Status: "passed"},
+	})
+	if err != nil {
+		t.Fatalf("RunBatch failed: %v", err)
+	}
+
+	fetchEventsRef(t, clone.Path)
+	got, err := clarityrefs.ReadEvents(clone.Path, head)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+
+	targets := map[string]bool{}
+	for _, e := range got {
+		if e.Stage == "deploy" {
+			targets[e.Target] = true
+		}
+	}
+	for _, want := range []string{"ios", "android"} {
+		if !targets[want] {
+			t.Errorf("batched deploy to %q did not reach the ref (got targets %v)", want, targets)
+		}
+	}
+}
+
+// A batch is the one path where a bad event is someone else's generated file
+// rather than something they typed, so it still has to be refused — and the
+// error has to say which event, or finding it in a thousand-line backfill is
+// the whole job.
+func TestRunBatch_RejectsATargetOnCI(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	head := headSHA(t, clone.Path)
+	at := time.Unix(1744120134, 0)
+
+	err := report.RunBatch(report.BatchOptions{RepoPath: clone.Path, Remote: "origin"}, []report.BatchEvent{
+		{SHA: head, Time: at, Stage: "deploy", Status: "passed", Target: "ios"},
+		{SHA: head, Time: at, Stage: "ci", Status: "passed", Target: "ios"},
+	})
+	if err == nil {
+		t.Fatal("a batched ci event with a target was accepted")
+	}
+	if !strings.Contains(err.Error(), "ci takes no target") {
+		t.Errorf("error does not explain the refusal: %v", err)
+	}
+	if !strings.Contains(err.Error(), "1") {
+		t.Errorf("error does not identify which event failed: %v", err)
+	}
+}
+
+// A malformed target is refused in batch too. Backfills are generated, so one
+// bad target repeated across a thousand events would otherwise write a
+// thousand permanent stray flows.
+func TestRunBatch_RejectsAMalformedTarget(t *testing.T) {
+	clearEnv(t)
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("commit one")
+	clone.Push("main")
+
+	err := report.RunBatch(report.BatchOptions{RepoPath: clone.Path, Remote: "origin"}, []report.BatchEvent{
+		{SHA: headSHA(t, clone.Path), Time: time.Unix(1, 0), Stage: "deploy", Status: "passed", Target: "ios evil"},
+	})
+	if err == nil {
+		t.Fatal("a batched malformed target was accepted")
+	}
+}

@@ -231,6 +231,13 @@ func renderFlowBlock(
 		}
 		b.WriteString(plainBatchSubheader(batch, now, i == 0))
 		for _, c := range batch.Commits {
+			// The Deployed section obeys --limit like every other section.
+			// Without this a capped render printed the whole deploy history
+			// and then closed with a notice claiming the limit was why the
+			// list ended.
+			if !included(c.SHA) {
+				continue
+			}
 			b.WriteString(plainRow(c, &g, indexBySHA[c.SHA], now, opts))
 			b.WriteString("\n")
 		}

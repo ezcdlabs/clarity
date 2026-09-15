@@ -1,6 +1,7 @@
 package plain_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -283,5 +284,41 @@ func TestRenderPlain_TruncatedListEndsWithTheLimitNotice(t *testing.T) {
 	out = plain.RenderSnapshot("clarity", view(snap), time.Unix(400, 0), plain.Options{})
 	if strings.Contains(out, "--limit") {
 		t.Errorf("a complete list must not mention the limit, got:\n%s", out)
+	}
+}
+
+// TestRenderSnapshot_LimitAppliesToDeployedRows — --limit is documented as
+// capping how many commits are *rendered*, and the notice that follows names
+// the limit as the reason the list ended. The Deployed section ignored it, so
+// a `--limit 2` on a repo with a long deploy history printed every deployed
+// commit and then claimed it had stopped at two.
+func TestRenderSnapshot_LimitAppliesToDeployedRows(t *testing.T) {
+	var commits []core.CommitView
+	for i := 0; i < 6; i++ {
+		ts := int64(1000 - i*10)
+		commits = append(commits, core.CommitView{
+			SHA:     fmt.Sprintf("sha%d", i),
+			Author:  "alice",
+			Subject: fmt.Sprintf("commit %d", i),
+			Time:    time.Unix(ts, 0),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: time.Unix(ts+1, 0)},
+				{Stage: "deploy", Status: "passed", Time: time.Unix(ts+2, 0)},
+			},
+		})
+	}
+
+	view := core.DeriveView(core.Snapshot{Commits: commits}, core.DefaultLeadTimeMode, nil)
+	out := plain.RenderSnapshot("repo", view, time.Unix(2000, 0), plain.Options{Limit: 2})
+
+	for i := 0; i < 2; i++ {
+		if !strings.Contains(out, fmt.Sprintf("commit %d", i)) {
+			t.Errorf("commit %d should be within the limit:\n%s", i, out)
+		}
+	}
+	for i := 2; i < 6; i++ {
+		if strings.Contains(out, fmt.Sprintf("commit %d", i)) {
+			t.Errorf("commit %d is past --limit 2 but was rendered:\n%s", i, out)
+		}
 	}
 }

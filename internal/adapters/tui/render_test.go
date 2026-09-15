@@ -79,7 +79,7 @@ func TestRenderSnapshot_OneRowPerCommit(t *testing.T) {
 			{SHA: "3", Author: "carol", Subject: "third"},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	for _, want := range []string{"alice", "bob", "carol", "first", "second", "third"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected %q in output:\n%s", want, out)
@@ -99,7 +99,7 @@ func TestRenderSnapshot_AllThreeDividersAlwaysRender(t *testing.T) {
 			{SHA: "1", Author: "alice", Subject: "wip"},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected divider %q always present, got:\n%s", label, out)
@@ -109,7 +109,7 @@ func TestRenderSnapshot_AllThreeDividersAlwaysRender(t *testing.T) {
 
 // Even with zero commits at all, the structural frame stays in place.
 func TestRenderSnapshot_EmptySnapshot_StillShowsDividers(t *testing.T) {
-	out := tui.RenderSnapshot(view(core.Snapshot{}), 80, time.Time{}, 0)
+	out := renderSnap(view(core.Snapshot{}), 80, time.Time{}, 0)
 	for _, label := range []string{"HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, label) {
 			t.Errorf("expected divider %q in empty render, got:\n%s", label, out)
@@ -128,7 +128,7 @@ func TestRenderSnapshot_AllThreeSections(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	for _, h := range []string{"HEAD", "CI Passed", "Deployed"} {
 		if !strings.Contains(out, h) {
 			t.Errorf("expected section header %q in output:\n%s", h, out)
@@ -153,7 +153,7 @@ func TestRenderSnapshot_DeployingSubheader(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	if !strings.Contains(strings.ToLower(out), "deploying") {
 		t.Errorf("expected 'deploying' subheader inside Deployed, got:\n%s", out)
 	}
@@ -171,7 +171,7 @@ func TestRenderSnapshot_WeekDivider_AppearsAboveDeployedBatch(t *testing.T) {
 			Time:   time.Unix(c, 0),
 			Events: []clarityrefs.Event{ev("ci", "passed", c+60), ev("deploy", "passed", d)}},
 	}}
-	out := tui.RenderSnapshot(view(snap), 80, time.Unix(d+3600, 0), 0)
+	out := renderSnap(view(snap), 80, time.Unix(d+3600, 0), 0)
 	if !strings.Contains(out, "W2026-02") {
 		t.Errorf("expected W2026-02 week divider in output, got:\n%s", out)
 	}
@@ -196,7 +196,7 @@ func TestRenderSnapshot_WeekDivider_MergedIntoDeployedHeaderForTopWeek(t *testin
 			Time:   time.Unix(c1, 0),
 			Events: []clarityrefs.Event{ev("ci", "passed", c1+60), ev("deploy", "passed", d1)}},
 	}}
-	out := tui.RenderSnapshot(view(snap), 120, time.Unix(d2+3600, 0), 0)
+	out := renderSnap(view(snap), 120, time.Unix(d2+3600, 0), 0)
 
 	// Find the line that contains "Deployed" — it must ALSO contain the
 	// newest week's W-label so the two have been merged onto one row.
@@ -229,7 +229,7 @@ func TestRenderSnapshot_WeekDivider_NotShownForEmptyDeployed(t *testing.T) {
 		{SHA: "a", Author: "alice", Subject: "ci only",
 			Events: []clarityrefs.Event{ev("ci", "passed", 100)}},
 	}}
-	out := tui.RenderSnapshot(view(snap), 80, time.Unix(200, 0), 0)
+	out := renderSnap(view(snap), 80, time.Unix(200, 0), 0)
 	if strings.Contains(out, "W20") {
 		t.Errorf("expected no week divider when nothing has been deployed, got:\n%s", out)
 	}
@@ -246,7 +246,7 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Unix(400, 0), 0)
+	out := renderSnap(view(snap), 80, time.Unix(400, 0), 0)
 	if !strings.Contains(strings.ToLower(out), "deploying") {
 		t.Errorf("expected 'deploying' for newest batch, got:\n%s", out)
 	}
@@ -269,7 +269,7 @@ func TestRenderSnapshot_TopDeployedBatch_IsMarkedLive(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Unix(400, 0), 0)
+	out := renderSnap(view(snap), 80, time.Unix(400, 0), 0)
 
 	if !strings.Contains(out, "live on production") {
 		t.Errorf("expected 'live on production' on the topmost batch, got:\n%s", out)
@@ -290,7 +290,7 @@ func TestRenderSnapshot_DoesNotTrailWithStageLabels(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	// Each row should not contain the verbatim words "ci" or "deploy"
 	// after the subject. We check rows containing the author rather than
 	// the whole output (subheaders may legitimately mention "deploy*").
@@ -315,7 +315,7 @@ func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
 				Events: []clarityrefs.Event{ev("ci", "started", 50)}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, now, 0)
+	out := renderSnap(view(snap), 80, now, 0)
 	if !strings.Contains(out, "1m 30s") {
 		t.Errorf("expected '1m 30s' lead time in output, got:\n%s", out)
 	}
@@ -335,7 +335,7 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 				}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, now, 0)
+	out := renderSnap(view(snap), 80, now, 0)
 	if !strings.Contains(out, "5m 00s") {
 		t.Errorf("expected '5m 00s' frozen lead time, got:\n%s", out)
 	}
@@ -352,7 +352,7 @@ func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 			}},
 		},
 	}
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	pHead := strings.Index(out, "HEAD")
 	pCI := strings.Index(out, "CI Passed")
 	pDeployed := strings.Index(out, "Deployed")
@@ -368,6 +368,13 @@ func TestRenderSnapshot_SectionsInLifecycleOrder(t *testing.T) {
 // they use the default.
 func view(snap core.Snapshot) core.View {
 	return core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
+}
+
+// renderSnap renders a view's only flow. These tests all predate deploy
+// targets and describe a single-flow repo, which is exactly the case that must
+// keep rendering what it always did.
+func renderSnap(v core.View, width int, now time.Time, spinnerIdx int) string {
+	return tui.RenderSnapshot(v, v.Flows[0], width, now, spinnerIdx)
 }
 
 // --- Limit notice -------------------------------------------------------------
@@ -396,7 +403,7 @@ func truncatedSnap(limit int) core.Snapshot {
 // The note has to name the limit that produced the cut — a bare "there is
 // more" leaves the reader without the number they need to change.
 func TestRenderSnapshot_TruncatedListEndsWithTheLimitNotice(t *testing.T) {
-	out := tui.RenderSnapshot(view(truncatedSnap(100)), 80, time.Time{}, 0)
+	out := renderSnap(view(truncatedSnap(100)), 80, time.Time{}, 0)
 
 	if !strings.Contains(out, "100") {
 		t.Errorf("notice must name the limit that cut the list:\n%s", out)
@@ -419,7 +426,7 @@ func TestRenderSnapshot_UntruncatedListHasNoNotice(t *testing.T) {
 	snap := truncatedSnap(100)
 	snap.Truncated = false
 
-	out := tui.RenderSnapshot(view(snap), 80, time.Time{}, 0)
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
 	if strings.Contains(out, "--limit") {
 		t.Errorf("a complete list must not mention the limit:\n%s", out)
 	}

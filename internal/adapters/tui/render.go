@@ -52,15 +52,56 @@ var (
 // can be read cleanly. HasDarkBackground defaults to true on error or
 // non-TTY contexts, which is safe in tests and pipelines.
 var (
-	hasDarkBg     bool
-	hasDarkBgOnce sync.Once
+	hasDarkBg bool
+	termBg    color.Color
+	termOnce  sync.Once
 )
 
 func detectDarkBackground() bool {
-	hasDarkBgOnce.Do(func() {
-		hasDarkBg = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
-	})
+	detectTerminal()
 	return hasDarkBg
+}
+
+// detectBackgroundColor returns the terminal's actual background colour, or
+// nil when it cannot be determined — piped output, no TTY, or a terminal that
+// ignores the OSC 11 query.
+//
+// The deploy strip needs the value itself, not just the light/dark verdict: an
+// elevated surface has to be derived from the real background to pick up a
+// theme's own tint, and no colour from the ANSI text palette can do that.
+func detectBackgroundColor() color.Color {
+	detectTerminal()
+	return termBg
+}
+
+// isDarkColor reports whether a colour reads as dark, by HSL lightness — the
+// same test lipgloss applies internally, reimplemented because it isn't
+// exported. Colours are alpha-premultiplied 16-bit, which is fine here since a
+// terminal background is opaque.
+func isDarkColor(c color.Color) bool {
+	r, g, b, _ := c.RGBA()
+	hi := max(r, max(g, b))
+	lo := min(r, min(g, b))
+	return float64(hi+lo)/2/65535.0 < 0.5
+}
+
+// detectTerminal performs the single OSC 11 round-trip both callers need.
+//
+// One query, not two: each costs a full terminal round-trip at startup, and
+// two could disagree if only one of them got an answer. The light/dark verdict
+// is derived from the colour rather than asked for separately.
+func detectTerminal() {
+	termOnce.Do(func() {
+		bg, err := lipgloss.BackgroundColor(os.Stdin, os.Stdout)
+		if err != nil {
+			// No answer: assume dark, which is what HasDarkBackground does and
+			// what is safe in tests and pipelines.
+			hasDarkBg = true
+			return
+		}
+		termBg = bg
+		hasDarkBg = isDarkColor(bg)
+	})
 }
 
 // colorYellow returns the adaptive yellow for the CI Passed divider. We
@@ -105,12 +146,16 @@ func RenderRow(view core.CommitView, width int) string {
 // now drives the live half of the timer; pass time.Time{} for tests that
 // don't care about timer values (timers won't render for commits with no
 // Time set anyway).
-func RenderSnapshot(view core.View, width int, now time.Time, spinnerIdx int) string {
+func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time, spinnerIdx int) string {
 	// Grouping, lead times and weekly stats all come from the View. Deriving
 	// them here instead would silently ignore the caller's configuration —
 	// which is exactly how `clarity.leadTime` first shipped doing nothing.
+	//
+	// The grouping comes from the selected flow rather than the whole repo,
+	// because one flow's deploys must not move another's lifecycle boundary:
+	// a commit that shipped to web genuinely has not shipped to ios.
 	snap := view.Snapshot
-	g := view.Groups
+	g := flow.Groups
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
 		indexBySHA[c.SHA] = i
@@ -152,7 +197,7 @@ func RenderSnapshot(view core.View, width int, now time.Time, spinnerIdx int) st
 	// production; subsequent batches are settled history. The Deployed header
 	// also carries the TOPMOST week's DORA summary on its right side (saving
 	// a row) — only older weeks need standalone week dividers below.
-	statsByWeek := core.IndexStatsByWeek(view.Weekly)
+	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
 	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
 		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))

@@ -159,7 +159,7 @@ func TestLeadTimeMode_ReachesRenderedRows(t *testing.T) {
 			view := viewFor(t, c.leadTime, batchedPushSnapshot())
 
 			renderers := map[string]string{
-				"tui":   tui.RenderSnapshot(view, 100, now, 0),
+				"tui":   tui.RenderSnapshot(view, view.Flows[0], 100, now, 0),
 				"plain": plain.RenderSnapshot(view.Snapshot.RepoName, view, now, plain.Options{}),
 			}
 
@@ -219,7 +219,7 @@ func TestLeadTimeMode_ExcludedCommitsStillAppear(t *testing.T) {
 	for _, leadTime := range []string{"all", "reported", "pipeline"} {
 		view := viewFor(t, leadTime, batchedPushSnapshot())
 		for kind, out := range map[string]string{
-			"tui":   tui.RenderSnapshot(view, 100, now, 0),
+			"tui":   tui.RenderSnapshot(view, view.Flows[0], 100, now, 0),
 			"plain": plain.RenderSnapshot(view.Snapshot.RepoName, view, now, plain.Options{}),
 		} {
 			if !strings.Contains(out, "swept along") {

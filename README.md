@@ -549,17 +549,16 @@ The header answers two questions with different scopes: CI is repo-wide, deploys
 are per-flow. The layout says so by naming the group — `deploy:` labels the strip,
 so the flows read as sub-items of deploy rather than as peers of `ci`.
 
-A repo with one flow renders what it renders today, with the badge glyph changed
-from a tick to a dot:
+A repo with one flow renders exactly what it renders today, byte for byte:
 
 ```
-your-app · ci: ● · deploy: ●
+your-app · ci: ✓ · deploy: ✓
 ```
 
 A repo with several gains the strip, and the header row becomes chrome:
 
 ```
-your-app · ci: ● · deploy:  web ●   ios ●   android ◐
+your-app · ci: ✓ · deploy:  web ✓   ios ✗   android ·
 ```
 
 **The selected flow is cut out of the chrome, not raised above it.** The header
@@ -579,11 +578,14 @@ every fixed grey looked pasted on.
 Three consequences of that, all of which need handling rather than hoping:
 
 - **The query can fail** — no TTY, a terminal that ignores OSC 11, piped output.
-  There is no safe colour to lighten in that case, so the fallback is a flat ANSI
-  8 fill on the selected tab and no bar.
+  There is no colour to derive an elevation from in that case, so no bar is drawn
+  and the selected flow is marked by weight and an underline instead. A fill
+  picked from the ANSI text palette was considered and rejected: a colour that is
+  not made of the background can only ever look pasted on to it.
 - **Elevation needs truecolor.** On a 256-colour terminal the derived shade
-  quantises to the nearest cube entry and can land back on a flat grey; detect
-  that and take the same fallback rather than shipping a muddy approximation.
+  quantises to the nearest cube entry and can land back on a flat grey. Not
+  detected yet — a terminal that answers the query but renders few colours gets
+  the quantised bar.
 - **The blank row below the header must stay body-coloured.** That is what the
   cutout connects to, and it is the whole reason the tab metaphor works. It is
   written deliberately today — `Model.View` emits `"\n\n"` between the header and
@@ -595,29 +597,42 @@ One flow renders flat, with no bar and nothing cut out, because a lone raised ta
 looks like a control and isn't one — the same reason `ci` must not look like a tab.
 `ci:` and `deploy:` stay lowercase, matching the header as it ships today.
 
-**Status sits after each name**, matching `ci: ●`. A dot immediately after
+**Status sits after each name**, matching `ci: ✓`. A dot immediately after
 `deploy:` would read as the deploy group's own status, which is not a thing that
 exists once flows are named.
 
-**Coloured dots are header-only.** `●` green / `●` red / `◐` yellow / `·` neutral
-summarise a whole flow, and the header has always been where clarity spends colour
-— the header is the summary, and it earns the colour that the per-row icons
-deliberately forgo. Per-commit rows are untouched: still `✓ / ✗ / spinner / ·`,
-still carrying meaning by shape, still reserving red for genuinely broken. The
-contrast is useful in itself, because it keeps a row glyph from being mistaken for
-a tab.
+**Colour is header-only.** A flow's badge is the same `✓` / `✗` / `·` the header
+badges have always used, and the header has always been where clarity spends
+colour — it is the summary, and it earns the colour that the per-row icons
+deliberately forgo. Coloured `●` dots were explored and dropped: they read well
+in isolation, but adopting them would have changed the badge glyph for every
+existing single-flow repo to serve a feature only monorepos use, and the strip
+reads fine without them. Per-commit rows are untouched either way: still
+`✓ / ✗ / spinner / ·`, still carrying meaning by shape, still reserving red for
+genuinely broken.
 
-Flows are selected with `1`–`9`, `tab` / `shift-tab`, or a mouse click. The arrow
-keys stay with the body, which already binds them to viewport scroll; for three to
-six flows direct jump beats cycling anyway. Selection is tracked by flow name
-rather than index, so a config change that reorders the strip doesn't move the
-selection out from under the user.
+Flows are selected with `1`–`9` or `tab` / `shift-tab`. The arrow keys stay with
+the body, which already binds them to viewport scroll; for three to six flows
+direct jump beats cycling anyway. Selection is tracked by flow name rather than
+index, so a config change that reorders the strip doesn't move the selection out
+from under the user, and a flow that disappears falls back to the first rather
+than leaving the body blank.
 
-On overflow each cell takes an equal share of the available width and renders what
-fits, in priority order: status, name. A flow is never hidden and never scrolled
-out of reach — the stuck deploy is the one most worth seeing and would be the one
-off-screen. (Herdr, whose tab treatment this otherwise follows, scrolls instead;
-that is right for a multiplexer with unbounded tabs and wrong here.)
+Clicking a tab is deliberately not supported yet. Bubble Tea's mouse capture
+applies to the whole program, and turning it on breaks the terminal's own
+text selection for the entire session — which matters in a tool people copy
+SHAs and commit subjects out of. Worth revisiting only if click-to-select can
+be had without that cost.
+
+On overflow the strip degrades in stages, in the order things stop earning their
+columns: the quit hint goes first — the only thing on the row carrying no
+information — then names shorten to an ellipsis, then names go entirely, then the
+group label, and finally the separators. A flow is never hidden and never
+scrolled out of reach, since the stuck deploy is the one most worth seeing and
+would be the one off-screen; at the extreme the strip becomes a row of bare
+status glyphs, which is still the higher-priority half of what a tab carries.
+(Herdr, whose tab treatment this otherwise follows, scrolls instead; that is
+right for a multiplexer with unbounded tabs and wrong here.)
 
 **A tab carries a name and a status, and nothing else.** Batch size and staleness —
 how many commits are waiting, how long since a flow last deployed — were designed
@@ -633,7 +648,7 @@ that costs nothing.
 
 ### Why the badges follow the newest commit
 
-The `ci: ● · deploy: ●` badges on the header line summarise the whole branch in two characters, so which event they speak for matters. Each badge takes **the status of that stage on the newest commit that has resolved it** — not the latest event for the stage overall.
+The `ci: ✓ · deploy: ✓` badges on the header line summarise the whole branch in two characters, so which event they speak for matters. Each badge takes **the status of that stage on the newest commit that has resolved it** — not the latest event for the stage overall.
 
 Two rules follow from that, and they pull in different directions:
 
@@ -664,7 +679,7 @@ This is a one-time, automatic step.
 A live updating terminal view of the most recent commits on the current branch (default: `main`), with pipeline stages and statuses rendered per commit.
 
 ```
-your-app · ci: ● · deploy: ●                                   press q to quit
+your-app · ci: ✓ · deploy: ✓                                   press q to quit
 
 HEAD
   · grace   wip notes                                              30s
@@ -805,7 +820,7 @@ An optional third positional argument names the deploy target:
 Positional rather than a flag because it is a fixed-arity part of what is being
 reported, and because `report deploy passed ios` is what a pipeline step should
 read like. The batch JSONL form carries it as a `"target"` field, and the
-`ezcdlabs/clarity` action gains a `target:` input alongside its existing
+`ezcdlabs/clarity` action takes a `target:` input alongside its existing
 `stage` / `status` pair.
 
 Supplying one for `ci` is rejected, with the reason rather than just the rule:

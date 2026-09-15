@@ -9,6 +9,7 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
+	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
@@ -283,4 +284,67 @@ func TestDeployTargets_UndeclaredTargetsStillSurface(t *testing.T) {
 	if !strings.Contains(out, "(undeclared)") {
 		t.Errorf("undeclared flow not marked as such:\n%s", out)
 	}
+}
+
+// TestDeployTargets_DeclaredFlowsReachTheTUI is the plain-mode test's twin for
+// the default UI. The TUI is what most users actually look at, so a config
+// value that reaches plain output and not the TUI is still a feature that does
+// nothing — which is precisely how `clarity.leadTime` first shipped.
+func TestDeployTargets_DeclaredFlowsReachTheTUI(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"clarity": {"deploys": [{"name": "web", "targets": ["", "web"]}, {"name": "ios", "targets": ["ios"]}]}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	lens := core.NewLens(&fakeSource{snap: twoFlowSnapshot()}, cfg.LeadTimeMode(), cfg.Deploys())
+	var view core.View
+	select {
+	case v, ok := <-lens.Views(t.Context()):
+		if !ok {
+			t.Fatal("lens closed without emitting a view")
+		}
+		view = v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the lens to emit")
+	}
+
+	if len(view.Flows) != 2 {
+		t.Fatalf("want 2 flows from config, got %d", len(view.Flows))
+	}
+
+	now := time.Unix(9999, 0)
+	web := ansiPattern.ReplaceAllString(tui.RenderSnapshot(view, view.Flows[0], 100, now, 0), "")
+	ios := ansiPattern.ReplaceAllString(tui.RenderSnapshot(view, view.Flows[1], 100, now, 0), "")
+
+	// The newest commit shipped via the untargeted deploy, which "web" claims.
+	// Selecting ios must move it out of the deployed section entirely.
+	if sectionOfTUI(web, "ship the checkout fix") != "Deployed" {
+		t.Errorf("web flow: newest commit not rendered as deployed\n%s", web)
+	}
+	if sectionOfTUI(ios, "ship the checkout fix") == "Deployed" {
+		t.Errorf("ios flow: newest commit rendered as deployed, but no ios deploy shipped it\n%s", ios)
+	}
+}
+
+// sectionOfTUI reports which lifecycle divider a commit row falls under in TUI
+// output. Dividers are drawn with box characters, so the label is matched
+// rather than the line prefix used for plain text.
+func sectionOfTUI(out, subject string) string {
+	section := ""
+	for _, line := range strings.Split(out, "\n") {
+		for _, s := range []string{"HEAD", "CI Passed", "Deployed"} {
+			if strings.Contains(line, s) {
+				section = s
+			}
+		}
+		if strings.Contains(line, subject) {
+			return section
+		}
+	}
+	return ""
 }

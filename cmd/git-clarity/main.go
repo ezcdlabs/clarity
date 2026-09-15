@@ -152,9 +152,8 @@ func runTUI(opts rootOptions) error {
 	// from <cacheDir>/snapshot-cache.json.gz immediately, then replace
 	// it with the fresh fetch when the source's first emit lands. Plain
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
-	mode := cfg.LeadTimeMode()
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
-	lens := core.NewCachedLens(core.NewLens(src, mode, nil), cf, mode, nil)
+	lens := cachedLensFor(cfg, src, cf)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
 
@@ -186,7 +185,7 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	lens := core.NewLens(src, cfg.LeadTimeMode(), nil)
+	lens := lensFor(cfg, src)
 	// Limit is already applied by the source; passing 0 here means "don't
 	// truncate further" inside RenderSnapshot.
 	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).
@@ -438,4 +437,18 @@ func repoRoot() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// lensFor and cachedLensFor are the single place configuration is handed to
+// the derivation layer. They exist as named functions rather than inline
+// construction so the wiring is testable: `clarity.leadTime` once shipped
+// doing nothing because a configured value never reached the layer that
+// consumed it, and this is exactly the seam where that happens.
+func lensFor(cfg config.Config, src core.Source) *core.Lens {
+	return core.NewLens(src, cfg.LeadTimeMode(), cfg.Deploys())
+}
+
+func cachedLensFor(cfg config.Config, src core.Source, cf *cache.File) *core.CachedLens {
+	mode, flows := cfg.LeadTimeMode(), cfg.Deploys()
+	return core.NewCachedLens(core.NewLens(src, mode, flows), cf, mode, flows)
 }

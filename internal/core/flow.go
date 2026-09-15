@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 )
@@ -116,28 +117,28 @@ func ResolveFlows(commits []CommitView, declared []Flow) []FlowView {
 	}
 	sortStrings(extras)
 
-	// Names already spoken for. The untargeted flow's label is invented, so
-	// it is the one that has to give way — and it must yield to declared
-	// names too, not just to target names, or a flow declared as "deploy"
-	// collides with it.
+	// Names already spoken for. A flow is addressed by name — in the strip,
+	// in plain output, and by anything grepping it — so two flows sharing one
+	// are indistinguishable to all three. Declared names are reserved first
+	// because they are explicit intent; a discovered flow is the one that
+	// gives way, being the unexpected arrival.
 	used := make(map[string]bool, len(declared)+len(extras))
 	for _, f := range declared {
-		used[f.Name] = true
-	}
-	for _, target := range extras {
-		if target != "" {
-			used[target] = true
-		}
+		used[foldName(f.Name)] = true
 	}
 
 	// extras is sorted, and "" sorts before every non-empty string, so the
 	// untargeted flow already leads. A repo mid-migration therefore never
 	// watches its established deploys drop below a newly-named target.
 	for _, target := range extras {
-		name := target
+		preferred := []string{target}
 		if target == "" {
-			name = untargetedName(used)
+			// The untargeted deploy has no name of its own, so it borrows the
+			// label the header has always shown it under.
+			preferred = []string{DefaultFlowName, UntargetedFlowName}
 		}
+		name := uniqueName(preferred, used)
+		used[foldName(name)] = true
 		out = append(out, FlowView{
 			Flow:       Flow{Name: name, Targets: []string{target}},
 			Undeclared: len(declared) > 0,
@@ -153,29 +154,34 @@ func ResolveFlows(commits []CommitView, declared []Flow) []FlowView {
 	return out
 }
 
-// untargetedName labels the untargeted deploy, avoiding every name already
-// taken by a declared flow or by a target that names itself.
+// uniqueName returns the first preferred label that is still free, falling
+// back to numbered variants of the last one.
 //
-// A collision is possible because nothing stops a pipeline reporting a target
-// literally called "deploy", nor a config declaring a flow by that name. The
-// invented label is the one that yields: a target name is data and must render
-// as itself, whereas this one is ours to change. Two identically-labelled
-// flows would be indistinguishable in the strip, in plain output, and to
-// anything grepping it.
-func untargetedName(used map[string]bool) string {
-	for _, candidate := range []string{DefaultFlowName, UntargetedFlowName} {
-		if !used[candidate] {
+// Collisions arrive from three directions, all reachable from a plausible
+// config: a pipeline reporting a target literally called "deploy", a flow
+// declared under that name, and a flow declared under a name that some other
+// target also happens to use. A duplicate label is worse than an ugly one, so
+// something always gives way.
+func uniqueName(preferred []string, used map[string]bool) string {
+	for _, candidate := range preferred {
+		if !used[foldName(candidate)] {
 			return candidate
 		}
 	}
-	// Both taken — pathological, but a duplicate name is worse than an ugly
-	// one, so keep going until something is free.
+	base := preferred[len(preferred)-1]
 	for n := 2; ; n++ {
-		candidate := fmt.Sprintf("%s-%d", UntargetedFlowName, n)
-		if !used[candidate] {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if !used[foldName(candidate)] {
 			return candidate
 		}
 	}
+}
+
+// foldName is the key names are compared under. Case-insensitive, because
+// --deploy matches that way: two flows differing only in case would be one
+// name to the user selecting between them.
+func foldName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 // sortStrings is a tiny insertion sort so core stays dependency-free; the

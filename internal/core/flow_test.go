@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -415,5 +416,53 @@ func TestDeriveView_SingleFlowReusesTheRepoGrouping(t *testing.T) {
 	}
 	if &view.Flows[0].Groups.Deployed[0] != &view.Groups.Deployed[0] {
 		t.Error("single flow recomputed its grouping instead of reusing the repo-wide one")
+	}
+}
+
+// TestResolveFlows_DeclaredNamesReserveTheLabel covers the collision the
+// config layer cannot see: a flow declared under a name that some *other*
+// target also happens to use. Load-time validation only compares declared
+// names against declared targets, so the discovered flow is the one that has
+// to give way, and only ResolveFlows can do it.
+func TestResolveFlows_DeclaredNamesReserveTheLabel(t *testing.T) {
+	cases := []struct {
+		name     string
+		declared []core.Flow
+		commits  []core.CommitView
+	}{
+		{
+			name:     "a discovered target matching a declared flow's name",
+			declared: []core.Flow{{Name: "web", Targets: []string{"frontend"}}},
+			commits:  []core.CommitView{flowCommit("a", dep("frontend", 1)), flowCommit("b", dep("web", 2))},
+		},
+		{
+			name:     "matching case-insensitively",
+			declared: []core.Flow{{Name: "Web", Targets: []string{"frontend"}}},
+			commits:  []core.CommitView{flowCommit("a", dep("frontend", 1)), flowCommit("b", dep("web", 2))},
+		},
+		{
+			name:     "two discovered targets differing only by case",
+			declared: nil,
+			commits:  []core.CommitView{flowCommit("a", dep("Web", 1)), flowCommit("b", dep("web", 2))},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := core.ResolveFlows(c.commits, c.declared)
+			seen := map[string]bool{}
+			for _, f := range got {
+				key := strings.ToLower(f.Name)
+				if seen[key] {
+					t.Fatalf("two flows render under the name %q: %v", f.Name, names(got))
+				}
+				seen[key] = true
+			}
+			// Every deploy target present must still have exactly one home —
+			// disambiguating a label must never drop a flow.
+			if len(got) != len(c.commits) && len(c.declared) == 0 {
+				t.Errorf("expected a flow per target, got %v", names(got))
+			}
+		})
 	}
 }

@@ -2,11 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/cache"
+	"github.com/ezcdlabs/clarity/internal/config"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/report"
 )
 
@@ -350,5 +357,92 @@ func TestRunReport_SuccessIsUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "wrote event: 9f9edc86 ci passed") {
 		t.Errorf("expected the confirmation line:\n%s", out.String())
+	}
+}
+
+// stubSource emits one snapshot and closes, so the lens wiring can be
+// exercised without git or the GitHub API.
+type stubSource struct{ snap core.Snapshot }
+
+func (s *stubSource) Watch(ctx context.Context) <-chan core.Snapshot {
+	ch := make(chan core.Snapshot, 1)
+	ch <- s.snap
+	close(ch)
+	return ch
+}
+
+func targetedSnapshot() core.Snapshot {
+	return core.Snapshot{
+		RepoName: "clarity",
+		Commits: []core.CommitView{
+			{SHA: "a", Author: "alice", Subject: "x", Time: time.Unix(1000, 0),
+				Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: time.Unix(1100, 0)}}},
+			{SHA: "b", Author: "bob", Subject: "y", Time: time.Unix(800, 0),
+				Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: time.Unix(900, 0), Target: "ios"}}},
+		},
+	}
+}
+
+func configWithFlows(t *testing.T) config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	body := `{"clarity": {"deploys": [{"name": "web", "targets": ["", "web"]}, {"name": "ios", "targets": ["ios"]}]}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	return cfg
+}
+
+func firstView(t *testing.T, views <-chan core.View) core.View {
+	t.Helper()
+	select {
+	case v, ok := <-views:
+		if !ok {
+			t.Fatal("lens closed without emitting a view")
+		}
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for a view")
+		return core.View{}
+	}
+}
+
+// TestLensWiring_PassesDeclaredFlows guards the three lines where the whole
+// feature can silently do nothing. Both render paths build their lens here,
+// and a lens built without the declared flows falls back to discovery — which
+// looks plausible (two flows appear!) while ignoring the config entirely.
+//
+// The declared names are the tell: discovery would call the untargeted flow
+// "deploy", never "web".
+func TestLensWiring_PassesDeclaredFlows(t *testing.T) {
+	cfg := configWithFlows(t)
+
+	t.Run("plain path", func(t *testing.T) {
+		view := firstView(t, lensFor(cfg, &stubSource{snap: targetedSnapshot()}).Views(t.Context()))
+		assertDeclaredFlows(t, view)
+	})
+
+	t.Run("tui path", func(t *testing.T) {
+		cf := cache.New(filepath.Join(t.TempDir(), "snapshot-cache.json.gz"))
+		lens := cachedLensFor(cfg, &stubSource{snap: targetedSnapshot()}, cf)
+		// The cached lens can emit a stale frame first; the configured flows
+		// must be present on every frame it produces, not just the fresh one.
+		views := lens.Views(t.Context())
+		assertDeclaredFlows(t, firstView(t, views))
+	})
+}
+
+func assertDeclaredFlows(t *testing.T, view core.View) {
+	t.Helper()
+	if len(view.Flows) != 2 {
+		t.Fatalf("want 2 declared flows, got %d", len(view.Flows))
+	}
+	if view.Flows[0].Name != "web" || view.Flows[1].Name != "ios" {
+		t.Errorf("flows are %q/%q, want web/ios — the declared config did not reach the lens",
+			view.Flows[0].Name, view.Flows[1].Name)
 	}
 }

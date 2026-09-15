@@ -202,3 +202,85 @@ func TestDeployTargets_HeaderCarriesEveryFlowsDeployStatus(t *testing.T) {
 		t.Errorf("header lost the passing flow: %q", header)
 	}
 }
+
+// renderDeclared is renderDiscovered's sibling for a repo that declares its
+// flows: the same path, but with the `deploys` section actually reaching the
+// Lens. Declaring is what turns the config into an expectation, so this is the
+// path where order, naming and undeclared targets have to be checked.
+func renderDeclared(t *testing.T, deploys string, snap core.Snapshot) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	body := `{"clarity": {"deploys": ` + deploys + `}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	lens := core.NewLens(&fakeSource{snap: snap}, cfg.LeadTimeMode(), cfg.Deploys())
+	select {
+	case v, ok := <-lens.Views(t.Context()):
+		if !ok {
+			t.Fatal("lens closed without emitting a view")
+		}
+		return plain.RenderSnapshot(snap.RepoName, v, time.Unix(9999, 0), plain.Options{})
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the lens to emit")
+		return ""
+	}
+}
+
+// TestDeployTargets_DeclaredFlowsReachTheRendering is the config-file half of
+// the feature. Discovery already works without it, so what declaring has to
+// buy is exactly three things, and each is asserted here: a chosen display
+// name, a chosen order, and the folding of several targets into one flow.
+func TestDeployTargets_DeclaredFlowsReachTheRendering(t *testing.T) {
+	// "web" claims both the untargeted deploy and the "web" target — the
+	// mid-rename case, where a flow's identity outlives the name its pipeline
+	// reports. Declared ios second, though discovery would sort it first.
+	deploys := `[{"name": "web", "targets": ["", "web"]}, {"name": "ios", "targets": ["ios"]}]`
+	out := renderDeclared(t, deploys, twoFlowSnapshot())
+
+	web := blockFor(t, out, "web")
+	ios := blockFor(t, out, "ios")
+
+	// The declared name reaches the output: no "deploy" block survives.
+	if strings.Contains(out, "deploy: deploy") {
+		t.Errorf("declared config still rendered the default flow name:\n%s", out)
+	}
+
+	// Declaration order is display order, not alphabetical and not
+	// discovery order — otherwise a team cannot put its primary deploy first.
+	if strings.Index(out, "deploy: web") > strings.Index(out, "deploy: ios") {
+		t.Errorf("declared order not preserved — ios rendered before web:\n%s", out)
+	}
+
+	// The untargeted deploy was folded into web, so web still groups by it.
+	if got := sectionOf(web, "ship the checkout fix"); got != "Deployed" {
+		t.Errorf("web flow: newest commit in %q section, want Deployed\n%s", got, web)
+	}
+	if got := sectionOf(ios, "ship the checkout fix"); got == "Deployed" {
+		t.Errorf("ios flow: newest commit rendered as Deployed, but no ios deploy shipped it\n%s", ios)
+	}
+}
+
+// TestDeployTargets_UndeclaredTargetsStillSurface guards the failure mode that
+// matters most: a deploy that nobody declared must never be silently dropped.
+// A typo in a pipeline should show up as a surprise in the output, not as
+// missing data.
+func TestDeployTargets_UndeclaredTargetsStillSurface(t *testing.T) {
+	deploys := `[{"name": "web", "targets": ["", "web"]}]`
+	out := renderDeclared(t, deploys, twoFlowSnapshot())
+
+	ios := blockFor(t, out, "ios")
+	if got := sectionOf(ios, "bump the target sdk"); got != "Deployed" {
+		t.Errorf("undeclared ios flow: commit in %q section, want Deployed\n%s", got, ios)
+	}
+	if !strings.Contains(out, "(undeclared)") {
+		t.Errorf("undeclared flow not marked as such:\n%s", out)
+	}
+}

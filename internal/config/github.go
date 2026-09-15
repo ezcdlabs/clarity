@@ -14,6 +14,12 @@ import (
 type ClarityConfig struct {
 	GitHub *GitHubConfig
 
+	// Deploys are the declared deploy flows, in declaration order. Nil when
+	// the file declares none, which means flows are discovered from the
+	// events instead — declaring them is what turns the config into an
+	// expectation that a missing or unexpected flow can be measured against.
+	Deploys []core.Flow
+
 	// LeadTime selects which commits contribute a lead time and what it is
 	// measured from. Absent from the file ⇒ core.DefaultLeadTimeMode, so an
 	// existing config keeps producing the numbers it always has.
@@ -91,6 +97,7 @@ func (j *JobSet) UnmarshalJSON(data []byte) error {
 type rawClarityConfig struct {
 	GitHub   *rawGitHubConfig `json:"github"`
 	LeadTime string           `json:"leadTime"`
+	Deploys  []rawDeploy      `json:"deploys"`
 }
 
 type rawGitHubConfig struct {
@@ -116,7 +123,11 @@ func (r *rawClarityConfig) hydrate() (*ClarityConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clarity.leadTime: %w", err)
 	}
-	out := &ClarityConfig{LeadTime: mode}
+	deploys, err := hydrateDeploys(r.Deploys)
+	if err != nil {
+		return nil, err
+	}
+	out := &ClarityConfig{LeadTime: mode, Deploys: deploys}
 	if r.GitHub != nil {
 		gh := &GitHubConfig{}
 		ci, err := hydrateStage("ci", r.GitHub.CI)

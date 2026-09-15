@@ -9,6 +9,12 @@ type View struct {
 	Groups   Groupings    // HEAD / CIPassed / InFlight / Deployed buckets
 	Weekly   []WeekStat   // DORA throughput per ISO week
 	Header   HeaderStatus // ci/deploy summary for the top header line
+	// Flows is one derived view per deploy flow, in display order. Always
+	// non-empty: a repo with no targets has exactly one. Every flow is
+	// derived up front so a Renderer can switch between them as local UI
+	// state, with no round trip to the Lens and no re-derivation in the
+	// rendering layer.
+	Flows []FlowView
 	// Stale signals to Renderers that this View was emitted from a
 	// stale-while-revalidate cache and a fresh fetch is still in flight.
 	// Renderers can decide whether and how to indicate that visually
@@ -32,15 +38,51 @@ type HeaderStatus struct {
 // to derive a View from a hand-built Snapshot without going through Source
 // adapters.
 //
-// The mode is the only knob: it decides which commits carry a lead time and
-// what that time is measured from. Everything else in a View is derived the
-// same way regardless.
-func DeriveView(snap Snapshot, mode LeadTimeMode) View {
+// The mode decides which commits carry a lead time and what that time is
+// measured from. flows are the declared deploy flows from .ezcd.json; pass nil
+// to have them discovered from the events instead, which is the zero-setup
+// path.
+//
+// View.Groups / View.Weekly stay whole-repo and ignore targets, so a caller
+// that predates flows keeps the numbers it always had.
+func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
+	groups := GroupCommitsMode(snap.Commits, mode)
+	weekly := WeeklyStatsMode(snap, mode)
+
+	resolved := ResolveFlows(snap.Commits, flows)
+	for i := range resolved {
+		f := resolved[i]
+		// The overwhelmingly common case is one flow claiming everything, and
+		// filtering then produces exactly the commits we already grouped.
+		// Deriving it twice would double the work on every snapshot for every
+		// repo that has no targets at all, so reuse it.
+		// ResolveFlows gives every unclaimed target a flow of its own, so a
+		// single resolved flow is one that already claims every deploy
+		// present — filtering would return exactly these commits. Pinned by
+		// TestResolveFlows_SingleFlowClaimsEveryDeploy, because the
+		// short-circuit is only safe while that stays true.
+		if len(resolved) == 1 {
+			resolved[i].Groups = groups
+			resolved[i].Weekly = weekly
+			resolved[i].Deploy = CurrentStageStatus(snap.Commits, "deploy")
+			continue
+		}
+
+		scoped := commitsForFlow(snap.Commits, f.Flow)
+		flowSnap := snap
+		flowSnap.Commits = scoped
+
+		resolved[i].Groups = GroupCommitsMode(scoped, mode)
+		resolved[i].Weekly = WeeklyStatsMode(flowSnap, mode)
+		resolved[i].Deploy = CurrentStageStatus(scoped, "deploy")
+	}
+
 	return View{
 		Snapshot: snap,
-		Groups:   GroupCommitsMode(snap.Commits, mode),
-		Weekly:   WeeklyStatsMode(snap, mode),
+		Groups:   groups,
+		Weekly:   weekly,
 		Header:   buildHeaderStatus(snap.Commits),
+		Flows:    resolved,
 	}
 }
 

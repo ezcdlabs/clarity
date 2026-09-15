@@ -77,7 +77,6 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 	// them here instead would silently ignore the caller's configuration —
 	// which is exactly how `clarity.leadTime` first shipped doing nothing.
 	snap := view.Snapshot
-	g := view.Groups
 	indexBySHA := make(map[string]int, len(snap.Commits))
 	for i, c := range snap.Commits {
 		indexBySHA[c.SHA] = i
@@ -92,8 +91,51 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 	}
 
 	var b strings.Builder
-	b.WriteString(plainHeader(repoName, view.Header))
+	b.WriteString(plainHeader(repoName, view.Header, view.Flows))
 	b.WriteString("\n\n")
+
+	// One block per deploy flow. A repo with a single flow gets no block
+	// header at all, so its output is byte-identical to what it rendered
+	// before targets existed; only a repo that actually has several pays for
+	// the extra structure. Each block reads from its own FlowView, never from
+	// view.Groups — the whole point is that one flow's deploys must not move
+	// another's lifecycle boundary.
+	for fi, flow := range view.Flows {
+		if len(view.Flows) > 1 {
+			if fi > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString("deploy: ")
+			b.WriteString(flow.Name)
+			if flow.Undeclared {
+				b.WriteString("  (undeclared)")
+			}
+			b.WriteString("\n\n")
+		}
+		b.WriteString(renderFlowBlock(flow, view, indexBySHA, included, now, opts))
+	}
+
+	// Same note the TUI closes with, bare. Piped output has no scrollbar to
+	// hint that the list was cut, so it matters at least as much here.
+	if view.Snapshot.Truncated {
+		b.WriteString(core.LimitNoticeLabel(view.Snapshot.Limit))
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// renderFlowBlock renders one flow's HEAD / CI Passed / Deployed sections.
+func renderFlowBlock(
+	flow core.FlowView,
+	view core.View,
+	indexBySHA map[string]int,
+	included func(string) bool,
+	now time.Time,
+	opts Options,
+) string {
+	g := flow.Groups
+	var b strings.Builder
 
 	writeSection := func(label string, commits []core.CommitView) {
 		b.WriteString(label)
@@ -131,7 +173,7 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 	}
 	b.WriteString("\n")
 
-	statsByWeek := core.IndexStatsByWeek(view.Weekly)
+	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
 	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
 	if hasTopWeek {
 		// Merge the topmost week's summary onto the section header row so we
@@ -167,23 +209,28 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 		b.WriteString("\n")
 	}
 
-	// Same note the TUI closes with, bare. Piped output has no scrollbar to
-	// hint that the list was cut, so it matters at least as much here.
-	if view.Snapshot.Truncated {
-		b.WriteString(core.LimitNoticeLabel(view.Snapshot.Limit))
-		b.WriteString("\n")
-	}
-
 	return b.String()
 }
 
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
 // The statuses arrive already resolved on View.Header — see "The header
 // badges" in README.md for which event each one speaks for.
-func plainHeader(repoName string, h core.HeaderStatus) string {
+func plainHeader(repoName string, h core.HeaderStatus, flows []core.FlowView) string {
 	ci := plainBadge(h.CI)
-	deploy := plainBadge(h.Deploy)
-	return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, deploy)
+
+	// One flow: the repo-wide deploy badge, exactly as before targets existed.
+	// Several: one badge per flow, named, because a single summary badge would
+	// have to pick one flow's answer and call it the repo's.
+	if len(flows) <= 1 {
+		return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, plainBadge(h.Deploy))
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s  ci: %s  deploy:", repoName, ci)
+	for _, f := range flows {
+		fmt.Fprintf(&b, "  %s: %s", f.Name, plainBadge(f.Deploy))
+	}
+	return b.String()
 }
 
 func plainBadge(status string) string {

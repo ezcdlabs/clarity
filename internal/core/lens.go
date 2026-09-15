@@ -11,16 +11,22 @@ import "context"
 type Lens struct {
 	source Source
 	mode   LeadTimeMode
+	flows  []Flow
 }
 
 // NewLens returns a Lens that derives views from the given Source under the
 // given LeadTimeMode. An empty mode means DefaultLeadTimeMode, so callers
 // that don't configure lead time can pass the zero value.
-func NewLens(source Source, mode LeadTimeMode) *Lens {
+// flows are the declared deploy flows from .ezcd.json; nil means discover them
+// from the events. It is a constructor parameter rather than an optional
+// setter on purpose: `clarity.leadTime` once shipped doing nothing because a
+// configured value never reached the layer that used it, and a builder method
+// is exactly the shape that lets a call site forget.
+func NewLens(source Source, mode LeadTimeMode, flows []Flow) *Lens {
 	if mode == "" {
 		mode = DefaultLeadTimeMode
 	}
-	return &Lens{source: source, mode: mode}
+	return &Lens{source: source, mode: mode, flows: flows}
 }
 
 // Views starts the upstream Source and returns a channel of derived
@@ -32,7 +38,7 @@ func (l *Lens) Views(ctx context.Context) <-chan View {
 		defer close(out)
 		for snap := range l.source.Watch(ctx) {
 			select {
-			case out <- DeriveView(snap, l.mode):
+			case out <- DeriveView(snap, l.mode, l.flows):
 			case <-ctx.Done():
 				return
 			}

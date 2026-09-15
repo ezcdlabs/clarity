@@ -154,7 +154,7 @@ func runTUI(opts rootOptions) error {
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
 	mode := cfg.LeadTimeMode()
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
-	lens := core.NewCachedLens(core.NewLens(src, mode), cf, mode)
+	lens := core.NewCachedLens(core.NewLens(src, mode, nil), cf, mode, nil)
 	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
 }
 
@@ -186,7 +186,7 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return err
 	}
-	lens := core.NewLens(src, cfg.LeadTimeMode())
+	lens := core.NewLens(src, cfg.LeadTimeMode(), nil)
 	// Limit is already applied by the source; passing 0 here means "don't
 	// truncate further" inside RenderSnapshot.
 	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).

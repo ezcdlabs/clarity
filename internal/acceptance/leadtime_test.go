@@ -114,7 +114,7 @@ func viewFor(t *testing.T, leadTime string, snap core.Snapshot) core.View {
 		t.Fatalf("config.Load: %v", err)
 	}
 
-	lens := core.NewLens(&fakeSource{snap: snap}, cfg.LeadTimeMode())
+	lens := core.NewLens(&fakeSource{snap: snap}, cfg.LeadTimeMode(), nil)
 	select {
 	case v, ok := <-lens.Views(t.Context()):
 		if !ok {

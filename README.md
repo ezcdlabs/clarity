@@ -455,6 +455,14 @@ commit. It would also break backfill idempotency (content-addressed filenames
 would recreate the old target on a re-run) and destroy the audit property the
 per-file design exists to provide.
 
+**Flow names must be unique, and the invented one yields.** A flow is addressed
+by name — in the strip, in plain output, and by anything grepping it — so two
+flows sharing a label are indistinguishable to all three. The untargeted
+deploy's label is the only one clarity invents, so it is the one that gives way
+when a pipeline reports a target literally named `deploy`, or a config declares
+a flow by that name. It falls back to `(untargeted)`. A target name is data and
+must always render as itself.
+
 **Flows never age out.** A target that last deployed months ago is the single most
 valuable cell on the screen for a team trying to improve delivery; a rule that
 hid it would be inverted against the point of the tool. Declared flows always

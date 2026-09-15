@@ -254,7 +254,7 @@ func TestRenderPlain_NoColor(t *testing.T) {
 // configured mode reaches the screen; these tests aren't about the mode, so
 // they use the default.
 func view(snap core.Snapshot) core.View {
-	return core.DeriveView(snap, core.DefaultLeadTimeMode)
+	return core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
 }
 
 // TestRenderPlain_TruncatedListEndsWithTheLimitNotice mirrors the TUI notice

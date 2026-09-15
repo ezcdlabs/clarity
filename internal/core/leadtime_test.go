@@ -90,7 +90,7 @@ func TestLeadTimeModes_BatchedPush(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(string(c.mode), func(t *testing.T) {
-			view := core.DeriveView(snap, c.mode)
+			view := core.DeriveView(snap, c.mode, nil)
 
 			rows := 0
 			for i := range snap.Commits {
@@ -131,7 +131,7 @@ func TestLeadTimeModes_UnreportedCommitsStillRender(t *testing.T) {
 	snap := batchPush()
 
 	for _, mode := range []core.LeadTimeMode{core.LeadAll, core.LeadReported, core.LeadPipeline} {
-		view := core.DeriveView(snap, mode)
+		view := core.DeriveView(snap, mode, nil)
 		total := 0
 		for _, b := range view.Groups.Deployed {
 			total += len(b.Commits)
@@ -156,7 +156,7 @@ func TestLeadTime_PipelineMode_InFlightTicksFromFirstEvent(t *testing.T) {
 		Events: []clarityrefs.Event{{Stage: "ci", Status: "started", Time: ciStart}},
 	}}}
 
-	view := core.DeriveView(snap, core.LeadPipeline)
+	view := core.DeriveView(snap, core.LeadPipeline, nil)
 	got, frozen, ok := view.Groups.LeadTime(0, now)
 	if !ok {
 		t.Fatal("expected a live lead time")
@@ -177,7 +177,7 @@ func TestLeadTime_PipelineMode_NoEventsYet(t *testing.T) {
 		SHA: "abc", Time: utc(2026, 1, 5, 9),
 	}}}
 
-	view := core.DeriveView(snap, core.LeadPipeline)
+	view := core.DeriveView(snap, core.LeadPipeline, nil)
 	if _, _, ok := view.Groups.LeadTime(0, utc(2026, 1, 5, 10)); ok {
 		t.Error("expected no lead time for a commit the pipeline hasn't touched")
 	}
@@ -226,7 +226,7 @@ func TestLeadTime_RejectsNonPositiveInterval(t *testing.T) {
 
 	for _, c := range cases {
 		for _, mode := range c.modes {
-			view := core.DeriveView(c.snap, mode)
+			view := core.DeriveView(c.snap, mode, nil)
 			if _, _, ok := view.Groups.LeadTime(0, utc(2026, 1, 5, 12)); ok {
 				t.Errorf("%s/%s: expected no lead time for a non-positive interval", c.name, mode)
 			}
@@ -253,7 +253,7 @@ func TestLeadTime_PipelineMode_UsesEarliestEvent(t *testing.T) {
 		},
 	}}}
 
-	view := core.DeriveView(snap, core.LeadPipeline)
+	view := core.DeriveView(snap, core.LeadPipeline, nil)
 	got, _, ok := view.Groups.LeadTime(0, utc(2026, 1, 5, 12))
 	if !ok {
 		t.Fatal("expected a lead time")

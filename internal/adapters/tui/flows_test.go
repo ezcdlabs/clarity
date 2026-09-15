@@ -355,3 +355,76 @@ func TestModel_ShiftTabCyclesBackwards(t *testing.T) {
 		t.Errorf("shift+tab from the second flow selected %q, want deploy", got)
 	}
 }
+
+// --deploy opens the TUI on a chosen flow, which is how a monorepo gets the
+// polyrepo feel: one terminal pane per subsystem, each pinned to its own flow.
+func TestModel_DeployFlagPreselectsAFlow(t *testing.T) {
+	m := tui.New().WithSize(100, 40).WithFlow("ios")
+	next, _ := m.Update(tui.ViewMsg(twoFlowView()))
+
+	if got := next.(tui.Model).SelectedFlow(); got != "ios" {
+		t.Errorf("--deploy=ios opened on %q", got)
+	}
+}
+
+// Once the user moves, later Views must not yank them back to where --deploy
+// started them — the flag chooses the opening flow, not a permanent pin.
+func TestModel_DeployFlagDoesNotOverrideLaterSelection(t *testing.T) {
+	m := tui.New().WithSize(100, 40).WithFlow("ios")
+	first, _ := m.Update(tui.ViewMsg(twoFlowView()))
+	moved := press(first.(tui.Model), "1")
+
+	if got := moved.SelectedFlow(); got != "deploy" {
+		t.Fatalf("pressing 1 selected %q", got)
+	}
+
+	next, _ := moved.Update(tui.ViewMsg(twoFlowView()))
+	if got := next.(tui.Model).SelectedFlow(); got != "deploy" {
+		t.Errorf("a later view reset the selection to %q — --deploy chose the opening flow, not a pin", got)
+	}
+}
+
+// An unmatched --deploy is an error, not a fallback. Opening on some other
+// flow looks exactly like a deliberate selection, so a user who asked for ios
+// and got web has no way to tell.
+func TestModel_UnknownDeployFlagIsAnError(t *testing.T) {
+	m := tui.New().WithSize(100, 40).WithFlow("nope")
+	next, cmd := m.Update(tui.ViewMsg(twoFlowView()))
+	model := next.(tui.Model)
+
+	if model.FlowErr() == nil {
+		t.Fatal("an unmatched --deploy did not produce an error")
+	}
+	for _, want := range []string{"nope", "deploy", "ios"} {
+		if !strings.Contains(model.FlowErr().Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, model.FlowErr())
+		}
+	}
+	if cmd == nil {
+		t.Error("the program was not asked to quit")
+	}
+}
+
+// A stale view cannot answer --deploy. The cached lens paints one first, from
+// a snapshot that may predate the flow being asked for, so rejecting the flag
+// there would fail a command the fresh view is about to satisfy.
+func TestModel_StaleViewDoesNotConsumeTheDeployFlag(t *testing.T) {
+	stale := twoFlowView()
+	stale.Flows = stale.Flows[:1] // cache predates the ios flow
+	stale.Stale = true
+
+	m := tui.New().WithSize(100, 40).WithFlow("ios")
+	afterStale, _ := m.Update(tui.ViewMsg(stale))
+	if err := afterStale.(tui.Model).FlowErr(); err != nil {
+		t.Fatalf("a stale view rejected the flag: %v", err)
+	}
+
+	fresh, _ := afterStale.(tui.Model).Update(tui.ViewMsg(twoFlowView()))
+	model := fresh.(tui.Model)
+	if err := model.FlowErr(); err != nil {
+		t.Fatalf("the fresh view rejected the flag: %v", err)
+	}
+	if got := model.SelectedFlow(); got != "ios" {
+		t.Errorf("--deploy=ios was consumed by the stale view; opened on %q", got)
+	}
+}

@@ -177,12 +177,19 @@ func uniqueName(preferred []string, used map[string]bool) string {
 	}
 }
 
-// foldName is the key names are compared under. Case-insensitive, because
-// --deploy matches that way: two flows differing only in case would be one
-// name to the user selecting between them.
-func foldName(name string) string {
+// FoldName is the key flow names and targets are compared under.
+// Case-insensitive and whitespace-trimmed, because --deploy matches that way:
+// two flows differing only in case would be one name to the user choosing
+// between them.
+//
+// Exported so the config loader compares under exactly this key. Two
+// independent implementations of the same invariant is how a config gets
+// accepted at load and then resolves ambiguously at render time.
+func FoldName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
+
+func foldName(name string) string { return FoldName(name) }
 
 // sortStrings is a tiny insertion sort so core stays dependency-free; the
 // slices are at most a handful of flow names.
@@ -209,6 +216,46 @@ func commitsForFlow(commits []CommitView, f Flow) []CommitView {
 		}
 		c.Events = kept
 		out[i] = c
+	}
+	return out
+}
+
+// MatchFlow resolves a --deploy argument to a flow index.
+//
+// Names are tried before targets, because the name is the label shown in the
+// strip and is what a user is most likely naming; a flow named "web" must win
+// over some other flow that happens to own a target called "web". Comparison
+// is case-insensitive and ignores surrounding whitespace — a flow is a label a
+// human types, and "IOS" is not a different deployable from "ios".
+//
+// There is deliberately no prefix or fuzzy matching: selecting the wrong
+// deployable silently is worse than being told the name was wrong.
+func MatchFlow(flows []FlowView, query string) (int, bool) {
+	q := foldName(query)
+	if q == "" {
+		return 0, false
+	}
+	for i, f := range flows {
+		if foldName(f.Name) == q {
+			return i, true
+		}
+	}
+	for i, f := range flows {
+		for _, t := range f.Targets {
+			if t != "" && foldName(t) == q {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// FlowNames lists the flows by name, for an error that tells the user what
+// they could have typed instead.
+func FlowNames(flows []FlowView) []string {
+	out := make([]string, len(flows))
+	for i, f := range flows {
+		out[i] = f.Name
 	}
 	return out
 }

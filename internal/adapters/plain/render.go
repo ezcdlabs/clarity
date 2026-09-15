@@ -30,6 +30,10 @@ func NewRenderer(opts Options) *Renderer {
 	return &Renderer{opts: opts}
 }
 
+// Opts returns the options this renderer was built with, so a caller can
+// assert its own wiring reached it.
+func (r *Renderer) Opts() Options { return r.opts }
+
 // WithClock returns a copy of r whose "now" timestamp is provided by fn
 // instead of the real clock.
 func (r *Renderer) WithClock(fn func() time.Time) *Renderer {
@@ -52,6 +56,9 @@ func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 		if r.nowFn != nil {
 			now = r.nowFn()
 		}
+		if err := SelectFlow(v, r.opts.Flow); err != nil {
+			return err
+		}
 		_, err := fmt.Print(RenderSnapshot(v.Snapshot.RepoName, v, now, r.opts))
 		return err
 	case <-ctx.Done():
@@ -65,6 +72,11 @@ func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 type Options struct {
 	ShowSHAs bool
 	Limit    int
+	// Flow narrows the output to a single deploy flow, from --deploy. Empty
+	// renders every flow. An unmatched value is an error rather than a
+	// fallback to everything: a script or agent that quietly reported on the
+	// wrong subsystem is worse than one that failed.
+	Flow string
 }
 
 // RenderSnapshot produces a static, ANSI-free snapshot of the same view the TUI
@@ -90,8 +102,24 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 		return opts.Limit <= 0 || indexBySHA[sha] < opts.Limit
 	}
 
+	// --deploy narrows to one flow. The header then names only that flow, so
+	// piped output describes exactly what was asked for.
+	flows := view.Flows
+	if opts.Flow != "" {
+		i, ok := core.MatchFlow(flows, opts.Flow)
+		if !ok {
+			return ""
+		}
+		flows = flows[i : i+1]
+	}
+
+	// Whether flows are named is a property of the repo, not of how many are
+	// currently on screen: --deploy=ios must still say which flow it is
+	// showing, or piped output can't be attributed.
+	named := len(view.Flows) > 1
+
 	var b strings.Builder
-	b.WriteString(plainHeader(repoName, view.Header, view.Flows))
+	b.WriteString(plainHeader(repoName, view.Header, flows, named))
 	b.WriteString("\n\n")
 
 	// One block per deploy flow. A repo with a single flow gets no block
@@ -100,8 +128,8 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 	// the extra structure. Each block reads from its own FlowView, never from
 	// view.Groups — the whole point is that one flow's deploys must not move
 	// another's lifecycle boundary.
-	for fi, flow := range view.Flows {
-		if len(view.Flows) > 1 {
+	for fi, flow := range flows {
+		if named {
 			if fi > 0 {
 				b.WriteString("\n")
 			}
@@ -215,13 +243,14 @@ func renderFlowBlock(
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
 // The statuses arrive already resolved on View.Header — see "The header
 // badges" in README.md for which event each one speaks for.
-func plainHeader(repoName string, h core.HeaderStatus, flows []core.FlowView) string {
+func plainHeader(repoName string, h core.HeaderStatus, flows []core.FlowView, named bool) string {
 	ci := plainBadge(h.CI)
 
-	// One flow: the repo-wide deploy badge, exactly as before targets existed.
-	// Several: one badge per flow, named, because a single summary badge would
-	// have to pick one flow's answer and call it the repo's.
-	if len(flows) <= 1 {
+	// One flow and nothing to name: the repo-wide deploy badge, exactly as
+	// before targets existed. Otherwise one badge per flow, named, because a
+	// single summary badge would have to pick one flow's answer and call it
+	// the repo's.
+	if !named {
 		return fmt.Sprintf("%s  ci: %s  deploy: %s", repoName, ci, plainBadge(h.Deploy))
 	}
 
@@ -310,4 +339,17 @@ func shortSHA(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// SelectFlow reports whether a --deploy value names a flow in this view, and
+// returns an error naming the alternatives when it doesn't.
+func SelectFlow(view core.View, query string) error {
+	if query == "" {
+		return nil
+	}
+	if _, ok := core.MatchFlow(view.Flows, query); ok {
+		return nil
+	}
+	return fmt.Errorf("no deploy flow named %q — this repo has: %s",
+		query, strings.Join(core.FlowNames(view.Flows), ", "))
 }

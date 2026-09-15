@@ -466,3 +466,62 @@ func TestResolveFlows_DeclaredNamesReserveTheLabel(t *testing.T) {
 		})
 	}
 }
+
+// TestMatchFlow is the classifier behind --deploy. Matching is forgiving on
+// case because a flow is a label a human types, and falls back from names to
+// targets because the two usually coincide and a user shouldn't have to know
+// which one they're naming.
+func TestMatchFlow(t *testing.T) {
+	flows := []core.FlowView{
+		{Flow: core.Flow{Name: "web", Targets: []string{"", "web"}}},
+		{Flow: core.Flow{Name: "iOS", Targets: []string{"ios"}}},
+		{Flow: core.Flow{Name: "android", Targets: []string{"droid"}}},
+	}
+
+	cases := []struct {
+		query string
+		want  int // -1 for no match
+	}{
+		{query: "web", want: 0},
+		{query: "iOS", want: 1},
+		{query: "ios", want: 1},   // case-insensitive name match
+		{query: "IOS", want: 1},   // and the other way
+		{query: "droid", want: 2}, // falls back to a target name
+		{query: "DROID", want: 2},
+		{query: " web ", want: 0}, // surrounding whitespace is a typo, not a name
+		{query: "android", want: 2},
+		{query: "", want: -1},
+		{query: "nope", want: -1},
+		{query: "we", want: -1}, // no prefix matching: too easy to hit the wrong flow
+	}
+
+	for _, c := range cases {
+		t.Run(c.query, func(t *testing.T) {
+			got, ok := core.MatchFlow(flows, c.query)
+			if c.want < 0 {
+				if ok {
+					t.Errorf("MatchFlow(%q) matched flow %d, want no match", c.query, got)
+				}
+				return
+			}
+			if !ok || got != c.want {
+				t.Errorf("MatchFlow(%q) = %d, %v; want %d, true", c.query, got, ok, c.want)
+			}
+		})
+	}
+}
+
+// A name must win over another flow's target. Config load rejects that
+// collision, but discovery can still produce it, and the name is the label the
+// user actually sees in the strip.
+func TestMatchFlow_NameBeatsAnotherFlowsTarget(t *testing.T) {
+	flows := []core.FlowView{
+		{Flow: core.Flow{Name: "legacy", Targets: []string{"web"}}},
+		{Flow: core.Flow{Name: "web", Targets: []string{"frontend"}}},
+	}
+
+	got, ok := core.MatchFlow(flows, "web")
+	if !ok || got != 1 {
+		t.Errorf("MatchFlow(web) = %d, %v; want the flow *named* web (1)", got, ok)
+	}
+}

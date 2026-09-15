@@ -348,3 +348,70 @@ func sectionOfTUI(out, subject string) string {
 	}
 	return ""
 }
+
+// TestDeployTargets_DeployFlagNarrowsPlainOutput is the flag's acceptance
+// test: it has to reach rendered output, and an unknown value has to fail
+// loudly. A script or agent that quietly reported on the wrong subsystem is
+// worse than one that errored.
+func TestDeployTargets_DeployFlagNarrowsPlainOutput(t *testing.T) {
+	view := viewWithFlows(t, twoFlowSnapshot())
+	now := time.Unix(9999, 0)
+
+	only := plain.RenderSnapshot("clarity", view, now, plain.Options{Flow: "ios"})
+	if !strings.Contains(only, "deploy: ios") {
+		t.Errorf("--deploy=ios did not render the ios flow:\n%s", only)
+	}
+	if strings.Contains(only, "deploy: web") {
+		t.Errorf("--deploy=ios still rendered other flows:\n%s", only)
+	}
+
+	// Matching a target name rather than the flow's own name works too: the
+	// two usually coincide and a user shouldn't need to know which they typed.
+	byTarget := plain.RenderSnapshot("clarity", view, now, plain.Options{Flow: "IOS"})
+	if !strings.Contains(byTarget, "deploy: ios") {
+		t.Errorf("--deploy is not case-insensitive:\n%s", byTarget)
+	}
+
+	// Drive the composed Renderer, not just the helpers: the binary's path
+	// runs the guard and the render together, and it is the guard being *in*
+	// that path that stops an unknown flow printing nothing and exiting 0.
+	views := make(chan core.View, 1)
+	views <- view
+	close(views)
+
+	err := plain.NewRenderer(plain.Options{Flow: "nope"}).Render(t.Context(), views)
+	if err == nil {
+		t.Fatal("an unknown --deploy value rendered without error")
+	}
+	for _, want := range []string{"nope", "web", "ios"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// viewWithFlows derives a view with web + ios declared, the shape the flag is
+// for.
+func viewWithFlows(t *testing.T, snap core.Snapshot) core.View {
+	t.Helper()
+	dir := t.TempDir()
+	body := `{"clarity": {"deploys": [{"name": "web", "targets": ["", "web"]}, {"name": "ios", "targets": ["ios"]}]}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	lens := core.NewLens(&fakeSource{snap: snap}, cfg.LeadTimeMode(), cfg.Deploys())
+	select {
+	case v, ok := <-lens.Views(t.Context()):
+		if !ok {
+			t.Fatal("lens closed without emitting a view")
+		}
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+		return core.View{}
+	}
+}

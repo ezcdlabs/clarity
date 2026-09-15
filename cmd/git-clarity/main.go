@@ -48,6 +48,7 @@ type rootOptions struct {
 	showSHAs bool
 	limit    int    // 0 == unlimited (sentinel); default is 100
 	cacheDir string // --cache-dir override; "" means env-or-default
+	deploy   string // --deploy: open on / narrow to one deploy flow
 }
 
 func dispatch(args []string) error {
@@ -108,13 +109,14 @@ func parseRootArgs(args []string) (rootOptions, error) {
 	showSHAs := fs.Bool("show-shas", false, "include short commit SHA per row")
 	limit := fs.Int("limit", 100, "max commits to display; 0 means unlimited")
 	cacheDir := fs.String("cache-dir", "", "directory for clarity's local caches; overrides $CLARITY_CACHE_DIR and the default .git/clarity")
+	deploy := fs.String("deploy", "", "show one deploy flow by name; only meaningful in a repo with several")
 	if err := fs.Parse(args); err != nil {
-		return rootOptions{}, fmt.Errorf("usage: git clarity [--plain] [--show-shas] [--limit N] [--cache-dir <path>]: %w", err)
+		return rootOptions{}, fmt.Errorf("usage: git clarity [--plain] [--show-shas] [--limit N] [--deploy <flow>] [--cache-dir <path>]: %w", err)
 	}
 	if fs.NArg() != 0 {
 		return rootOptions{}, fmt.Errorf("unknown argument %q", fs.Arg(0))
 	}
-	return rootOptions{plain: *plain, showSHAs: *showSHAs, limit: *limit, cacheDir: *cacheDir}, nil
+	return rootOptions{plain: *plain, showSHAs: *showSHAs, limit: *limit, cacheDir: *cacheDir, deploy: *deploy}, nil
 }
 
 // isTerminal reports whether f is a real character device (a terminal). False
@@ -154,7 +156,7 @@ func runTUI(opts rootOptions) error {
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
 	lens := cachedLensFor(cfg, src, cf)
-	return tui.NewRenderer().Render(ctx, lens.Views(ctx))
+	return tuiRendererFor(opts).Render(ctx, lens.Views(ctx))
 }
 
 // runPlain takes one snapshot from the source (which performs the initial
@@ -188,8 +190,7 @@ func runPlain(opts rootOptions) error {
 	lens := lensFor(cfg, src)
 	// Limit is already applied by the source; passing 0 here means "don't
 	// truncate further" inside RenderSnapshot.
-	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs}).
-		Render(ctx, lens.Views(ctx))
+	return plainRendererFor(opts).Render(ctx, lens.Views(ctx))
 }
 
 // buildSource picks the inbound Source adapter based on `.ezcd.json`'s
@@ -524,4 +525,16 @@ func checkDeclaredTarget(repoPath, target string) error {
 		"  Add it to clarity.deploys, or fix the typo. Events are append-only, so an\n"+
 		"  undeclared target would show up as a flow nobody can remove.",
 		target, strings.Join(declared, ", "))
+}
+
+// tuiRendererFor and plainRendererFor are the single place root flags are
+// handed to a renderer. Named functions rather than inline construction so the
+// wiring is testable: a flag that parses correctly and never reaches the
+// renderer is inert, and looks like a working feature from every other angle.
+func tuiRendererFor(opts rootOptions) *tui.Renderer {
+	return tui.NewRenderer().WithFlow(opts.deploy)
+}
+
+func plainRendererFor(opts rootOptions) *plain.Renderer {
+	return plain.NewRenderer(plain.Options{ShowSHAs: opts.showSHAs, Flow: opts.deploy})
 }

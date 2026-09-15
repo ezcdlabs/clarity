@@ -212,3 +212,18 @@ func flowsEqual(a, b []core.Flow) bool {
 	}
 	return true
 }
+
+// TestDeploys_TargetsAreFoldedLikeNames closes the gap that made --deploy able
+// to select the wrong deployable. The matcher folds case when resolving a
+// target, so a config where two flows own "Web" and "web" would resolve
+// --deploy=web to one flow while the deploy events sat in the other.
+func TestDeploys_TargetsAreFoldedLikeNames(t *testing.T) {
+	for _, body := range []string{
+		`{"clarity": {"deploys": [{"name": "alpha", "targets": ["Web"]}, {"name": "beta", "targets": ["web"]}]}}`,
+		`{"clarity": {"deploys": [{"name": "alpha", "targets": ["ios", "IOS"]}]}}`,
+	} {
+		if _, err := loadDeploys(t, body); err == nil {
+			t.Errorf("accepted targets differing only by case: %s", body)
+		}
+	}
+}

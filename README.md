@@ -415,9 +415,16 @@ first, case-insensitively, then a target name, so `--deploy=iOS` and
 load — a flow's name may not collide with another flow's target — checked
 alongside the rule that two flows may not claim the same target.
 
-An unknown value is an error naming the known flows. It must never fall back to
-rendering everything: a script or agent that quietly reported on the wrong
-subsystem is worse than one that failed.
+An unknown value is an error naming the known flows, in both modes. It must
+never fall back to rendering everything, or to some other flow: a script or
+agent that quietly reported on the wrong subsystem is worse than one that
+failed, and in the TUI an unrequested flow looks exactly like a deliberate
+selection. The TUI therefore quits with the same error rather than opening on
+something else.
+
+The check waits for a view that can answer it. The cached lens paints a stale
+frame first, from a snapshot that may predate the flow being asked for, so
+resolving there would reject a flag the fresh data is about to satisfy.
 
 In plain mode each flow's section carries its name on the header line, so the
 grep-friendliness the plain renderer advertises (`grep ✗`, `grep deploying`)

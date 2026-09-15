@@ -78,7 +78,7 @@ func hydrateDeploys(raw []rawDeploy) ([]core.Flow, error) {
 		if strings.TrimSpace(d.Name) == "" {
 			return nil, fmt.Errorf("%s: every entry needs a name", where)
 		}
-		key := foldName(d.Name)
+		key := core.FoldName(d.Name)
 		if names[key] {
 			return nil, fmt.Errorf("%s: %q is declared twice", where, d.Name)
 		}
@@ -98,15 +98,20 @@ func hydrateDeploys(raw []rawDeploy) ([]core.Flow, error) {
 
 		mine := map[string]bool{}
 		for _, t := range targets {
-			if mine[t] {
+			// Targets are compared under the same fold as names. Accepting
+			// "Web" and "web" as distinct would make --deploy=web resolve to
+			// one flow while the deploy events sat in the other, which is the
+			// silent wrong-subsystem outcome the matcher exists to avoid.
+			key := core.FoldName(t)
+			if mine[key] {
 				return nil, fmt.Errorf("%s: %q lists %s twice", where, d.Name, describeTarget(t))
 			}
-			mine[t] = true
-			if prev, taken := owners[t]; taken {
+			mine[key] = true
+			if prev, taken := owners[key]; taken {
 				return nil, fmt.Errorf("%s: %s is claimed by both %q and %q",
 					where, describeTarget(t), prev, d.Name)
 			}
-			owners[t] = d.Name
+			owners[key] = d.Name
 		}
 		flows = append(flows, core.Flow{Name: d.Name, Targets: targets})
 	}
@@ -115,22 +120,12 @@ func hydrateDeploys(raw []rawDeploy) ([]core.Flow, error) {
 	// mean one thing, and matching falls back from names to targets. Compared
 	// case-insensitively, because that is how the flag will match — a config
 	// accepted now must not start failing when the flag lands.
-	byFoldedTarget := make(map[string]string, len(owners))
-	for t, owner := range owners {
-		byFoldedTarget[foldName(t)] = owner
-	}
 	for _, f := range flows {
-		if owner, taken := byFoldedTarget[foldName(f.Name)]; taken && owner != f.Name {
+		if owner, taken := owners[core.FoldName(f.Name)]; taken && owner != f.Name {
 			return nil, fmt.Errorf("clarity.deploys: %q is a flow name and also a target of %q", f.Name, owner)
 		}
 	}
 	return flows, nil
-}
-
-// foldName is the key names and targets are compared under: case-insensitive,
-// matching how --deploy resolves a flow.
-func foldName(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
 }
 
 func describeTarget(t string) string {

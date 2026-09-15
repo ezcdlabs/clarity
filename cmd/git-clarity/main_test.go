@@ -653,3 +653,27 @@ func TestCheckDeclaredTarget(t *testing.T) {
 		})
 	}
 }
+
+// TestRootFlags_ReachTheRenderers guards the wiring between a parsed flag and
+// the code that acts on it. A flag can parse correctly, be threaded into
+// rootOptions, and still never reach a renderer — at which point it is inert
+// and looks like a working feature from every angle except using it.
+func TestRootFlags_ReachTheRenderers(t *testing.T) {
+	opts, err := parseRootArgs([]string{"--deploy", "ios", "--show-shas"})
+	if err != nil {
+		t.Fatalf("parseRootArgs: %v", err)
+	}
+	if opts.deploy != "ios" {
+		t.Fatalf("--deploy parsed as %q", opts.deploy)
+	}
+
+	if got := plainRendererFor(opts).Opts().Flow; got != "ios" {
+		t.Errorf("plain renderer built with flow %q, want ios", got)
+	}
+	if got := plainRendererFor(opts).Opts().ShowSHAs; !got {
+		t.Error("plain renderer did not receive --show-shas")
+	}
+	if got := tuiRendererFor(opts).Flow(); got != "ios" {
+		t.Errorf("TUI renderer built with flow %q, want ios", got)
+	}
+}

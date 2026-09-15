@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"strings"
 	"time"
@@ -68,6 +69,25 @@ type Model struct {
 	// terminal that ignores the query — and the strip falls back accordingly.
 	background    color.Color
 	backgroundSet bool
+	// requestedFlow is the --deploy argument, resolved against the first View
+	// that can answer it. Not resolved once at startup, because with nothing
+	// declared the flows aren't known until data arrives.
+	requestedFlow   string
+	requestResolved bool
+	// flowErr records a --deploy that named nothing. The TUI quits rather
+	// than opening on some other flow: a user who asked for ios and silently
+	// got web has no way to tell, and README promises this is an error.
+	flowErr error
+}
+
+// FlowErr reports a --deploy argument that matched no flow, once the program
+// has quit.
+func (m Model) FlowErr() error { return m.flowErr }
+
+// WithFlow returns a copy of m opened on the named flow, from --deploy.
+func (m Model) WithFlow(query string) Model {
+	m.requestedFlow = query
+	return m
 }
 
 // WithBackground returns a copy of m with the terminal background fixed
@@ -252,6 +272,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ViewMsg:
 		m.view = core.View(msg)
 		m.received = true
+		// Resolve --deploy against the first view that can actually answer it,
+		// then stop: after that the user's own selection owns the strip, and a
+		// later view must not yank them back to where they started.
+		//
+		// A stale view can't answer it. The cached lens paints one first, from
+		// a snapshot that may predate the flow being asked for, so resolving
+		// there would reject a flag that the fresh view is about to satisfy.
+		if m.requestedFlow != "" && !m.requestResolved && !m.view.Stale {
+			i, ok := core.MatchFlow(m.view.Flows, m.requestedFlow)
+			if !ok {
+				m.flowErr = fmt.Errorf("no deploy flow named %q — this repo has: %s",
+					m.requestedFlow, strings.Join(core.FlowNames(m.view.Flows), ", "))
+				return m, tea.Quit
+			}
+			m.selectedFlow = m.view.Flows[i].Name
+			m.requestResolved = true
+		}
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
 	case tickMsg:
@@ -571,6 +608,18 @@ var _ core.Renderer = (*Renderer)(nil)
 // about. Tests / the demo binary that want a custom clock use WithClock.
 type Renderer struct {
 	nowFn func() time.Time
+	flow  string
+}
+
+// Flow returns the deploy flow this renderer opens on, so a caller can assert
+// its own wiring reached it.
+func (r *Renderer) Flow() string { return r.flow }
+
+// WithFlow returns a copy of r that opens on the named deploy flow.
+func (r *Renderer) WithFlow(query string) *Renderer {
+	cp := *r
+	cp.flow = query
+	return &cp
 }
 
 // NewRenderer returns a TUI Renderer with the wall clock. Inject a
@@ -591,13 +640,21 @@ func (r *Renderer) WithClock(nowFn func() time.Time) *Renderer {
 // When ctx is cancelled the program is asked to quit so callers can
 // interrupt cleanly on signal.
 func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
-	p := newProgram(views, r.nowFn)
+	p := newProgram(views, r.nowFn, r.flow)
 	go func() {
 		<-ctx.Done()
 		p.Quit()
 	}()
-	_, err := p.Run()
-	return err
+	final, err := p.Run()
+	if err != nil {
+		return err
+	}
+	// An unmatched --deploy quits the program; surface it as the command's
+	// error rather than letting the user think they saw their flow.
+	if m, ok := final.(Model); ok {
+		return m.FlowErr()
+	}
+	return nil
 }
 
 // NewProgram constructs a Bubble Tea program in alt-screen mode and starts a
@@ -607,18 +664,18 @@ func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
 // synthetic messages — e.g. a scripted quit at the end of a recorded
 // scenario.
 func NewProgram(views <-chan core.View) *tea.Program {
-	return newProgram(views, nil)
+	return newProgram(views, nil, "")
 }
 
 // NewProgramWithClock is like NewProgram but lets the caller drive the
 // timer's notion of "now". Used by the demo binary so lead-time timers tick
 // relative to a scenario's reference time rather than wall time.
 func NewProgramWithClock(views <-chan core.View, nowFn func() time.Time) *tea.Program {
-	return newProgram(views, nowFn)
+	return newProgram(views, nowFn, "")
 }
 
-func newProgram(views <-chan core.View, nowFn func() time.Time) *tea.Program {
-	m := New()
+func newProgram(views <-chan core.View, nowFn func() time.Time, flow string) *tea.Program {
+	m := New().WithFlow(flow)
 	if nowFn != nil {
 		m = m.WithClock(nowFn)
 	}

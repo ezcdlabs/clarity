@@ -45,12 +45,17 @@ type scopeJSON struct {
 	// lead times — and with a plain bool a truncated or foreign record
 	// degrades silently into the first, which is the more consequential one.
 	Affected *bool `json:"affected"`
-	Ts       int64 `json:"ts"`
+	// Unix nanoseconds, unlike an event's seconds. Candidacy supersedes by
+	// timestamp — a later record corrects an earlier one — so the resolution
+	// has to be finer than the rate records can be written at. At second
+	// resolution two reports in the same second tie, and a tie has no honest
+	// winner.
+	Ts int64 `json:"ts"`
 }
 
 func (s Scope) marshal() ([]byte, error) {
 	affected := s.Affected
-	return json.Marshal(scopeJSON{Target: s.Target, Affected: &affected, Ts: s.Time.Unix()})
+	return json.Marshal(scopeJSON{Target: s.Target, Affected: &affected, Ts: s.Time.UnixNano()})
 }
 
 func unmarshalScope(data []byte) (Scope, error) {
@@ -68,7 +73,7 @@ func unmarshalScope(data []byte) (Scope, error) {
 	if sj.Target == "" {
 		return Scope{}, fmt.Errorf("scope record has no \"target\" field")
 	}
-	return Scope{Target: sj.Target, Affected: *sj.Affected, Time: time.Unix(sj.Ts, 0)}, nil
+	return Scope{Target: sj.Target, Affected: *sj.Affected, Time: time.Unix(0, sj.Ts)}, nil
 }
 
 // WriteScope records one commit's candidacy for one target, using the same
@@ -148,4 +153,91 @@ func ReadAllScope(repoPath string) (map[string][]Scope, error) {
 		out[sha] = records
 	}
 	return out, nil
+}
+
+// ReadAllRef reads both trees in one pass: pipeline events and candidacy
+// records, each keyed by commit SHA.
+//
+// The polling loop needs both on every tick, and reading them separately means
+// two PlainOpen calls and two full walks of a tree that can hold thousands of
+// files — roughly doubling the cost of a snapshot for every repo, including
+// the ones that report no candidacy at all.
+func ReadAllRef(repoPath string) (map[string][]Event, map[string][]Scope, error) {
+	repo, err := gogit.PlainOpen(repoPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	tree, err := loadEventsTree(repo)
+	if err != nil || tree == nil {
+		return map[string][]Event{}, map[string][]Scope{}, err
+	}
+
+	events := map[string][]Event{}
+	scope := map[string][]Scope{}
+	err = tree.Files().ForEach(func(f *object.File) error {
+		if !strings.HasSuffix(f.Name, ".json") {
+			return nil
+		}
+		switch {
+		case strings.HasPrefix(f.Name, "events/"):
+			sha, ok := shaFromPath(f.Name, "events/")
+			if !ok {
+				return nil
+			}
+			content, err := f.Contents()
+			if err != nil {
+				return err
+			}
+			e, err := unmarshalEvent([]byte(content))
+			if err != nil {
+				return nil
+			}
+			events[sha] = append(events[sha], e)
+		case strings.HasPrefix(f.Name, ScopePrefix):
+			sha, ok := shaFromPath(f.Name, ScopePrefix)
+			if !ok {
+				return nil
+			}
+			content, err := f.Contents()
+			if err != nil {
+				return err
+			}
+			s, err := unmarshalScope([]byte(content))
+			if err != nil {
+				return nil
+			}
+			scope[sha] = append(scope[sha], s)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sortEventsByTime(events)
+	sortScopeByTime(scope)
+	return events, scope, nil
+}
+
+func shaFromPath(name, prefix string) (string, bool) {
+	sha, _, ok := strings.Cut(strings.TrimPrefix(name, prefix), "/")
+	return sha, ok
+}
+
+func sortScopeByTime(m map[string][]Scope) {
+	for sha := range m {
+		records := m[sha]
+		sort.SliceStable(records, func(i, j int) bool {
+			return records[i].Time.Before(records[j].Time)
+		})
+		m[sha] = records
+	}
+}
+
+func sortEventsByTime(m map[string][]Event) {
+	for sha := range m {
+		evs := m[sha]
+		sort.SliceStable(evs, func(i, j int) bool { return evs[i].Time.Before(evs[j].Time) })
+		m[sha] = evs
+	}
 }

@@ -45,12 +45,12 @@ func TestScope_RoundTrip(t *testing.T) {
 		{
 			name:     "affected",
 			scope:    Scope{Target: "ios", Affected: true, Time: time.Unix(1744120134, 0)},
-			wantJSON: `{"target":"ios","affected":true,"ts":1744120134}`,
+			wantJSON: `{"target":"ios","affected":true,"ts":1744120134000000000}`,
 		},
 		{
 			name:     "unaffected",
 			scope:    Scope{Target: "android", Affected: false, Time: time.Unix(1744120134, 0)},
-			wantJSON: `{"target":"android","affected":false,"ts":1744120134}`,
+			wantJSON: `{"target":"android","affected":false,"ts":1744120134000000000}`,
 		},
 	}
 
@@ -301,5 +301,81 @@ func TestScope_ReadsAreSortedAndPrefixed(t *testing.T) {
 	}
 	if !got[sha][0].Time.Before(got[sha][1].Time) {
 		t.Errorf("records are not in time order: %+v", got[sha])
+	}
+}
+
+// TestReadAllRef_MatchesTheSeparateReaders pins the single-pass reader against
+// the two it replaces. It exists because the polling loop needs both trees on
+// every tick, and reading them separately walked a tree of thousands of files
+// twice — so this is an optimisation, and an optimisation that changes answers
+// is a bug.
+func TestReadAllRef_MatchesTheSeparateReaders(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "x")
+	clone.CommitAll("one")
+	clone.Push("main")
+	sha := headRev(t, clone.Path)
+
+	if err := WriteEvent(clone.Path, "origin", sha, Event{
+		Stage: "ci", Status: "passed", Time: time.Unix(100, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteEvent(clone.Path, "origin", sha, Event{
+		Stage: "deploy", Status: "passed", Time: time.Unix(50, 0), Target: "ios",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteScope(clone.Path, "origin", sha, Scope{
+		Target: "ios", Affected: true, Time: time.Unix(20, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteScope(clone.Path, "origin", sha, Scope{
+		Target: "android", Affected: false, Time: time.Unix(10, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fetchScopeRef(t, clone.Path)
+
+	wantEvents, err := ReadAllEvents(clone.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantScope, err := ReadAllScope(clone.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotEvents, gotScope, err := ReadAllRef(clone.Path)
+	if err != nil {
+		t.Fatalf("ReadAllRef: %v", err)
+	}
+
+	if len(gotEvents[sha]) != len(wantEvents[sha]) || len(gotEvents[sha]) != 2 {
+		t.Fatalf("events differ: got %+v want %+v", gotEvents[sha], wantEvents[sha])
+	}
+	if len(gotScope[sha]) != len(wantScope[sha]) || len(gotScope[sha]) != 2 {
+		t.Fatalf("scope differs: got %+v want %+v", gotScope[sha], wantScope[sha])
+	}
+	for i := range wantEvents[sha] {
+		// Event carries a map, so compare the fields that identify it.
+		g, w := gotEvents[sha][i], wantEvents[sha][i]
+		if g.Stage != w.Stage || g.Status != w.Status || g.Target != w.Target || !g.Time.Equal(w.Time) {
+			t.Errorf("event %d differs: got %+v want %+v", i, g, w)
+		}
+	}
+	for i := range wantScope[sha] {
+		if gotScope[sha][i] != wantScope[sha][i] {
+			t.Errorf("scope %d differs: got %+v want %+v", i, gotScope[sha][i], wantScope[sha][i])
+		}
+	}
+	// Both are sorted ascending, like the separate readers.
+	if gotEvents[sha][0].Time.After(gotEvents[sha][1].Time) {
+		t.Error("events are not in time order")
+	}
+	if gotScope[sha][0].Time.After(gotScope[sha][1].Time) {
+		t.Error("scope records are not in time order")
 	}
 }

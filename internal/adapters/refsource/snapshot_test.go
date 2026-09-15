@@ -8,6 +8,7 @@ import (
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
+	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gittest"
 )
 
@@ -155,5 +156,61 @@ func TestBuildSnapshot_CommitsWithoutEvents_HaveEmptyList(t *testing.T) {
 		if len(c.Events) != 0 {
 			t.Errorf("expected no events for %s, got %d", c.SHA, len(c.Events))
 		}
+	}
+}
+
+// TestBuildSnapshot_JoinsCandidacyToCommitsBySHA covers the only path that
+// makes candidacy do anything in the shipped binary: read the scope tree, join
+// it onto the commits, and hand it to the derivation.
+//
+// Every other test injects Scope into a hand-built Snapshot, so without this
+// one a single dropped argument here ships a `report affected|unaffected`
+// command that writes records nobody ever reads — with a green suite.
+func TestBuildSnapshot_JoinsCandidacyToCommitsBySHA(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("a.txt", "a")
+	clone.CommitAll("a commit")
+	clone.Push("main")
+
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = clone.Path
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("rev-parse: %v", err)
+	}
+	headSHA := strings.TrimSpace(string(out))
+
+	if err := clarityrefs.WriteScope(clone.Path, "origin", headSHA, clarityrefs.Scope{
+		Target: "ios", Affected: false, Time: time.Unix(1744120134, 0),
+	}); err != nil {
+		t.Fatalf("WriteScope: %v", err)
+	}
+
+	fetchAll(t, clone.Path)
+	snap, err := refsource.BuildSnapshot(clone.Path, "main", 50)
+	if err != nil {
+		t.Fatalf("BuildSnapshot: %v", err)
+	}
+
+	var found bool
+	for _, c := range snap.Commits {
+		if c.SHA != headSHA {
+			continue
+		}
+		found = true
+		if len(c.Scope) != 1 {
+			t.Fatalf("expected 1 candidacy record for HEAD, got %d: %+v", len(c.Scope), c.Scope)
+		}
+		if c.Scope[0].Target != "ios" || c.Scope[0].Affected {
+			t.Errorf("unexpected candidacy payload: %+v", c.Scope[0])
+		}
+		// And it has to actually reach the derivation, which is the point.
+		if core.IsCandidate(c.Scope, core.Flow{Name: "ios", Targets: []string{"ios"}}) {
+			t.Error("a commit reported unaffected is still a candidate for that flow")
+		}
+	}
+	if !found {
+		t.Fatalf("HEAD %s not in snapshot", headSHA)
 	}
 }

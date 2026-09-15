@@ -525,3 +525,233 @@ func TestMatchFlow_NameBeatsAnotherFlowsTarget(t *testing.T) {
 		t.Errorf("MatchFlow(web) = %d, %v; want the flow *named* web (1)", got, ok)
 	}
 }
+
+func scopeOf(target string, affected bool, ts int64) clarityrefs.Scope {
+	return clarityrefs.Scope{Target: target, Affected: affected, Time: time.Unix(ts, 0)}
+}
+
+// TestIsCandidate is the classifier behind candidacy. Silence means candidate:
+// a repo that reports nothing must keep the numbers it always had, which is
+// the same principle that makes `all` the default lead-time mode.
+func TestIsCandidate(t *testing.T) {
+	web := core.Flow{Name: "web", Targets: []string{"frontend", "web"}}
+	ios := core.Flow{Name: "ios", Targets: []string{"ios"}}
+
+	cases := []struct {
+		name  string
+		flow  core.Flow
+		scope []clarityrefs.Scope
+		want  bool
+	}{
+		{name: "nothing reported is a candidate", flow: ios, want: true},
+		{
+			name: "reported affected", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("ios", true, 10)}, want: true,
+		},
+		{
+			name: "reported unaffected", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("ios", false, 10)}, want: false,
+		},
+		{
+			name: "another target's record says nothing about this flow", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("android", false, 10)}, want: true,
+		},
+		{
+			name: "a flow claiming several targets takes any of them", flow: web,
+			scope: []clarityrefs.Scope{scopeOf("web", false, 10)}, want: false,
+		},
+		{
+			name: "the latest record wins", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("ios", false, 10), scopeOf("ios", true, 20)}, want: true,
+		},
+		{
+			name: "the latest record wins in either direction", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("ios", true, 20), scopeOf("ios", false, 30)}, want: false,
+		},
+		{
+			name: "order in the slice does not decide it", flow: ios,
+			scope: []clarityrefs.Scope{scopeOf("ios", false, 30), scopeOf("ios", true, 20)}, want: false,
+		},
+		{
+			name: "affected for one claimed target beats unaffected for another", flow: web,
+			// A flow mid-rename claims both "" and "web". If either says the
+			// commit is affected, it ships in that flow.
+			scope: []clarityrefs.Scope{scopeOf("web", false, 10), scopeOf("frontend", true, 10)}, want: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := core.IsCandidate(c.scope, c.flow); got != c.want {
+				t.Errorf("IsCandidate = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestDeriveView_CandidacyExcludesFromLeadTime is what candidacy is for. The
+// ios flow ships one commit of its own and sweeps up a web-only commit that
+// happened to be in the tree. Without candidacy that web commit contributes a
+// lead time measured from its own authoring, and the ios average becomes the
+// average age of the monorepo.
+func TestDeriveView_CandidacyExcludesFromLeadTime(t *testing.T) {
+	day := int64(86400)
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
+			{
+				SHA: "ios-change", Subject: "ios-change", Author: "a", Time: time.Unix(9*day, 0),
+				Events: []clarityrefs.Event{ciEv(9*day + 60), dep("ios", 9*day+120)},
+				Scope:  []clarityrefs.Scope{scopeOf("ios", true, 9*day)},
+			},
+			{
+				// Authored long before, ships nothing ios — but it is in the
+				// tree that the ios deploy above built from.
+				SHA: "web-only", Subject: "web-only", Author: "b", Time: time.Unix(1*day, 0),
+				Events: []clarityrefs.Event{ciEv(1*day + 60)},
+				Scope:  []clarityrefs.Scope{scopeOf("ios", false, 1*day)},
+			},
+		},
+	}
+	declared := []core.Flow{{Name: "ios", Targets: []string{"ios"}}}
+
+	view := core.DeriveView(snap, core.DefaultLeadTimeMode, declared)
+	flow := view.Flows[0]
+	now := time.Unix(20*day, 0)
+
+	// Both commits still appear — the intent is to stop one skewing the
+	// number, not to hide that it shipped.
+	if total := countCommits(flow.Groups); total != 2 {
+		t.Errorf("candidacy removed a commit from the log: %d of 2 remain", total)
+	}
+
+	iosLead, _, iosOK := flow.Groups.LeadTime(0, now)
+	_, _, webOK := flow.Groups.LeadTime(1, now)
+
+	if !iosOK {
+		t.Error("the ios-affecting commit lost its lead time")
+	}
+	if webOK {
+		t.Error("a commit reported unaffected still contributes a lead time — " +
+			"this is the monorepo-average bug candidacy exists to fix")
+	}
+	if iosLead <= 0 {
+		t.Errorf("ios lead time is %v", iosLead)
+	}
+}
+
+// Silence still means candidate, so a repo that reports no candidacy keeps
+// exactly the numbers it had before the feature existed.
+func TestDeriveView_NoCandidacyReportedChangesNothing(t *testing.T) {
+	day := int64(86400)
+	commits := []core.CommitView{
+		{SHA: "a", Subject: "a", Author: "a", Time: time.Unix(9*day, 0),
+			Events: []clarityrefs.Event{ciEv(9*day + 60), dep("ios", 9*day+120)}},
+		{SHA: "b", Subject: "b", Author: "b", Time: time.Unix(1*day, 0),
+			Events: []clarityrefs.Event{ciEv(1*day + 60)}},
+	}
+	declared := []core.Flow{{Name: "ios", Targets: []string{"ios"}}}
+
+	view := core.DeriveView(core.Snapshot{Commits: commits}, core.DefaultLeadTimeMode, declared)
+	now := time.Unix(20*day, 0)
+
+	for i := range commits {
+		if _, _, ok := view.Flows[0].Groups.LeadTime(i, now); !ok {
+			t.Errorf("commit %d lost its lead time with no candidacy reported", i)
+		}
+	}
+}
+
+func countCommits(g core.Groupings) int {
+	n := len(g.Head) + len(g.CIPassed)
+	for _, b := range g.InFlight {
+		n += len(b.Commits)
+	}
+	for _, b := range g.Deployed {
+		n += len(b.Commits)
+	}
+	return n
+}
+
+// TestWeeklyStatsForFlow_ExcludesNonCandidates covers the other number
+// candidacy protects. Deploy frequency counts batches and is unaffected, but
+// the weekly average is a mean of per-commit lead times — so a swept-up
+// commit drags it exactly as it drags the rows.
+func TestWeeklyStatsForFlow_ExcludesNonCandidates(t *testing.T) {
+	day := int64(86400)
+	commits := []core.CommitView{
+		{
+			SHA: "ios", Subject: "ios", Author: "a", Time: time.Unix(9*day, 0),
+			Events: []clarityrefs.Event{ciEv(9*day + 60), dep("ios", 9*day+120)},
+			Scope:  []clarityrefs.Scope{scopeOf("ios", true, 9*day)},
+		},
+		{
+			// Authored eight days earlier: if it counted, it would roughly
+			// double the average.
+			SHA: "web", Subject: "web", Author: "b", Time: time.Unix(1*day, 0),
+			Events: []clarityrefs.Event{ciEv(1*day + 60)},
+			Scope:  []clarityrefs.Scope{scopeOf("ios", false, 1*day)},
+		},
+	}
+	snap := core.Snapshot{Commits: commits}
+	flow := core.Flow{Name: "ios", Targets: []string{"ios"}}
+
+	withCandidacy := core.WeeklyStatsForFlow(snap, core.DefaultLeadTimeMode, flow)
+	without := core.WeeklyStatsMode(snap, core.DefaultLeadTimeMode)
+
+	sum := func(ws []core.WeekStat) time.Duration {
+		var d time.Duration
+		for _, w := range ws {
+			d += w.AvgLead
+		}
+		return d
+	}
+
+	if sum(withCandidacy) == 0 {
+		t.Fatal("the candidate commit contributed no lead time at all")
+	}
+	if sum(withCandidacy) >= sum(without) {
+		t.Errorf("candidacy did not reduce the weekly average: with=%v without=%v",
+			sum(withCandidacy), sum(without))
+	}
+}
+
+// TestIsCandidate_EqualTimestamps pins the one case "latest wins" cannot
+// answer. Two records for a target at the same instant have no newer one, and
+// without an explicit rule the winner is decided by whichever content hash
+// sorts first — so a correction can be silently discarded while the command
+// that wrote it reports success.
+//
+// The tie resolves to affected: counting a commit can only inflate a lead
+// time, whereas resolving the other way could hide delivery, and a metric that
+// flatters is the worse failure.
+func TestIsCandidate_EqualTimestamps(t *testing.T) {
+	ios := core.Flow{Name: "ios", Targets: []string{"ios"}}
+
+	both := []clarityrefs.Scope{scopeOf("ios", false, 10), scopeOf("ios", true, 10)}
+	reversed := []clarityrefs.Scope{scopeOf("ios", true, 10), scopeOf("ios", false, 10)}
+
+	if !core.IsCandidate(both, ios) {
+		t.Error("a tie resolved to unaffected")
+	}
+	if core.IsCandidate(both, ios) != core.IsCandidate(reversed, ios) {
+		t.Error("a tie resolves differently depending on record order — " +
+			"the winner is being decided by content hash, not by the data")
+	}
+}
+
+// A correction with a later timestamp must actually take effect — that is the
+// whole reason supersedence is by time.
+func TestIsCandidate_LaterRecordCorrectsAnEarlierOne(t *testing.T) {
+	ios := core.Flow{Name: "ios", Targets: []string{"ios"}}
+
+	// Nanosecond resolution: two reports a microsecond apart are ordered.
+	earlier := clarityrefs.Scope{Target: "ios", Affected: true, Time: time.Unix(10, 0)}
+	later := clarityrefs.Scope{Target: "ios", Affected: false, Time: time.Unix(10, 1000)}
+
+	if core.IsCandidate([]clarityrefs.Scope{earlier, later}, ios) {
+		t.Error("a later correction to unaffected was ignored")
+	}
+	if core.IsCandidate([]clarityrefs.Scope{later, earlier}, ios) {
+		t.Error("the correction depends on slice order")
+	}
+}

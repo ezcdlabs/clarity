@@ -48,7 +48,16 @@ func WeeklyStats(snap Snapshot) []WeekStat {
 // always "the mean of the lead times visible in the Deployed section", under
 // any mode.
 func WeeklyStatsMode(snap Snapshot, mode LeadTimeMode) []WeekStat {
-	g := GroupCommitsMode(snap.Commits, mode)
+	return weeklyStats(snap, GroupCommitsMode(snap.Commits, mode))
+}
+
+// WeeklyStatsForFlow is WeeklyStatsMode with candidacy applied, so a flow's
+// throughput average is built only from commits that flow actually ships.
+func WeeklyStatsForFlow(snap Snapshot, mode LeadTimeMode, f Flow) []WeekStat {
+	return weeklyStats(snap, GroupCommitsForFlow(snap.Commits, mode, f))
+}
+
+func weeklyStats(snap Snapshot, g Groupings) []WeekStat {
 
 	type bucket struct {
 		deploys       int

@@ -18,11 +18,17 @@ func BuildSnapshot(repoPath, branch string, limit int) (core.Snapshot, error) {
 	if err != nil {
 		return core.Snapshot{}, err
 	}
-	eventsByCommit, err := clarityrefs.ReadAllEvents(repoPath)
+	// Candidacy lives in a sibling tree on the same ref, so it costs no extra
+	// fetch — and both trees are read in one walk, because reading them
+	// separately would walk a tree of thousands of files twice on every poll,
+	// including for the repos that report no candidacy at all. A repo that
+	// reports none gets an empty map, which means every commit counts for
+	// every flow: the numbers it always had.
+	eventsByCommit, scopeByCommit, err := clarityrefs.ReadAllRef(repoPath)
 	if err != nil {
-		return core.Snapshot{}, fmt.Errorf("read events: %w", err)
+		return core.Snapshot{}, fmt.Errorf("read clarity ref: %w", err)
 	}
-	snap := core.BuildSnapshot(commits, core.Events(eventsByCommit))
+	snap := core.BuildSnapshotWithScope(commits, core.Events(eventsByCommit), core.ScopeBySHA(scopeByCommit))
 	// The adapter is the only layer that can see past the cut, so it is the
 	// one that records it: the core gets a Snapshot that knows whether it is
 	// the whole history.

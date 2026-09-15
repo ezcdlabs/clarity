@@ -524,8 +524,13 @@ use, so whoever writes that `affected` helper is using it too.
 `scope/<sha>/<unix-ts>-<hash>.json`:
 
 ```json
-{ "target": "ios", "affected": false, "ts": 1744120134 }
+{ "target": "ios", "affected": false, "ts": 1744120134000000000 }
 ```
+
+`ts` is Unix **nanoseconds**, unlike an event's seconds. Candidacy supersedes
+by timestamp — a later record corrects an earlier one — so the resolution has
+to be finer than the rate records can be written at, or two reports in the same
+second tie.
 
 All three fields are required on read. `affected` is never omitted when written
 and a record missing it is rejected rather than defaulted, because false and
@@ -538,6 +543,15 @@ deploy, so a forgotten field would record a real claim about a real flow.
 Records come back in timestamp order, which is what makes "the latest record
 wins" resolvable — git returns tree entries in filename order, which is
 lexicographic rather than chronological.
+
+**A tie resolves to affected.** Two records for one target at the same instant
+have no honest winner: the ref preserves both and neither is newer. Resolving
+to affected errs towards counting a commit, which can only inflate a lead time,
+whereas the other way could hide delivery — and a number that flatters is the
+worse failure for a metric meant to drive work. Without an explicit rule the
+winner would be whichever content hash sorted first, so a correction could be
+discarded while the command that wrote it reported success. Correcting a record
+therefore needs a later timestamp, which is automatic unless `--at` pins it.
 
 **Three states, not two.** Reporting both directions carries more information
 than reporting only exclusions:
@@ -915,17 +929,16 @@ not an outcome.
 
 The record lands in the `scope/` tree rather than `events/`. Everything else is
 shared with stage reporting: the same `--sha` and `--at` overrides, the same
-content-addressed filenames, and the same optimistic push loop. Two requirements
-fall out of that sharing and need meeting when it is built — the echoed
-fully-explicit command must be able to reproduce this grammar as well as the
-stage/status one, and a run touching both trees must land them in a single
-commit and a single push rather than racing itself.
+target format rules, the same content-addressed filenames, the same optimistic
+push loop, and an echoed fully-explicit command that reproduces this grammar
+just as it reproduces stage reporting's. One invocation writes to one tree, so
+there is no cross-tree push to race.
 
-One gap is open: the grammar names a target, and the untargeted deploy has no
-name to give. Either candidacy is only expressible for named targets, or the
-grammar needs a way to say "the untargeted one" — deferred until a repo actually
-wants it, since a repo with a single untargeted flow has nothing to exclude a
-commit from.
+One gap is open, deliberately: the grammar names a target, and the untargeted
+deploy has no name to give, so candidacy is expressible only for named targets.
+A repo whose single flow is the untargeted one has nothing to exclude a commit
+*from*, so the gap only becomes real for a repo that both names some targets and
+leaves one unnamed — at which point naming it is the smaller change.
 
 ### Explicit overrides for migration
 
@@ -1160,7 +1173,7 @@ Three layers of defence, because none is sufficient alone:
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
 - **Auto-detect current branch** — the TUI currently hardcodes `main`; defaulting to the current checkout (or accepting `--branch`) is straightforward once the need arises
 - **Per-target GitHub Actions source** — the `clarity.github` config maps one workflow/job set per stage, so the GitHub source is single-flow. Deploy targets currently require the events ref. Extending the config to a per-target deploy mapping (and `init --github` to ask for it) is the notable follow-on cost of the target model
-- **Last deploy beyond the commit window** — a flow whose last deploy predates the loaded window renders "no deploy in the last N commits" rather than a real age, because the events it would need aren't loaded. A deeper targeted walk for declared flows would recover the number if the message proves too vague
+- **Candidacy in batch mode** — `report --batch` carries stage events only, so a monorepo backfilling its history gets flows but not candidacy, and every historical commit counts towards every flow's lead time. A `scope/` equivalent for the JSONL stream would close it
 - **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for
 - **Target name validation without config** — stages and statuses are enforced against closed sets in `internal/report`. Target names can't be: with no `.ezcd.json` declaring flows, any string is accepted, so a typo creates a ghost flow. Declaring flows closes the set (see [Deploy targets](#deploy-targets)); a repo that hasn't declared any keeps the open vocabulary by design
 - **Watcher fetch error surfacing** — fetch failures in the polling loop are currently silent; the TUI shows the last successful snapshot with no indication that it has gone stale. A subtle "(stale)" marker on the header would close that loop

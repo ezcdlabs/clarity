@@ -313,3 +313,22 @@ func latestPerStage(events []clarityrefs.Event) map[string]string {
 	}
 	return out
 }
+
+// GroupCommitsForFlow is GroupCommitsMode with candidacy applied: a commit
+// that contains no change this flow ships keeps its place in the log but
+// carries no lead time.
+//
+// Dropping the lead time rather than the commit is deliberate, and it reuses
+// the mechanism `reported` and `pipeline` already use for a commit with no
+// events: a zero leadStart. The intent is to stop a commit skewing the number,
+// not to hide that it shipped — a web-only commit really is in the iOS build,
+// it just says nothing about how fast iOS changes reach users.
+func GroupCommitsForFlow(commits []CommitView, mode LeadTimeMode, f Flow) Groupings {
+	g := GroupCommitsMode(commits, mode)
+	for i, c := range commits {
+		if !IsCandidate(c.Scope, f) {
+			g.leadStart[i] = time.Time{}
+		}
+	}
+	return g
+}

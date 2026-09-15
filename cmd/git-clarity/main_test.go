@@ -677,3 +677,93 @@ func TestRootFlags_ReachTheRenderers(t *testing.T) {
 		t.Errorf("TUI renderer built with flow %q, want ios", got)
 	}
 }
+
+// TestIsScopeInvocation pins the dispatch between the two grammars. It has to
+// look past the flags for the verb, or `report --sha X affected ios` takes the
+// stage path and fails with a confusing stage error.
+func TestIsScopeInvocation(t *testing.T) {
+	cases := []struct {
+		args []string
+		want bool
+	}{
+		{args: []string{"affected", "ios"}, want: true},
+		{args: []string{"unaffected", "ios"}, want: true},
+		{args: []string{"--sha", "abc", "affected", "ios"}, want: true},
+		{args: []string{"--sha", "abc", "--at", "2024-04-08T15:48:54Z", "unaffected", "web"}, want: true},
+		{args: []string{"deploy", "passed"}, want: false},
+		{args: []string{"ci", "passed"}, want: false},
+		{args: []string{"--sha", "abc", "deploy", "passed", "ios"}, want: false},
+		// A deploy target named "affected" must not be mistaken for the verb:
+		// the verb is the first positional, the target is the third.
+		{args: []string{"deploy", "passed", "affected"}, want: false},
+		{args: []string{}, want: false},
+	}
+
+	for _, c := range cases {
+		if got := isScopeInvocation(c.args); got != c.want {
+			t.Errorf("isScopeInvocation(%v) = %v, want %v", c.args, got, c.want)
+		}
+	}
+}
+
+func TestParseScopeArgs(t *testing.T) {
+	opts, err := parseScopeArgs([]string{"--sha", "abc", "affected", "ios"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !opts.Affected || opts.Target != "ios" || opts.SHA != "abc" {
+		t.Errorf("parsed %+v", opts)
+	}
+
+	un, err := parseScopeArgs([]string{"unaffected", "android"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if un.Affected || un.Target != "android" {
+		t.Errorf("parsed %+v", un)
+	}
+
+	for _, bad := range [][]string{{"affected"}, {"affected", "ios", "extra"}, {"affected", ""}} {
+		if _, err := parseScopeArgs(bad); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+}
+
+// TestDispatchReport_RoutesToTheRightGrammar checks that the routing predicate
+// is actually consulted. A correct predicate that nothing calls leaves the
+// candidacy grammar unreachable, and `report affected ios` then fails with a
+// stage error that explains nothing.
+func TestDispatchReport_RoutesToTheRightGrammar(t *testing.T) {
+	cases := []struct {
+		name      string
+		args      []string
+		wantScope bool
+	}{
+		{name: "candidacy", args: []string{"affected", "ios"}, wantScope: true},
+		{name: "candidacy behind flags", args: []string{"--sha", "abc", "unaffected", "ios"}, wantScope: true},
+		{name: "a stage event", args: []string{"deploy", "passed", "ios"}, wantScope: false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var gotEvent, gotScope bool
+			err := dispatchReport(&bytes.Buffer{}, c.args,
+				func(report.Options) (string, error) {
+					gotEvent = true
+					return "abcdef1234", nil
+				},
+				func(report.ScopeOptions) (string, error) {
+					gotScope = true
+					return "abcdef1234", nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("dispatchReport: %v", err)
+			}
+			if gotScope != c.wantScope || gotEvent == c.wantScope {
+				t.Errorf("routed to scope=%v event=%v, want scope=%v", gotScope, gotEvent, c.wantScope)
+			}
+		})
+	}
+}

@@ -415,3 +415,68 @@ func viewWithFlows(t *testing.T, snap core.Snapshot) core.View {
 		return core.View{}
 	}
 }
+
+// TestCandidacy_ExcludesNonCandidatesFromLeadTime is the acceptance test for
+// candidacy: it has to reach the number a user reads, not just the model.
+//
+// The iOS flow ships one commit of its own and sweeps up a web-only commit
+// that was in the tree. Without candidacy that commit contributes a lead time
+// measured from its own authoring, and iOS's average becomes the average age
+// of the monorepo.
+func TestCandidacy_ExcludesNonCandidatesFromLeadTime(t *testing.T) {
+	day := int64(86400)
+	snap := core.Snapshot{
+		RepoName: "clarity",
+		Commits: []core.CommitView{
+			{
+				SHA: "aaa1", Author: "alice", Subject: "tune the ios build", Time: time.Unix(9*day, 0),
+				Events: []clarityrefs.Event{
+					{Stage: "ci", Status: "passed", Time: time.Unix(9*day+60, 0)},
+					{Stage: "deploy", Status: "passed", Time: time.Unix(9*day+120, 0), Target: "ios"},
+				},
+				Scope: []clarityrefs.Scope{{Target: "ios", Affected: true, Time: time.Unix(9*day, 0)}},
+			},
+			{
+				SHA: "bbb2", Author: "bob", Subject: "rework the web checkout", Time: time.Unix(1*day, 0),
+				Events: []clarityrefs.Event{
+					{Stage: "ci", Status: "passed", Time: time.Unix(1*day+60, 0)},
+				},
+				Scope: []clarityrefs.Scope{{Target: "ios", Affected: false, Time: time.Unix(1*day, 0)}},
+			},
+		},
+	}
+
+	dir := t.TempDir()
+	body := `{"clarity": {"deploys": ["ios"]}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	lens := core.NewLens(&fakeSource{snap: snap}, cfg.LeadTimeMode(), cfg.Deploys())
+	var view core.View
+	select {
+	case v := <-lens.Views(t.Context()):
+		view = v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+	}
+
+	out := plain.RenderSnapshot("clarity", view, time.Unix(20*day, 0), plain.Options{})
+
+	// Both commits still render — the intent is to stop one skewing the
+	// number, not to hide that it shipped.
+	iosRow := rowFor(t, out, "tune the ios build")
+	webRow := rowFor(t, out, "rework the web checkout")
+
+	if !hasLeadTime(iosRow) {
+		t.Errorf("the ios-affecting commit lost its lead time:\n%s", iosRow)
+	}
+	if hasLeadTime(webRow) {
+		t.Errorf("a commit reported unaffected still carries a lead time — "+
+			"this is the monorepo-average bug candidacy exists to fix:\n%s", webRow)
+	}
+}

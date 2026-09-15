@@ -259,3 +259,49 @@ func FlowNames(flows []FlowView) []string {
 	}
 	return out
 }
+
+// IsCandidate reports whether a commit counts towards a flow's delivery
+// numbers: whether it contains any change that flow's targets ship.
+//
+// Silence means candidate. A repo that reports no candidacy at all keeps the
+// numbers it always had, which is the same principle that makes `all` the
+// default lead-time mode — adopting clarity, or upgrading it, must not quietly
+// move anyone's metrics.
+//
+// Within one target the latest record wins, because candidacy can be reported
+// more than once for a commit (a re-run, a corrected backfill) and the newest
+// statement is the current one. Across the targets a flow claims, one
+// "affected" is enough: a flow mid-rename owns both "" and "web", and a commit
+// that ships under either name ships in that flow.
+//
+// Two records for one target at the *same* instant have no honest winner — the
+// ref preserves both and neither is newer — so the tie resolves to affected.
+// That errs towards counting a commit, which can only inflate a lead time;
+// resolving the other way could hide delivery, and a number that flatters is
+// the worse failure for a metric meant to drive work. Records carry nanosecond
+// timestamps so a genuine correction never lands on a tie: it needs a later
+// `--at`, or none at all.
+func IsCandidate(scope []clarityrefs.Scope, f Flow) bool {
+	latest := map[string]clarityrefs.Scope{}
+	for _, s := range scope {
+		if !f.Claims(s.Target) {
+			continue
+		}
+		prev, ok := latest[s.Target]
+		switch {
+		case !ok, s.Time.After(prev.Time):
+			latest[s.Target] = s
+		case s.Time.Equal(prev.Time) && s.Affected:
+			latest[s.Target] = s
+		}
+	}
+	if len(latest) == 0 {
+		return true
+	}
+	for _, s := range latest {
+		if s.Affected {
+			return true
+		}
+	}
+	return false
+}

@@ -268,7 +268,116 @@ func runReport(args []string) error {
 	if isBatchInvocation(args) {
 		return runReportBatch(args)
 	}
-	return runReportTo(os.Stdout, args, report.Run)
+	// Two grammars under one command, dispatched on the first non-flag token.
+	// Unambiguous, because `affected` is not a stage — and candidacy has no
+	// status to report, so forcing it into the stage/status shape would need a
+	// filler word that means nothing.
+	return dispatchReport(os.Stdout, args, report.Run, report.RunScope)
+}
+
+// dispatchReport routes an invocation to the grammar it uses. Separated from
+// runReport so the routing can be tested with injected writers — a predicate
+// that is correct but never consulted is the same as not having one.
+func dispatchReport(
+	out io.Writer,
+	args []string,
+	writeEvent func(report.Options) (string, error),
+	writeScope func(report.ScopeOptions) (string, error),
+) error {
+	if isScopeInvocation(args) {
+		return runReportScopeTo(out, args, writeScope)
+	}
+	return runReportTo(out, args, writeEvent)
+}
+
+// isScopeInvocation reports whether these args use the candidacy grammar,
+// looking past the flags for the verb.
+func isScopeInvocation(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch a {
+		case "--sha", "--at", "-sha", "-at":
+			i++ // skip the flag's value
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a == "affected" || a == "unaffected"
+	}
+	return false
+}
+
+func runReportScopeTo(out io.Writer, args []string, write func(report.ScopeOptions) (string, error)) error {
+	opts, err := parseScopeArgs(args)
+	if err != nil {
+		return err
+	}
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	opts.RepoPath = repoPath
+	opts.Remote = "origin"
+
+	if err := report.ValidateScope(opts); err != nil {
+		return err
+	}
+	if err := checkDeclaredTarget(repoPath, opts.Target); err != nil {
+		return err
+	}
+
+	opts, err = report.ResolveScope(opts)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "running: %s\n", report.ScopeCommandLine(opts))
+
+	sha, err := write(opts)
+	if err != nil {
+		return report.ScopeFailureError(opts, err)
+	}
+	short := sha
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	verb := "unaffected"
+	if opts.Affected {
+		verb = "affected"
+	}
+	fmt.Fprintf(out, "wrote scope: %s %s %s\n", short, verb, opts.Target)
+	return nil
+}
+
+const scopeUsage = "usage: git clarity report [--sha <sha>] [--at <rfc3339>] affected|unaffected <target>"
+
+func parseScopeArgs(args []string) (report.ScopeOptions, error) {
+	fs := flag.NewFlagSet("report scope", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	sha := fs.String("sha", "", "explicit commit SHA (overrides GITHUB_SHA / CI_COMMIT_SHA / HEAD)")
+	at := fs.String("at", "", "explicit timestamp in RFC3339 (overrides time.Now())")
+	if err := fs.Parse(args); err != nil {
+		return report.ScopeOptions{}, fmt.Errorf("%s: %w", scopeUsage, err)
+	}
+	rest := fs.Args()
+	if len(rest) != 2 {
+		return report.ScopeOptions{}, fmt.Errorf("%s", scopeUsage)
+	}
+	// An empty target argument is what `report affected "$TARGET"` produces
+	// with TARGET unset. Candidacy needs a target to be about, so this is
+	// caught here rather than allowed to become a record naming nothing.
+	if rest[1] == "" {
+		return report.ScopeOptions{}, fmt.Errorf("target is empty — %s", scopeUsage)
+	}
+	opts := report.ScopeOptions{Target: rest[1], SHA: *sha, Affected: rest[0] == "affected"}
+	if *at != "" {
+		t, err := time.Parse(time.RFC3339, *at)
+		if err != nil {
+			return report.ScopeOptions{}, fmt.Errorf("invalid --at timestamp (want RFC3339, e.g. 2006-01-02T15:04:05Z): %w", err)
+		}
+		opts.Time = t
+	}
+	return opts, nil
 }
 
 // runReportTo is runReport with its output sink and the write itself injected,

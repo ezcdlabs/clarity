@@ -13,3 +13,7 @@ type Event = clarityrefs.Event
 // clarityrefs.ReadAllEvents' return type, just named for ergonomic use
 // inside the core.
 type Events map[string][]Event
+
+// ScopeBySHA is a SHA-keyed grouping of candidacy records, the shape Source
+// adapters read from the ref and hand to BuildSnapshot.
+type ScopeBySHA map[string][]clarityrefs.Scope

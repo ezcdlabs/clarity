@@ -61,7 +61,12 @@ func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
 		// present — filtering would return exactly these commits. Pinned by
 		// TestResolveFlows_SingleFlowClaimsEveryDeploy, because the
 		// short-circuit is only safe while that stays true.
-		if len(resolved) == 1 {
+		//
+		// Candidacy breaks it independently of flow count: a lone flow can
+		// still have commits that ship nothing it deploys, and those must
+		// lose their lead time. Only skip the work when nothing has been
+		// reported, which is every repo that doesn't use the feature.
+		if len(resolved) == 1 && !hasCandidacy(snap.Commits) {
 			resolved[i].Groups = groups
 			resolved[i].Weekly = weekly
 			resolved[i].Deploy = CurrentStageStatus(snap.Commits, "deploy")
@@ -72,8 +77,8 @@ func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
 		flowSnap := snap
 		flowSnap.Commits = scoped
 
-		resolved[i].Groups = GroupCommitsMode(scoped, mode)
-		resolved[i].Weekly = WeeklyStatsMode(flowSnap, mode)
+		resolved[i].Groups = GroupCommitsForFlow(scoped, mode, f.Flow)
+		resolved[i].Weekly = WeeklyStatsForFlow(flowSnap, mode, f.Flow)
 		resolved[i].Deploy = CurrentStageStatus(scoped, "deploy")
 	}
 
@@ -101,6 +106,13 @@ func buildHeaderStatus(commits []CommitView) HeaderStatus {
 // order. Events keyed by SHAs not in the commits slice are silently
 // dropped (those commits are outside the loaded window).
 func BuildSnapshot(commits []Commit, events Events) Snapshot {
+	return BuildSnapshotWithScope(commits, events, nil)
+}
+
+// BuildSnapshotWithScope is BuildSnapshot including candidacy records. A
+// Source that can read them passes them here; one that can't passes nil, which
+// means every commit is a candidate for every flow.
+func BuildSnapshotWithScope(commits []Commit, events Events, scope ScopeBySHA) Snapshot {
 	joined := make([]CommitView, len(commits))
 	for i, c := range commits {
 		joined[i] = CommitView{
@@ -109,7 +121,19 @@ func BuildSnapshot(commits []Commit, events Events) Snapshot {
 			Author:  c.Author,
 			Time:    c.Time,
 			Events:  events[c.SHA],
+			Scope:   scope[c.SHA],
 		}
 	}
 	return Snapshot{Commits: joined}
+}
+
+// hasCandidacy reports whether any commit carries a candidacy record, which is
+// what decides whether the single-flow short-circuit is safe.
+func hasCandidacy(commits []CommitView) bool {
+	for _, c := range commits {
+		if len(c.Scope) > 0 {
+			return true
+		}
+	}
+	return false
 }

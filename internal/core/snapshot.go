@@ -53,4 +53,8 @@ type CommitView struct {
 	Author  string
 	Time    time.Time
 	Events  []clarityrefs.Event
+	// Scope is this commit's candidacy records: which deploy targets it
+	// contains change for. Empty means nobody has said, which counts as a
+	// candidate for every flow. See IsCandidate.
+	Scope []clarityrefs.Scope
 }

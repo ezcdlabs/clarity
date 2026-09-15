@@ -151,6 +151,7 @@ Inputs:
 - `version` — explicit version override (e.g. `v0.1.1`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
 - `stage` — pipeline stage to report (`ci` or `deploy`). When combined with `status`, the action runs `git clarity report <stage> <status>` after install.
 - `status` — status to report (`started` / `passed` / `failed` / `skipped`).
+- `target` — which deployable a `deploy` event is about, for a repo shipping several from one trunk (e.g. `ios`). Rejected on `ci`. Omit it for the untargeted deploy.
 
 `actions/checkout` must run first so the action has a repository to push events from.
 
@@ -604,10 +605,18 @@ exists once flows are named.
 **Colour is header-only.** A flow's badge is the same `✓` / `✗` / `·` the header
 badges have always used, and the header has always been where clarity spends
 colour — it is the summary, and it earns the colour that the per-row icons
-deliberately forgo. Coloured `●` dots were explored and dropped: they read well
-in isolation, but adopting them would have changed the badge glyph for every
-existing single-flow repo to serve a feature only monorepos use, and the strip
-reads fine without them. Per-commit rows are untouched either way: still
+deliberately forgo. Coloured `●` dots were explored and dropped, and the
+reason is worth keeping: two filled dots differ only by hue, so to a red/green
+colourblind reader — roughly 8% of men — the strip becomes a row of identical
+grey circles with no way to tell which flow is broken. That is precisely the
+failure the palette rule exists to prevent, and the strip's whole job is
+answering "is anything red?" at a glance.
+
+A hollow-passed / filled-failed pair was also considered, since filled-means-
+attention survives greyscale and keeps the LED look. It was dropped for a
+smaller reason: a healthy repo would then show a row of hollow rings, which
+reads as "nothing has happened" rather than "all good", and the healthy state is
+the common one. Per-commit rows are untouched either way: still
 `✓ / ✗ / spinner / ·`, still carrying meaning by shape, still reserving red for
 genuinely broken.
 

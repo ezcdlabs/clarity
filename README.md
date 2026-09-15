@@ -520,6 +520,25 @@ true from the moment the commit exists, which is why it can be reported before
 `ci started` has even run. `affected` is the word nx, turbo and bazel already
 use, so whoever writes that `affected` helper is using it too.
 
+**The record.** Candidacy lives in a sibling `scope/` tree on the same ref, at
+`scope/<sha>/<unix-ts>-<hash>.json`:
+
+```json
+{ "target": "ios", "affected": false, "ts": 1744120134 }
+```
+
+All three fields are required on read. `affected` is never omitted when written
+and a record missing it is rejected rather than defaulted, because false and
+absent are different answers — and an event JSON is structurally valid
+candidacy JSON, so a record that strayed into the wrong tree would otherwise
+read back as a confident "unaffected" for the untargeted deploy. An empty
+`target` is refused on write for the same reason: empty means the untargeted
+deploy, so a forgotten field would record a real claim about a real flow.
+
+Records come back in timestamp order, which is what makes "the latest record
+wins" resolvable — git returns tree entries in filename order, which is
+lexicographic rather than chronological.
+
 **Three states, not two.** Reporting both directions carries more information
 than reporting only exclusions:
 

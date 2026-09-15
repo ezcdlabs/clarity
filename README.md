@@ -47,10 +47,11 @@ git clarity
 
 This opens an alt-screen TUI showing the most recent commits on `main` with their pipeline status. Press `q` to quit. No setup beyond install — clarity adds the events fetch refspec to your repo's git config the first time it runs.
 
-When `stdout` is not a terminal (e.g. piped to another command, redirected to a file, or invoked by an agent), `git clarity` automatically switches to a static plain-text rendering of the same view — header line plus HEAD / CI Passed / Deployed sections, no animation, no ANSI escapes. Force it in an interactive terminal with `--plain`. Two more flags shape the output in either mode:
+When `stdout` is not a terminal (e.g. piped to another command, redirected to a file, or invoked by an agent), `git clarity` automatically switches to a static plain-text rendering of the same view — header line plus HEAD / CI Passed / Deployed sections, no animation, no ANSI escapes. Force it in an interactive terminal with `--plain`. Three more flags shape the output in either mode:
 
 - `--show-shas` — include a short commit SHA per row. Off by default in both TUI and plain modes; agents acting on specific commits should turn this on.
 - `--limit N` — cap how many commits are walked. Defaults to 100; pass `0` for unlimited. When the cap is what ended the list, the last line says so and names the limit, so the bottom of a truncated scroll can't be mistaken for the start of the repository.
+- `--deploy=<flow>` — select one deploy flow in a repo with several. In plain mode it narrows the output to that flow's section; in the TUI it opens with that flow selected. Only meaningful alongside [deploy targets](#deploy-targets).
 
 The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
 
@@ -100,6 +101,10 @@ Inside your pipelines:
 ```
 
 In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, `failed`, or `skipped`.
+
+A monorepo that deploys several things adds an optional target to its deploy
+reports — `git clarity report deploy passed ios` — and the TUI gains a selectable
+flow per target. CI never takes one. See [Deploy targets](#deploy-targets).
 
 ### Reporting from GitHub Actions: `ezcdlabs/clarity`
 
@@ -285,7 +290,16 @@ events/
   def456/
     1744120140-c1d5e3.json
     1744120175-d2e6f4.json
+scope/
+  abc123/
+    1744119900-e5f7a1.json
 ```
+
+`scope/` is a sibling tree holding [candidacy](#candidacy-affected--unaffected)
+records. It is separate from `events/` because candidacy is not a pipeline event,
+and because every existing binary walks only `events/` — so a repo adopting
+candidacy stays readable by older clarity versions by construction rather than by
+luck.
 
 ### Event filename
 
@@ -299,9 +313,10 @@ Timestamp first for natural sort order. Short UUID suffix for uniqueness when mu
 
 ```json
 {
-  "stage": "ci",
+  "stage": "deploy",
   "status": "passed",
   "ts": 1744120134,
+  "target": "ios",
   "ci": {
     "system": "github-actions",
     "run_id": "12345",
@@ -312,6 +327,13 @@ Timestamp first for natural sort order. Short UUID suffix for uniqueness when mu
 ```
 
 The **core schema** is `stage`, `status`, and `ts`. These three fields are required and stable.
+
+`target` is optional and valid only on `deploy` events — it names which deployable
+thing this event is about. Absent means the repo's untargeted deploy. See
+[Deploy targets](#deploy-targets). It lives in the JSON rather than in the file
+path so that adding it doesn't change `ReadEvents`' shape for existing readers;
+filenames are content-addressed, so two events differing only by target already
+hash to different files.
 
 The optional **`ci` block** is opaque metadata captured from the environment when available. Clarity opportunistically reads common env vars (`GITHUB_*`, `GITLAB_*`, `CI_*`) and populates the block. Renderers may surface this metadata where useful but never depend on its presence.
 
@@ -334,9 +356,276 @@ The trade-off is that events aren't directly inspectable with `git notes show`. 
 
 For each commit, the renderer walks all event files under `events/<sha>/`, sorts by timestamp, and computes the latest status per stage. This is what makes clarity feel different from a "run history" view — retries don't clutter the timeline; the user sees the current state of each stage per commit.
 
-### The header badges
+### Deploy targets
 
-The `ci: ✓ · deploy: ✓` badges on the header line summarise the whole branch in two characters, so which event they speak for matters. Each badge takes **the status of that stage on the newest commit that has resolved it** — not the latest event for the stage overall.
+A monorepo with one integrated CI can still have several things to deploy — a web
+backend, an iOS app, an Android app. Clarity models that as an optional `target`
+on deploy events, which the TUI presents as a strip of selectable deploy flows.
+The intent is to make a monorepo feel like several polyrepos without becoming a
+multi-repo dashboard: one flow on screen at a time, one commit list underneath
+them all.
+
+**CI never takes a target.** `git clarity report ci passed ios` is an error, not a
+filter. A target that can pass CI on its own is not integrated with the rest of
+the repo, and the second word in "continuous integration" is the one doing the
+work. CI answers one question for the whole commit; only deploy fans out. The
+practical consequence is that "is main green?" has exactly one answer no matter
+which flow is selected — which is what keeps this from degenerating into a
+per-subsystem status board.
+
+**An untargeted deploy is a flow of its own, not a shared one.** `deploy passed`
+and `deploy passed ios` produce two flows, not one flow plus an overlay. A team
+adding mobile doesn't have to touch the web pipeline in the same commit.
+
+**Flows are declared in `.ezcd.json`,** which maps each flow to the target(s) whose
+events it contains:
+
+```json
+{
+  "clarity": {
+    "deploys": [
+      { "name": "web",     "targets": ["", "web"] },
+      { "name": "iOS",     "targets": ["ios"] },
+      { "name": "Android", "targets": ["android"] }
+    ]
+  }
+}
+```
+
+`""` is the untargeted deploy — the literal value in the data, not a keyword. When
+a flow's name is its only target the entry shortens to a bare string, so a repo
+that has never renamed anything writes `"deploys": ["web", "ios", "android"]`.
+The key is `deploys` rather than `tabs` because it describes the repo's
+deployable units, not a UI affordance: plain mode consumes the same config to
+produce stacked sections, and the file is useful documentation of what the
+monorepo actually ships.
+
+**Selecting a flow: `--deploy`.** A root flag, not a plain-mode one — plain mode
+narrows to that flow's section, and the TUI opens with it selected. The latter is
+how a monorepo gets the polyrepo feel that motivated targets in the first place:
+one terminal pane per subsystem, each pinned to its own flow, with the strip
+still showing the others' health so cross-flow visibility isn't traded away.
+
+The flag says `deploy` rather than `target` because it selects a flow, and a flow
+is not a target — `{"name": "web", "targets": ["", "web"]}` makes "the web
+target" ambiguous where "the web deploy" is not. Matching is forgiving: flow name
+first, case-insensitively, then a target name, so `--deploy=iOS` and
+`--deploy=ios` both land on the iOS flow. That requires one invariant at config
+load — a flow's name may not collide with another flow's target — checked
+alongside the rule that two flows may not claim the same target.
+
+An unknown value is an error naming the known flows. It must never fall back to
+rendering everything: a script or agent that quietly reported on the wrong
+subsystem is worse than one that failed.
+
+In plain mode each flow's section carries its name on the header line, so the
+grep-friendliness the plain renderer advertises (`grep ✗`, `grep deploying`)
+survives having several flows stacked — a hit can still be attributed to a flow.
+
+Declaration is what makes the config an **expectation**, and that is its real
+value — it gives a gap in either direction a name:
+
+- A declared flow with no events is a failed expectation: "we say we deploy
+  Android; nothing has ever reported one." That is a finding, and without
+  declaration it is invisible.
+- An event whose target matches no declared flow is an unexpected actual — a typo,
+  or a target someone added without updating config. When config is present
+  `git clarity report` rejects an undeclared target at write time, so the typo
+  fails the pipeline that made it. Stray events already on the ref still surface
+  as an extra flow marked unexpected, because a silently dropped deploy is the
+  worst outcome available.
+
+A repo with no config accepts and discovers everything and hides nothing, so the
+single-target case still needs no setup beyond install. The configuration cost
+lands only on repos that have opted into multiple deploy targets.
+
+**Many-to-one is for identity over time, not aggregation.** `{"name": "web",
+"targets": ["", "web"]}` is a web backend mid-rename: both forms land in one
+continuous flow, with no history rewrite, no force-push to the events ref, and no
+rename record in the data. The same mechanism covers `ios` → `mobile-ios` later.
+It is *not* for folding concurrently-live systems together — merging `ios` and
+`android` into one "mobile" flow makes "deployed" mean "one of them deployed" and
+averages two unrelated pipelines into one lead time.
+
+Renaming is therefore adding a target to an existing flow. A rename command that
+rewrote old events was considered and rejected: it requires a force-push to
+`refs/clarity/events`, and a force-push racing an in-flight reporter is the only
+unrecoverable write race in the system — every other loser simply replays its
+commit. It would also break backfill idempotency (content-addressed filenames
+would recreate the old target on a re-run) and destroy the audit property the
+per-file design exists to provide.
+
+**Flows never age out.** A target that last deployed months ago is the single most
+valuable cell on the screen for a team trying to improve delivery; a rule that
+hid it would be inverted against the point of the tool. Declared flows always
+render, however stale.
+
+Lead time and deployment frequency are computed per flow, measured to that flow's
+deploys. An untargeted deploy contributes nothing to `ios`. This is strictly more
+truthful than the single-flow view was for a monorepo, where a two-minute web
+deploy and a multi-day store review were averaged into one meaningless number.
+
+### Candidacy: affected / unaffected
+
+Flows share one commit list, so every trunk commit sits above every flow's last
+deploy. Left alone, an Android deploy weeks later scoops up hundreds of
+web-only commits and each contributes a lead time measured from its authoring
+time — turning Android's number into "the average age of every commit in the
+monorepo" rather than "how long Android changes take to ship". That poisons the
+DORA metric the tool exists to provide.
+
+The fix rests on separating two questions that had been collapsed into one:
+
+1. **Is commit X in the Android app?** No, definitively, whatever files it
+   touched. Integrated CI means a commit is indivisible, so the behind-count
+   stays unfiltered — and rightly: the binary is built from a tree containing all
+   of those commits, and a shared-library change breaking Android is exactly why
+   the CI is integrated. The batch-size risk is real.
+2. **How long did it take to deliver Android change Y?** Only meaningful for
+   commits that contained Android change.
+
+Candidacy answers (2) only. It changes lead time and DORA attribution, and
+touches neither the behind-count nor the deployed/not-deployed grouping.
+
+```yaml
+- run: |
+    for t in web ios android; do
+      if affected "$t"; then
+        git clarity report affected "$t"
+      else
+        git clarity report unaffected "$t"
+      fi
+    done
+```
+
+**Why not a status.** `started` / `passed` / `failed` are outcomes of an attempt.
+Candidacy is not an attempt — nothing was tried. It is a property of the commit,
+true from the moment the commit exists, which is why it can be reported before
+`ci started` has even run. `affected` is the word nx, turbo and bazel already
+use, so whoever writes that `affected` helper is using it too.
+
+**Three states, not two.** Reporting both directions carries more information
+than reporting only exclusions:
+
+| What the ref says | What it means |
+| --- | --- |
+| nothing | nobody has told us; every commit is a candidate (the default, and today's behaviour) |
+| `unaffected` on 336 of 340 | we know; this flow's lead time comes from the other four |
+| `affected` on all 340 | CI is explicitly saying everything affects this target — a different answer from silence |
+
+Because the default is "candidate", nothing moves for a repo that never reports
+candidacy. Same principle that makes `all` the default lead-time mode.
+
+**Rendering needs no new concept.** A non-candidate commit appears in that flow's
+log with no right-hand column and contributes nothing to the average — exactly
+how `reported` and `pipeline` modes already treat a commit with no events. The
+intent is to stop it skewing the number, not to hide that it shipped.
+
+**Candidacy records are not pipeline events.** The `reported` and `pipeline` lead
+time modes count "commits carrying at least one pipeline event"; a commit whose
+only record is `unaffected android` must not thereby acquire a lead time. The
+separate `scope/` tree makes that easy to get right and easy to get wrong by
+accident, so it carries a test.
+
+**Why clarity does not infer this from paths.** A config like
+`{"name": "android", "paths": ["apps/android/**"]}` is tempting — declarative, no
+CI changes, and it would work retroactively on history where events only fix
+things going forward. But which commits affect a target is a dependency-graph
+question, not a glob question; that is what bazel, nx and turbo exist for. A
+change under `libs/shared/` affects Android and matches no Android glob. Clarity
+records what the build system says and does not infer build semantics.
+
+### The header and the deploy strip
+
+The header answers two questions with different scopes: CI is repo-wide, deploys
+are per-flow. The layout says so by naming the group — `deploy:` labels the strip,
+so the flows read as sub-items of deploy rather than as peers of `ci`.
+
+A repo with one flow renders what it renders today, with the badge glyph changed
+from a tick to a dot:
+
+```
+your-app · ci: ● · deploy: ●
+```
+
+A repo with several gains the strip, and the header row becomes chrome:
+
+```
+your-app · ci: ● · deploy:  web ●   ios ●   android ◐
+```
+
+**The selected flow is cut out of the chrome, not raised above it.** The header
+row is painted one step off the terminal background; the selected tab is painted
+in the terminal background itself. It is therefore the only thing on that row
+sharing the body's colour, which reads as a tab continuous with the content it
+controls — the browser/editor idiom — and is a stronger signal than raising it
+would be.
+
+The surface is **derived from the real terminal background**, not picked from the
+palette. `lipgloss.BackgroundColor` gets the actual colour over OSC 11 and
+`lipgloss.Lighten(bg, 0.10)` gives the chrome, so the bar picks up each theme's own
+tint: Solarized's comes out blue, Gruvbox's warm, a light theme's is darkened
+instead. A colour chosen from the ANSI text palette cannot do this, which is why
+every fixed grey looked pasted on.
+
+Three consequences of that, all of which need handling rather than hoping:
+
+- **The query can fail** — no TTY, a terminal that ignores OSC 11, piped output.
+  There is no safe colour to lighten in that case, so the fallback is a flat ANSI
+  8 fill on the selected tab and no bar.
+- **Elevation needs truecolor.** On a 256-colour terminal the derived shade
+  quantises to the nearest cube entry and can land back on a flat grey; detect
+  that and take the same fallback rather than shipping a muddy approximation.
+- **The blank row below the header must stay body-coloured.** That is what the
+  cutout connects to, and it is the whole reason the tab metaphor works. It is
+  written deliberately today — `Model.View` emits `"\n\n"` between the header and
+  the viewport — and `headerHeight` merely sizes the viewport to match. From here
+  that row is load-bearing, so changing either without the other breaks the tab.
+
+**The bar runs the full width** and appears only when there is more than one flow.
+One flow renders flat, with no bar and nothing cut out, because a lone raised tab
+looks like a control and isn't one — the same reason `ci` must not look like a tab.
+`ci:` and `deploy:` stay lowercase, matching the header as it ships today.
+
+**Status sits after each name**, matching `ci: ●`. A dot immediately after
+`deploy:` would read as the deploy group's own status, which is not a thing that
+exists once flows are named.
+
+**Coloured dots are header-only.** `●` green / `●` red / `◐` yellow / `·` neutral
+summarise a whole flow, and the header has always been where clarity spends colour
+— the header is the summary, and it earns the colour that the per-row icons
+deliberately forgo. Per-commit rows are untouched: still `✓ / ✗ / spinner / ·`,
+still carrying meaning by shape, still reserving red for genuinely broken. The
+contrast is useful in itself, because it keeps a row glyph from being mistaken for
+a tab.
+
+Flows are selected with `1`–`9`, `tab` / `shift-tab`, or a mouse click. The arrow
+keys stay with the body, which already binds them to viewport scroll; for three to
+six flows direct jump beats cycling anyway. Selection is tracked by flow name
+rather than index, so a config change that reorders the strip doesn't move the
+selection out from under the user.
+
+On overflow each cell takes an equal share of the available width and renders what
+fits, in priority order: status, name. A flow is never hidden and never scrolled
+out of reach — the stuck deploy is the one most worth seeing and would be the one
+off-screen. (Herdr, whose tab treatment this otherwise follows, scrolls instead;
+that is right for a multiplexer with unbounded tabs and wrong here.)
+
+**A tab carries a name and a status, and nothing else.** Batch size and staleness —
+how many commits are waiting, how long since a flow last deployed — were designed
+as a second line under each tab and deliberately dropped. They cost a header row
+for every repo to serve the multi-target minority, and they were the only reason
+the strip needed to be more than one line.
+
+The information is not lost, it is just read in the body rather than the header: a
+flow's rows carry their own lead times, so a month-old batch reads as a month-old
+batch the moment that flow is selected. What the strip gives up is seeing that
+without selecting it. That is the trade, taken knowingly in favour of a header
+that costs nothing.
+
+### Why the badges follow the newest commit
+
+The `ci: ● · deploy: ●` badges on the header line summarise the whole branch in two characters, so which event they speak for matters. Each badge takes **the status of that stage on the newest commit that has resolved it** — not the latest event for the stage overall.
 
 Two rules follow from that, and they pull in different directions:
 
@@ -344,6 +633,10 @@ Two rules follow from that, and they pull in different directions:
 - **Recency is measured in commits, not timestamps.** Two pushes close together put two CI runs in flight at once, and the older commit's run can finish *last*: push a bad commit, revert it 60 seconds later, and the revert reports green seconds before the bad commit reports red. Ranking events by timestamp would then paint the header red for a commit that is no longer HEAD and was already reverted — while `deploy` stayed green, because the bad commit never emitted a deploy event to overtake with (its deploy job `needs: build`, so it was skipped). That asymmetry between the two badges is the signature of the bug. The newest commit with an answer is the one the header speaks for; a commit that has gone quiet on a stage defers to the one below it.
 
 Per-commit rows are unaffected — they were always scoped to their own commit.
+
+**The rule is applied per flow.** Each strip cell resolves this over that flow's
+deploy events alone, so one flow's failure cannot paint another's badge. `ci` is
+the exception and resolves over the whole commit, because it does not fan out.
 
 ### Fetch refspec
 
@@ -363,7 +656,7 @@ This is a one-time, automatic step.
 A live updating terminal view of the most recent commits on the current branch (default: `main`), with pipeline stages and statuses rendered per commit.
 
 ```
-your-app · ci: ✓ · deploy: ✓                                   press q to quit
+your-app · ci: ● · deploy: ●                                   press q to quit
 
 HEAD
   · grace   wip notes                                              30s
@@ -377,6 +670,10 @@ Deployed
   deployed 5m ago
   ✓ frank   tweak homepage                                      24m 10s
 ```
+
+Above is the single-flow case, which is what a repo with one deploy target
+renders. A repo with several turns that header row into chrome carrying a strip of
+selectable flows — see [The header and the deploy strip](#the-header-and-the-deploy-strip).
 
 Updates live as the underlying refs change. Polls the remote every 5 seconds (configurable) using git's lightweight `info/refs` endpoint to check whether the events ref or branch tip has moved, and only does a full fetch when SHAs differ.
 
@@ -429,7 +726,8 @@ Uses whatever git auth the user already has configured (SSH agent, git credentia
 Used inside pipelines, not by end users:
 
 ```
-git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status>
+git clarity report [--sha <sha>] [--at <rfc3339>] <stage> <status> [<target>]
+git clarity report [--sha <sha>] [--at <rfc3339>] affected|unaffected <target>
 ```
 
 Examples:
@@ -443,7 +741,7 @@ Examples:
 
 ### What it does
 
-1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else
+1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else. A `<target>` is accepted only for `deploy`, and only if declared in `.ezcd.json` when that file declares any
 2. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
 3. Builds the event JSON (core fields + auto-detected `ci` metadata block)
 4. Generates a unique filename: `<unix-ts>-<short-uuid>.json`
@@ -486,6 +784,68 @@ Uses whatever git credentials are already available to the CI runner. In GitHub 
 ### Concurrency
 
 Two pipeline jobs reporting simultaneously cannot corrupt each other's data because they write different files. The only contention is the fast-forward push race on `refs/clarity/events`, handled by the same retry loop pattern pushq uses for its state branch.
+
+### The target argument
+
+An optional third positional argument names the deploy target:
+
+```yaml
+- run: ./deploy-web.sh && git clarity report deploy passed web
+- run: ./deploy-ios.sh && git clarity report deploy passed ios
+```
+
+Positional rather than a flag because it is a fixed-arity part of what is being
+reported, and because `report deploy passed ios` is what a pipeline step should
+read like. The batch JSONL form carries it as a `"target"` field, and the
+`ezcdlabs/clarity` action gains a `target:` input alongside its existing
+`stage` / `status` pair.
+
+Supplying one for `ci` is rejected, with the reason rather than just the rule:
+
+```
+error: ci takes no target — "ios"
+
+  A target that can pass CI on its own isn't integrated with the rest of
+  the repo. CI answers one question for the whole commit; only deploy
+  fans out.
+```
+
+This is an arity check on the third argument. Stages and statuses are already
+enforced against closed sets in `internal/report`; what targets cannot yet be
+checked against is a *set*, since a repo declaring no flows keeps an open
+vocabulary by design.
+
+Because the commit list is shared across flows, a commit that never triggered the
+iOS pipeline still sits above the last iOS deploy and reads as not-yet-shipped.
+That is true and should stay visible. What it must not do is pollute that flow's
+lead time — see [Candidacy](#candidacy-affected--unaffected).
+
+### Reporting candidacy
+
+```
+git clarity report affected <target>
+git clarity report unaffected <target>
+```
+
+A second grammar under the same command, dispatched on the first token — which is
+unambiguous because `affected` is not a stage. Git itself does this throughout.
+Forcing candidacy into the three-slot stage/status/target shape would need a
+filler word and buy nothing, because candidacy has no status: it is a property,
+not an outcome.
+
+The record lands in the `scope/` tree rather than `events/`. Everything else is
+shared with stage reporting: the same `--sha` and `--at` overrides, the same
+content-addressed filenames, and the same optimistic push loop. Two requirements
+fall out of that sharing and need meeting when it is built — the echoed
+fully-explicit command must be able to reproduce this grammar as well as the
+stage/status one, and a run touching both trees must land them in a single
+commit and a single push rather than racing itself.
+
+One gap is open: the grammar names a target, and the untargeted deploy has no
+name to give. Either candidacy is only expressible for named targets, or the
+grammar needs a way to say "the untargeted one" — deferred until a repo actually
+wants it, since a repo with a single untargeted flow has nothing to exclude a
+commit from.
 
 ### Explicit overrides for migration
 
@@ -542,9 +902,9 @@ ezcdlabs/clarity/
 ├── cmd/git-clarity/      # main binary (named git-clarity for git extension discovery)
 ├── clarityrefs/          # public package: read/write clarity's events
 ├── internal/
-│   ├── tui/              # terminal UI rendering
+│   ├── adapters/tui/     # terminal UI rendering
 │   ├── report/           # the `report` subcommand logic
-│   ├── events/           # ref read/write helpers, optimistic push loop
+│   ├── refs/             # fetch refspec configuration
 │   └── ci/               # opportunistic CI env var detection
 └── go.mod
 ```
@@ -560,12 +920,23 @@ type Event struct {
     Stage  string
     Status string
     Time   time.Time
+    Target string             // deploy only; "" is the untargeted deploy
     CI     map[string]string  // optional, may be empty
 }
 
 func ReadEvents(repoPath, sha string) ([]Event, error)
 func ReadAllEvents(repoPath string) (map[string][]Event, error)
 func WriteEvent(repoPath, remote, sha string, event Event) error
+
+// Candidacy lives in the sibling scope/ tree, not in events/.
+type Scope struct {
+    Target   string
+    Affected bool
+    Time     time.Time
+}
+
+func ReadAllScope(repoPath string) (map[string][]Scope, error)
+func WriteScope(repoPath, remote, sha string, scope Scope) error
 ```
 
 Reads operate on the local events ref only — callers (typically the watcher) fetch first. `WriteEvent` fetches the remote ref before writing and pushes after, retrying on fast-forward rejection so concurrent reporters never lose events. Repository handles are passed as paths rather than `*git.Repository` so callers don't have to depend on a specific go-git version.
@@ -708,7 +1079,10 @@ Three layers of defence, because none is sufficient alone:
 - **Historical retention / `git clarity gc`** — events can grow unbounded; a pruning command for old events
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
 - **Auto-detect current branch** — the TUI currently hardcodes `main`; defaulting to the current checkout (or accepting `--branch`) is straightforward once the need arises
-- **Stage and status validation** — `git clarity report` currently accepts any string. The README enumerates valid statuses (`started`, `passed`, `failed`, `skipped`) but they aren't enforced. Validation would catch typos in CI configs at the cost of locking in the vocabulary; defer until a stable set is established
+- **Per-target GitHub Actions source** — the `clarity.github` config maps one workflow/job set per stage, so the GitHub source is single-flow. Deploy targets currently require the events ref. Extending the config to a per-target deploy mapping (and `init --github` to ask for it) is the notable follow-on cost of the target model
+- **Last deploy beyond the commit window** — a flow whose last deploy predates the loaded window renders "no deploy in the last N commits" rather than a real age, because the events it would need aren't loaded. A deeper targeted walk for declared flows would recover the number if the message proves too vague
+- **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for
+- **Target name validation without config** — stages and statuses are enforced against closed sets in `internal/report`. Target names can't be: with no `.ezcd.json` declaring flows, any string is accepted, so a typo creates a ghost flow. Declaring flows closes the set (see [Deploy targets](#deploy-targets)); a repo that hasn't declared any keeps the open vocabulary by design
 - **Watcher fetch error surfacing** — fetch failures in the polling loop are currently silent; the TUI shows the last successful snapshot with no indication that it has gone stale. A subtle "(stale)" marker on the header would close that loop
 - **JSON output mode** — `git clarity --json` for scripting and piping into other tools
 - **Configuration file** — a `.clarity.json` or `.git/config` section for per-repo settings (poll interval, branch, etc) once there are options worth configuring

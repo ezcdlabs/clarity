@@ -46,10 +46,18 @@ var noAutoGC = []string{"-c", "gc.auto=0", "-c", "maintenance.auto=false"}
 // Event is a single pipeline event for a commit. Stage, Status and Time are
 // the stable core schema. CI is opportunistic metadata captured from the
 // environment that produced the event; it may be empty.
+//
+// Target names which deployable thing a deploy event is about, and is valid
+// only on the deploy stage — CI answers one question for the whole commit and
+// never fans out. Empty means the repo's untargeted deploy, which is a flow in
+// its own right rather than one shared across the others. It lives in the JSON
+// rather than in the file path so adding it doesn't change ReadEvents' shape
+// for existing readers.
 type Event struct {
 	Stage  string
 	Status string
 	Time   time.Time
+	Target string
 	CI     map[string]string
 }
 
@@ -58,6 +66,7 @@ type eventJSON struct {
 	Stage  string            `json:"stage"`
 	Status string            `json:"status"`
 	Ts     int64             `json:"ts"`
+	Target string            `json:"target,omitempty"`
 	CI     map[string]string `json:"ci,omitempty"`
 }
 
@@ -66,6 +75,7 @@ func (e Event) marshal() ([]byte, error) {
 		Stage:  e.Stage,
 		Status: e.Status,
 		Ts:     e.Time.Unix(),
+		Target: e.Target,
 		CI:     e.CI,
 	})
 }
@@ -79,6 +89,7 @@ func unmarshalEvent(data []byte) (Event, error) {
 		Stage:  ej.Stage,
 		Status: ej.Status,
 		Time:   time.Unix(ej.Ts, 0),
+		Target: ej.Target,
 		CI:     ej.CI,
 	}, nil
 }
@@ -567,8 +578,11 @@ func isBrokenObjectError(err error) bool {
 // contentHash returns a short, deterministic suffix derived from the event's
 // marshaled JSON. Same event content → same suffix, so two writes of the
 // identical event collapse into one tree entry rather than two random files.
-// That's what makes a backfill re-run idempotent: filenames depend only on
-// the (sha, stage, status, time, ci) content the caller supplied.
+// That's what makes a backfill re-run idempotent: filenames depend only on the
+// marshaled event bytes — stage, status, time, target and the ci block. Target
+// being in there is load-bearing: two deploys to different targets in the same
+// second would otherwise hash alike and one would overwrite the other. (The
+// commit sha is not hashed; it is the directory the file lands in.)
 func contentHash(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:4])

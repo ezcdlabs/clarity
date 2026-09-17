@@ -747,6 +747,39 @@ Above is the single-flow case, which is what a repo with one deploy target
 renders. A repo with several turns that header row into chrome carrying a strip of
 selectable flows — see [The header and the deploy strip](#the-header-and-the-deploy-strip).
 
+**Nothing is allowed past the right edge.** A commit subject longer than the
+terminal used to push the lead time off-screen, and the viewport then scrolled
+sideways to reach a column that is supposed to be pinned to the edge. The
+subject is what yields: a clipped subject can still be read by widening the
+terminal, whereas a lead time that isn't rendered can't be recovered at all.
+Batch subheaders clip for the same reason.
+
+**The week's stats shed whole facts rather than vanishing.** The `Deployed`
+divider carries the week's deploy count and average lead time on its right.
+Those used to disappear the moment the *decorative* trailing rule stopped
+fitting, so they were lost at widths where they would still have rendered.
+
+They now drop a fact at a time from the left — the week number, then the count,
+leaving the average, which is the number worth reading:
+
+```
+ 54 ─────Deployed ──── W1970-02  1 deploy  2m 00s avg ────
+ 46 ─────Deployed ────── 1 deploy  2m 00s avg ────
+ 38 ─────Deployed ──────── 2m 00s avg ────
+ 26 ─────Deployed ────────────
+```
+
+Whole facts or none: a fragment like `…s avg` spends columns saying nothing, so
+below the width where the average fits intact the label goes and the rule takes
+the space back.
+
+**Clipping is measured in display columns over grapheme clusters.** Commit
+subjects are arbitrary text from `git log %s` — CJK at two columns per rune,
+emoji, ZWJ sequences, combining marks, and escape sequences, since nothing
+sanitises them. Slicing by rune index against a column budget overflows it for
+wide characters, can run past the end of the string, and can sever an escape so
+its colour bleeds across the rest of the row.
+
 Updates live as the underlying refs change. Polls the remote every 5 seconds (configurable) using git's lightweight `info/refs` endpoint to check whether the events ref or branch tip has moved, and only does a full fetch when SHAs differ.
 
 ### GitHub Actions as a live source

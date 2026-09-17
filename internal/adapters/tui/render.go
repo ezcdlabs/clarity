@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
@@ -184,7 +185,7 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	for _, batch := range g.InFlight {
 		// In-flight batches are never "live on production" — they're still
 		// deploying or stuck-failed. isLive only applies to passed batches.
-		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, false))
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, false, width))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -219,7 +220,7 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 				prevWeekKey = key
 			}
 		}
-		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0))
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0, width))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -243,16 +244,50 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 func renderLimitNotice(limit int, width int) string {
 	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
 	labelStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
-	label := labelStyle.Render(core.LimitNoticeLabel(limit))
+	// Clipped from the right, unlike the week stats: what matters here is that
+	// a limit was reached and which one, so the head of the sentence is the
+	// part worth keeping.
+	return rightAlignedRule(core.LimitNoticeLabel(limit), labelStyle, dashStyle, width, ClipRight)
+}
 
-	const trailing = 4
-	tail := dashStyle.Render(strings.Repeat("─", trailing))
-	used := lipgloss.Width(label) + trailing + 2
-	if width <= used {
-		return label + " " + tail + "\n"
+// rightAlignedRule draws "───── label ────" with the label pushed right.
+//
+// When it doesn't fit, the decoration goes before the words: the four trailing
+// dashes first, then the label clips. Emitting the label whole regardless —
+// which is what both callers used to do — produces a line wider than the
+// terminal, and one of those makes the entire viewport scroll sideways.
+func rightAlignedRule(
+	text string,
+	labelStyle, dashStyle lipgloss.Style,
+	width int,
+	clip func(string, int) string,
+) string {
+	const maxTrailing = 4
+	if width <= 0 {
+		return labelStyle.Render(text) + " " + dashStyle.Render(strings.Repeat("─", maxTrailing)) + "\n"
 	}
-	leading := dashStyle.Render(strings.Repeat("─", width-used))
-	return leading + " " + label + " " + tail + "\n"
+
+	budget := width - 2 // the spaces framing the label
+	if budget <= 0 {
+		return labelStyle.Render(clip(text, width)) + "\n"
+	}
+
+	trailing := maxTrailing
+	if trailing > budget-1 {
+		trailing = max(0, budget-1)
+	}
+	shown := clip(text, budget-trailing)
+	if shown == "" {
+		return dashStyle.Render(strings.Repeat("─", width)) + "\n"
+	}
+
+	leading := width - 2 - lipgloss.Width(shown) - trailing
+	if leading < 0 {
+		leading = 0
+	}
+	return dashStyle.Render(strings.Repeat("─", leading)) + " " +
+		labelStyle.Render(shown) + " " +
+		dashStyle.Render(strings.Repeat("─", trailing)) + "\n"
 }
 
 // renderWeekDivider is the less-prominent sibling of renderSectionDivider:
@@ -264,17 +299,7 @@ func renderLimitNotice(limit int, width int) string {
 func renderWeekDivider(s core.WeekStat, width int) string {
 	dashStyle := lipgloss.NewStyle().Foreground(colorGray)
 	labelStyle := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
-	label := labelStyle.Render(core.WeekDividerLabel(s))
-
-	const trailing = 4
-	tail := dashStyle.Render(strings.Repeat("─", trailing))
-	// 2 spaces frame the label on each side.
-	used := lipgloss.Width(label) + trailing + 2
-	if width <= used {
-		return label + " " + tail + "\n"
-	}
-	leading := dashStyle.Render(strings.Repeat("─", width-used))
-	return leading + " " + label + " " + tail + "\n"
+	return rightAlignedRule(core.WeekDividerLabel(s), labelStyle, dashStyle, width, ClipLeft)
 }
 
 // renderSectionDividerWithRight is renderSectionDivider with an extra right-
@@ -295,18 +320,70 @@ func renderSectionDividerWithRight(label string, leftColor color.Color, rightLab
 	}
 	boldLabel := labelStyle.Render(spacedLabel)
 
-	const trailingDashes = 4
-	rightRendered := rightStyle.Render(rightLabel)
 	leftUsed := rowAuthorColumn + lipgloss.Width(spacedLabel)
-	// 1 space before rightRendered + 1 space before trailing dashes:
-	rightUsed := 1 + lipgloss.Width(rightRendered) + 1 + trailingDashes
-	if width <= leftUsed+rightUsed {
-		// Not enough room for both labels — degrade to the plain section divider.
+
+	// What the week stats and their trailing rule may occupy, after the two
+	// spaces that separate them from the section label and from the edge.
+	budget := width - leftUsed - 2
+	if budget <= 0 {
+		// Genuinely no room: the section label wins, because "Deployed" is
+		// what the rows below it are grouped under.
 		return renderSectionDivider(label, leftColor, width)
 	}
-	middle := dashStyle.Render(strings.Repeat("─", width-leftUsed-rightUsed))
-	tail := dashStyle.Render(strings.Repeat("─", trailingDashes))
-	return leading + boldLabel + middle + " " + rightRendered + " " + tail + "\n"
+
+	// The stats shed whole facts from the left — the week number before the
+	// counts, the counts before the average — so the number worth reading is
+	// the last to survive. They used to be dropped the moment the *decorative*
+	// trailing rule stopped fitting, which counted decoration as mandatory and
+	// lost them at widths where they would still have rendered.
+	const trailing = 4
+	shown := ClipLeft(rightLabel, budget-trailing)
+	if shown == "" {
+		return renderSectionDivider(label, leftColor, width)
+	}
+
+	middle := width - leftUsed - 2 - lipgloss.Width(shown) - trailing
+	if middle < 0 {
+		middle = 0
+	}
+	return leading + boldLabel +
+		dashStyle.Render(strings.Repeat("─", middle)) + " " +
+		rightStyle.Render(shown) + " " +
+		dashStyle.Render(strings.Repeat("─", trailing)) + "\n"
+}
+
+// ClipLeft shortens text from its start, keeping the tail.
+//
+// The week label reads "W2026-38  4 deploys  6d 4h avg" — three self-contained
+// facts separated by double spaces — so whole facts are dropped before any
+// characters are, giving "4 deploys  6d 4h avg" and then "6d 4h avg". Cutting
+// mid-token instead produces fragments like "…0-02  4 deploys", which reads as
+// damage rather than as a shorter label. Character clipping is the last resort
+// for a final segment that still doesn't fit.
+//
+// The cut is measured in display columns over grapheme clusters, never by rune
+// index. A CJK label is two columns per rune, so index arithmetic against a
+// column budget both overflows it and can run off the end of the string.
+func ClipLeft(text string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= max {
+		return text
+	}
+
+	segments := strings.Split(text, "  ")
+	for i := 1; i < len(segments); i++ {
+		candidate := strings.Join(segments[i:], "  ")
+		if lipgloss.Width(candidate) <= max {
+			return candidate
+		}
+	}
+
+	// Not even the last fact fits. Returning a fragment of it — "…s avg", or
+	// a bare "…" — spends columns on something that says nothing, so the
+	// caller is told there is no room and drops the label entirely.
+	return ""
 }
 
 // rowAuthorColumn is the visible column at which renderRowInGroup places the
@@ -333,8 +410,16 @@ func renderSectionDivider(label string, color color.Color, width int) string {
 	boldLabel := labelStyle.Render(spacedLabel)
 
 	used := rowAuthorColumn + lipgloss.Width(spacedLabel)
-	if width <= used {
+	if width <= 0 {
 		return leading + boldLabel + "\n"
+	}
+	if width <= used {
+		// Narrower than the label itself: the leading rule goes first, then
+		// the label clips. A section header wider than the terminal is one
+		// over-wide line, and one is enough to make the viewport scroll.
+		lead := max(0, min(rowAuthorColumn, width-lipgloss.Width(spacedLabel)))
+		return dashStyle.Render(strings.Repeat("─", lead)) +
+			labelStyle.Render(ClipRight(spacedLabel, width-lead)) + "\n"
 	}
 	return leading + boldLabel + dashStyle.Render(strings.Repeat("─", width-used)) + "\n"
 }
@@ -346,7 +431,10 @@ func renderSectionDivider(label string, color color.Color, width int) string {
 // currently running in production), the passed subheader is escalated to
 // bold and prefixed with "live on production ·" so the reader can tell
 // at a glance which batch is the present state vs. settled history.
-func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isLive bool) string {
+// renderBatchSubheader labels a deploy batch. width clips the label rather
+// than letting it run past the right edge, since a subheader wide enough to
+// overflow makes the whole viewport horizontally scrollable.
+func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isLive bool, width int) string {
 	style := lipgloss.NewStyle().Foreground(colorGray).Italic(true)
 	switch b.Status {
 	case "started":
@@ -361,18 +449,18 @@ func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isL
 			// The currently-live batch is the present state, not a past
 			// event — bold blue with the "live on production" anchor.
 			return lipgloss.NewStyle().Foreground(colorBlue).Bold(true).
-				Render("  live on production · deployed"+ago) + "\n"
+				Render(fitLine("  live on production · deployed"+ago, width)) + "\n"
 		}
 		// Older deployed batches are settled history: italic blue.
 		return lipgloss.NewStyle().Foreground(colorBlue).Italic(true).
-			Render("  deployed"+ago) + "\n"
+			Render(fitLine("  deployed"+ago, width)) + "\n"
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
 			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
 		}
 		return lipgloss.NewStyle().Foreground(colorRed).Italic(true).
-			Render("  deploy failed"+ago) + "\n"
+			Render(fitLine("  deploy failed"+ago, width)) + "\n"
 	default:
 		return ""
 	}
@@ -404,17 +492,85 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 		}
 	}
 
-	if timer == "" {
-		return left
-	}
 	if width <= 0 {
+		if timer == "" {
+			return left
+		}
 		return left + "  " + timer
 	}
-	pad := width - lipgloss.Width(left) - lipgloss.Width(timer)
-	if pad < 2 {
-		pad = 2
+
+	// The subject is what yields when the row won't fit. A clipped subject can
+	// still be read by widening the terminal; a lead time pushed past the
+	// right edge cannot be read at all, and it used to take the viewport with
+	// it — the whole view became horizontally scrollable to reach a column
+	// that was supposed to be pinned to the edge.
+	gap := 0
+	if timer != "" {
+		gap = 2 // the minimum space before the timer
 	}
-	return left + strings.Repeat(" ", pad) + timer
+	fixed := lipgloss.Width(fmt.Sprintf("  %s  %s  ", icon, author))
+	room := width - fixed - lipgloss.Width(timer) - gap
+	if room < 0 {
+		// Even the author doesn't fit. It clips too, rather than letting the
+		// row run past the edge: the timer is pinned to the right and a row
+		// wider than the terminal makes the whole viewport scroll.
+		authorRoom := width - lipgloss.Width(fmt.Sprintf("  %s    ", icon)) - lipgloss.Width(timer) - gap
+		author = lipgloss.NewStyle().Foreground(colorGray).Render(ClipRight(view.Author, authorRoom))
+		fixed = lipgloss.Width(fmt.Sprintf("  %s  %s  ", icon, author))
+		room = width - fixed - lipgloss.Width(timer) - gap
+	}
+	if lipgloss.Width(subject) > room {
+		subject = ClipRight(subject, room)
+	}
+	left = fmt.Sprintf("  %s  %s  %s", icon, author, subject)
+	if lipgloss.Width(left) > width {
+		// Nothing left to give: clip the assembled row.
+		left = ClipRight(left, width)
+	}
+
+	if timer == "" {
+		return ClipRight(left, width)
+	}
+	pad := width - lipgloss.Width(left) - lipgloss.Width(timer)
+	if pad < 1 {
+		pad = 1
+	}
+	// A final clamp on the assembled row. Below roughly ten columns even the
+	// lead time alone is wider than the terminal, so there is nothing left to
+	// protect — but the row still must not be wider than the screen, because
+	// a single over-wide line is what makes the viewport pan sideways.
+	return ClipRight(left+strings.Repeat(" ", pad)+timer, width)
+}
+
+// fitLine clips a whole line to the terminal width. width <= 0 means unknown,
+// which leaves the text alone.
+func fitLine(text string, width int) string {
+	if width <= 0 || lipgloss.Width(text) <= width {
+		return text
+	}
+	return ClipRight(text, width)
+}
+
+// ClipRight shortens text to fit, marking the cut so a truncated subject is
+// never mistaken for a short one.
+//
+// Commit subjects are arbitrary user text — CJK at two columns per rune,
+// emoji, ZWJ sequences, combining marks, and escape sequences, since nothing
+// sanitises what `git log %s` returns. The cut is therefore made over grapheme
+// clusters in display columns: slicing by rune index against a column budget
+// overflows it for wide characters, runs past the end of the string, and can
+// sever an escape sequence so its colour bleeds across the rest of the row.
+func ClipRight(text string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= max {
+		return text
+	}
+	if max == 1 {
+		return "…"
+	}
+	return ansi.Truncate(text, max-1, "…")
 }
 
 // ciIcon returns the icon representing the commit's build/CI status. The

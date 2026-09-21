@@ -1,0 +1,15 @@
+name: probe-pin
+on: workflow_dispatch
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: What does the runner give a composite action?
+        run: |
+          echo "github.action_ref  = '${{ github.action_ref }}'"
+          echo "GITHUB_ACTION_REF  = '${GITHUB_ACTION_REF:-<unset>}'"
+
+      # Pin an OLD tag. If pinning works we get v0.12.2; if the ref is
+      # invisible to the action we get whatever "latest" is.
+      - uses: ezcdlabs/clarity@v0.12.2

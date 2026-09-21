@@ -245,18 +245,10 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 				_ = deleteLocalEventsRef(repoPath)
 				continue
 			}
-			if errors.Is(err, plumbing.ErrObjectNotFound) {
-				// The ref is present locally but part of what it points at
-				// is not, so this is not the missing-ref case it reads like.
-				// A complete fetch happens just above, which leaves an
-				// object store incomplete some other way — alternates, a
-				// mirror, a hand-pruned cache.
-				return fmt.Errorf(
-					"read events ref: %s was fetched from %s but its contents are "+
-						"not all present in the local object store (an incomplete "+
-						"clone — partial, alternates or a shared object cache): %w",
-					EventsRef, remote, err)
-			}
+			// The reader works through git, so an object the tree names but
+			// this repository cannot produce is reported by readEventsFiles
+			// itself, in git's own words. There is no missing-object case
+			// left to translate here.
 			return fmt.Errorf("read events ref: %w", err)
 		}
 

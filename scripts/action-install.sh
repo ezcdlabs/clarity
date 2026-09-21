@@ -11,10 +11,14 @@
 #
 # Optional:
 #   INPUT_VERSION       explicit version override (e.g. v0.1.1)
-#   GITHUB_ACTION_REF   ref the action was invoked at (used as default version
-#                       when it looks like a semver tag)
+#   GITHUB_ACTION_REF   ref the action was invoked at, when the runner sets it
+#   GITHUB_ACTION_PATH  where the runner unpacked the action; its last segment
+#                       is the ref, and inside a composite action it is the
+#                       only place that ref survives
 #   GH_TOKEN            GitHub token; only needed for "latest" resolution to
 #                       avoid the unauthenticated rate limit
+#   CLARITY_RESOLVE_ONLY  print the resolved version and exit, without
+#                       downloading anything (used by the resolution tests)
 
 set -euo pipefail
 
@@ -22,13 +26,51 @@ REPO="ezcdlabs/clarity"
 
 # --- 1. resolve version ------------------------------------------------------
 
+# Precedence: an explicit `version:` input, then the ref the action was pinned
+# at, then the latest release.
+#
+# Finding that ref is the awkward part, and getting it wrong is silent.
+# GITHUB_ACTION_REF is the documented way, but the runner does not set it
+# inside a composite action's steps — neither the environment variable nor the
+# `github.action_ref` context is populated, both come back empty. So
+# `uses: ezcdlabs/clarity@v0.3.1` fell through to "latest" and installed
+# whatever had shipped most recently, ignoring the pin without saying so.
+#
+# The ref does survive in GITHUB_ACTION_PATH, which is where the runner
+# unpacks the action:
+#
+#   /home/runner/work/_actions/ezcdlabs/clarity/v0.3.1
+#
+# so its last segment is the ref. GITHUB_ACTION_REF is still consulted first,
+# so this keeps working if the runner ever starts populating it.
+#
+# A ref that is not a semver tag — a branch, a commit sha, or a local
+# `uses: ./` checkout, whose path is the workspace rather than an unpack
+# directory — falls through to the latest release, which is what those refs
+# mean in practice.
+SEMVER_RE='^v[0-9]+(\.[0-9]+)*$'
+
 VERSION="${INPUT_VERSION:-}"
+SOURCE="input"
 if [ -z "$VERSION" ]; then
-    if [[ "${GITHUB_ACTION_REF:-}" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+    ACTION_PATH_REF="$(basename -- "${GITHUB_ACTION_PATH:-/}")"
+    if [[ "${GITHUB_ACTION_REF:-}" =~ $SEMVER_RE ]]; then
         VERSION="$GITHUB_ACTION_REF"
+        SOURCE="action-ref"
+    elif [[ "$ACTION_PATH_REF" =~ $SEMVER_RE ]]; then
+        VERSION="$ACTION_PATH_REF"
+        SOURCE="action-path"
     else
         VERSION="latest"
+        SOURCE="default"
     fi
+fi
+
+# Resolution is separable from installation so the precedence above can be
+# tested without a network round trip. See internal/actioninstall.
+if [ -n "${CLARITY_RESOLVE_ONLY:-}" ]; then
+    echo "version=$VERSION source=$SOURCE"
+    exit 0
 fi
 
 if [ "$VERSION" = "latest" ]; then

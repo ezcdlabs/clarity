@@ -31,7 +31,11 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 export INPUT_VERSION="$VERSION"
+# Both cleared: this harness always passes an explicit version, and leaving
+# either set would let the caller's environment decide which version gets
+# installed instead.
 export GITHUB_ACTION_REF=""
+export GITHUB_ACTION_PATH=""
 export RUNNER_OS RUNNER_ARCH
 export RUNNER_TOOL_CACHE="$WORK/cache"
 export GITHUB_PATH="$WORK/path"

@@ -54,3 +54,39 @@ jobs:
       - name: Verify
         shell: bash
         run: git-clarity --version
+
+  install-pinned:
+    name: Install (pinned tag, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Drives the installer exactly as `uses: ezcdlabs/clarity@v0.1.1` does:
+      # no version input, no GITHUB_ACTION_REF (the runner does not set one
+      # inside a composite action), nothing but the unpack path carrying the
+      # ref. This cannot be tested through `uses: ./`, which is why the bug
+      # survived — a local checkout has no ref in its path.
+      #
+      # The pinned version is deliberately an OLD one, so "we installed the
+      # latest release" cannot pass as success.
+      - name: Install using only the ref in the action path
+        shell: bash
+        run: |
+          fake="${RUNNER_TEMP}/_actions/ezcdlabs/clarity/v0.1.1"
+          mkdir -p "$fake"
+          INPUT_VERSION="" GITHUB_ACTION_REF="" GITHUB_ACTION_PATH="$fake" \
+            bash scripts/action-install.sh
+
+      - name: Assert the pinned version is the one that landed
+        shell: bash
+        run: |
+          got="$(git-clarity --version)"
+          echo "installed: $got"
+          case "$got" in
+            *0.1.1*) echo "pinned version honoured" ;;
+            *) echo "::error::pin ignored — expected 0.1.1, got: $got"; exit 1 ;;
+          esac

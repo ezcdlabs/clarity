@@ -32,11 +32,7 @@ runs:
       env:
         INPUT_VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ github.token }}
-      run: |
-        echo "PROBE ctx github.action_ref = '${{ github.action_ref }}'"
-        echo "PROBE env GITHUB_ACTION_REF = '${GITHUB_ACTION_REF:-<unset>}'"
-        echo "PROBE path GITHUB_ACTION_PATH = '${GITHUB_ACTION_PATH:-<unset>}'"
-        bash "${GITHUB_ACTION_PATH}/scripts/action-install.sh"
+      run: bash "${GITHUB_ACTION_PATH}/scripts/action-install.sh"
 
     - name: Report event
       if: ${{ inputs.stage != '' && inputs.status != '' }}

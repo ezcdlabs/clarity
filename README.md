@@ -892,6 +892,24 @@ One caveat: the auto-detected `ci` metadata block is part of that content. Re-ru
 
 Uses whatever git credentials are already available to the CI runner. In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed.
 
+### Which version the action installs
+
+`uses: ezcdlabs/clarity@v1.2.3` installs git-clarity v1.2.3. A pin that is quietly ignored is worse than one that fails: builds drift with no diff to show for it, and pinning is normally a supply-chain control.
+
+Honouring it is harder than it should be. `GITHUB_ACTION_REF` is the documented way to learn the ref an action was invoked at, but **the runner does not set it inside a composite action's steps** — neither the environment variable nor the `github.action_ref` context is populated, both come back empty. Measured, not assumed:
+
+```
+PROBE ctx github.action_ref = ''
+PROBE env GITHUB_ACTION_REF = '<unset>'
+PROBE path GITHUB_ACTION_PATH = '/home/runner/work/_actions/ezcdlabs/clarity/781bc347…'
+```
+
+The ref survives only in `GITHUB_ACTION_PATH`, where the runner unpacks the action, so its last segment is the ref. Resolution order is therefore: an explicit `version:` input, then `GITHUB_ACTION_REF` (still consulted first, so this keeps working if the runner ever starts setting it), then the ref parsed out of the unpack path, then the latest release.
+
+A ref that is not a plain version tag — a branch, a commit sha, or a local `uses: ./` checkout, whose path is the workspace rather than an unpack directory — means "track the newest release", because no release exists under that name to install.
+
+This regressed silently and shipped that way: for a period, every pinned `uses: ezcdlabs/clarity@vX` installed whatever had shipped most recently. Nothing caught it because the pinned-tag branch was the one path no test executed — the workflow self-test invokes the action as `uses: ./`, which has no ref in its path, and the local harness hardcoded an empty ref. Both now clear the ref explicitly *and* there are two tests that cannot pass without it: a hermetic resolution table in `internal/actioninstall` that runs on every push, and a workflow job that installs from nothing but a ref-carrying path and asserts the binary reports that exact version. The version it pins is deliberately an old one, so "we installed the latest release" cannot pass as success.
+
 ### Concurrency
 
 Two pipeline jobs reporting simultaneously cannot corrupt each other's data because they write different files. The only contention is the fast-forward push race on `refs/clarity/events`, handled by the same retry loop pattern pushq uses for its state branch.

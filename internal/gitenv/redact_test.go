@@ -130,6 +130,21 @@ func TestRedactOutput(t *testing.T) {
 			"fatal: could not read Username for 'https://github.com': terminal prompts disabled",
 			"fatal: could not read Username for 'https://github.com': terminal prompts disabled",
 		},
+		// The delimiter is the LAST "@" before the path, not the first.
+		// An email-style username is the normal form on Azure DevOps,
+		// Bitbucket and most self-hosted setups, and a password may simply
+		// contain an "@" — stopping at the first one strips the username
+		// and leaves the secret standing.
+		{
+			"email-style username, secret after the second at",
+			"fatal: could not read Password for 'https://me@corp.com:ghs_SECRET@dev.azure.com/o/r'",
+			"fatal: could not read Password for 'https://dev.azure.com/o/r'",
+		},
+		{
+			"at sign inside the password",
+			"fatal: could not read Password for 'https://user:p@ghs_SECRET@github.com/o/r.git'",
+			"fatal: could not read Password for 'https://github.com/o/r.git'",
+		},
 		{
 			"a credential carrying a raw newline",
 			"fatal: 'https://u:ghs_SECRET\n@github.com/x'",
@@ -171,6 +186,9 @@ func TestRedactOutput_NeverLeaksASecret(t *testing.T) {
 		"a 'https://" + secret + "@h/x' and \"https://" + secret + "@h2/y\"",
 		"line1 https://" + secret + "@h/x\nline2 https://" + secret + "@h2/y",
 		"https://u:" + secret + "\n@github.com/x",
+		"fatal: could not read Password for 'https://me@corp.com:" + secret + "@dev.azure.com/o/r'",
+		"fatal: could not read Password for 'https://user:p@" + secret + "@github.com/o/r.git'",
+		"fatal: unable to access 'https://a@b@c@" + secret + "@github.com/x'",
 	}
 	for _, o := range outputs {
 		if got := Redact(o); containsSecret(got, secret) {

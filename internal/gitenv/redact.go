@@ -22,7 +22,15 @@ import (
 // So both clarity's own text and git's output have to be scrubbed.
 
 // credentialInURL matches the userinfo of any scheme-qualified URL: a scheme,
-// "://", then everything up to an "@" that precedes the first "/".
+// "://", then everything up to the LAST "@" that precedes the first "/".
+//
+// Last, not first — "@" is deliberately absent from the negated class so the
+// greedy match runs past it. git and curl take the final "@" as the userinfo
+// delimiter, and stopping at the first one strips the username while leaving
+// the secret standing: `https://me@corp.com:<PAT>@dev.azure.com/…` becomes
+// `https://corp.com:<PAT>@dev.azure.com/…`. An email-style username is the
+// normal form on Azure DevOps, Bitbucket and most self-hosted setups, and a
+// password may simply contain an "@".
 //
 // Applied to free text, so it must not run past the authority into the path —
 // hence excluding "/" and quotes, which end an authority in practice.
@@ -33,7 +41,7 @@ import (
 // a runaway match — without it, "see https://example.com and mail bob@corp"
 // matches from the scheme all the way to an unrelated "@" and deletes the
 // line. Prose has spaces; URLs do not. The length bound is a second stop.
-var credentialInURL = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@'" ]{0,256}@`)
+var credentialInURL = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/'" ]{0,256}@`)
 
 // Redact is exported because every package that shells out to git embeds
 // git's output in its errors, and each one is a route to the same log.

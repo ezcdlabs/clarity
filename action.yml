@@ -35,7 +35,7 @@ runs:
       run: |
         echo "PROBE ctx github.action_ref = '${{ github.action_ref }}'"
         echo "PROBE env GITHUB_ACTION_REF = '${GITHUB_ACTION_REF:-<unset>}'"
-        echo "PROBE ctx github.action_repository = '${{ github.action_repository }}'"
+        echo "PROBE path GITHUB_ACTION_PATH = '${GITHUB_ACTION_PATH:-<unset>}'"
         bash "${GITHUB_ACTION_PATH}/scripts/action-install.sh"
 
     - name: Report event

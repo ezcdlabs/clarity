@@ -1141,6 +1141,8 @@ Two rules fall out, and between them they make clarity independent of the clone:
 1. **Reads of the events ref go through git, not go-git** — `git ls-tree` plus a single `git cat-file --batch`. git is the only thing that knows how this working copy was cloned, so it handles both layouts, and any future variation, by construction. It is also where a lazily-held blob gets fetched, which a direct object-store read cannot do at all.
 2. **Clarity's own fetch asks for a complete object graph** (`git fetch --no-filter`), whatever filter the working copy was cloned with. `--no-filter` arrived with partial clone in git 2.19; older git rejects the flag and the fetch retries without it, which is safe because such a git cannot have made a partial clone to begin with.
 
+Rule 1 is what makes it *work*; rule 2 is what makes it work *well*. Once reads go through git, a lazily-held blob would be fetched on access anyway — but one object at a time, mid-read, against a ref that can hold thousands of files. `--no-filter` collapses that into the single round trip that was already happening, and it is the difference between working and failing outright where lazy fetching is refused (`GIT_NO_LAZY_FETCH=1`, which CI setups set to keep builds off the network).
+
 Where go-git is still used — the commit-log walk, and writing objects — the repository is opened via `internal/gitopen`, which is `PlainOpen` plus an alternates filesystem rooted at `/` so a shared object store resolves. Writes themselves need none of this: creating loose objects in the local store always works, and the `git push` that follows reads them back with git's own rules.
 
 Trading a fix for one checkout against a break on another is the specific failure this is all guarding against: `actions/checkout` is what nearly every consumer uses, and every one of these paths keeps working exactly as before under it.
@@ -1151,6 +1153,10 @@ These look identical at the point of failure and mean opposite things, so they a
 
 - **The remote has no events ref yet.** The ordinary state of every repo before its first report. Not an error — the fetch returns `nil` and the write builds from an empty tree.
 - **The remote could not be reached.** A `*clarityrefs.FetchError`, naming the ref, the remote and its URL, with git's own output below it. This is where a credential or configuration problem surfaces, and it must never be phrased as something missing.
+
+**Credentials never appear in an error.** `git remote get-url` returns the remote verbatim, and embedding a token in it is routine in CI — GitHub's `x-access-token`, GitLab's `CI_JOB_TOKEN`, hand-rolled runners. git redacts credentials from its own diagnostics, so clarity does too: userinfo is stripped before a URL reaches a message, treating the username as secret alongside the password because `https://<token>@host/...` is at least as common as the paired form. A failed report must not write a live credential into a build log.
+
+**Git is asked for untranslated messages** — `LC_ALL=C` and an empty `LANGUAGE`, set once in `internal/gitenv`. Clarity classifies several outcomes by matching git's own text: "couldn't find remote ref" to recognise a repo that has never reported, "unknown option" to fall back on old git, plus the push-rejection and damaged-object matchers. Every one of those strings is gettext-translated, so under a non-English locale they stop matching and the behaviour they guard silently inverts — most sharply on the first report in a repo, where failing to recognise "no events ref yet" turns an ordinary first run into a hard failure.
 
 A fetch failure is fatal to a write rather than ignored. Continuing would rebuild the ref from an empty tree, so a push that somehow landed would discard every event already recorded — and a push rejected as non-fast-forward would send the retry loop back to a fetch that fails identically, forever.
 

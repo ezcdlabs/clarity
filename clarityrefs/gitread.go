@@ -162,11 +162,22 @@ func catFileBatch(repoPath string, hashes []string) ([][]byte, error) {
 	_, _ = io.Copy(io.Discard, stdout)
 	waitErr := cmd.Wait()
 
+	// git's own diagnosis matters more than the parse failure it caused —
+	// a refused lazy fetch, for instance, ends the stream mid-object and
+	// reads back as a bare EOF without it.
+	if detail := strings.TrimSpace(stderr.String()); detail != "" {
+		if readErr != nil {
+			return nil, fmt.Errorf("read objects: %w: %s", readErr, detail)
+		}
+		if waitErr != nil {
+			return nil, fmt.Errorf("read objects: %w: %s", waitErr, detail)
+		}
+	}
 	if readErr != nil {
 		return nil, fmt.Errorf("read objects: %w", readErr)
 	}
 	if waitErr != nil {
-		return nil, fmt.Errorf("read objects: %w: %s", waitErr, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("read objects: %w", waitErr)
 	}
 	return out, nil
 }
@@ -183,9 +194,14 @@ func readBatch(r *bufio.Reader, want int) ([][]byte, error) {
 		header = strings.TrimSuffix(header, "\n")
 
 		fields := strings.Fields(header)
-		// git answers an unreadable object with "<name> missing", which for a
-		// hash that came straight out of ls-tree means the object store is
-		// genuinely broken rather than merely shaped unusually.
+		if len(fields) == 2 && fields[1] == "missing" {
+			// The hash came straight out of ls-tree, so the tree references
+			// an object this repo cannot produce — held only on the server
+			// with lazy fetching refused, or a genuinely damaged store.
+			return nil, fmt.Errorf(
+				"object %s is named by %s but cannot be read from this repository",
+				fields[0], EventsRef)
+		}
 		if len(fields) != 3 {
 			return nil, fmt.Errorf("unexpected response %q", header)
 		}

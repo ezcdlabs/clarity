@@ -529,7 +529,7 @@ func remoteURL(repoPath, remote string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return redactURL(strings.TrimSpace(string(out)))
 }
 
 // pushEvents is the push step of the write loop. A var so tests can empty the

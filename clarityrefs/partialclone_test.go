@@ -14,6 +14,12 @@ import (
 	"github.com/ezcdlabs/clarity/internal/gittest"
 )
 
+// unreachableRemote is a remote that fails immediately and without a network
+// round trip: port 1 on loopback refuses instantly, where a bogus hostname
+// would depend on how the machine's DNS behaves.
+const unreachableHost = "127.0.0.1:1"
+const unreachableRemote = "http://" + unreachableHost + "/nope.git"
+
 // TestWriteEvent_UnderBloblessPartialClone is the regression test for a report
 // failing on any runner whose checkout makes a partial clone.
 //
@@ -107,7 +113,7 @@ func TestFetchEventsRef_MissingRefIsNotAnError(t *testing.T) {
 func TestFetchEventsRef_UnreachableRemoteReportsTheRemote(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)
-	gittest.SetRemoteURL(t, clone.Path, "origin", "https://example.invalid/nope.git")
+	gittest.SetRemoteURL(t, clone.Path, "origin", unreachableRemote)
 
 	err := clarityrefs.FetchEventsRef(clone.Path, "origin")
 	if err == nil {
@@ -121,7 +127,7 @@ func TestFetchEventsRef_UnreachableRemoteReportsTheRemote(t *testing.T) {
 	if fe.Remote != "origin" {
 		t.Errorf("FetchError.Remote = %q, want %q", fe.Remote, "origin")
 	}
-	if !strings.Contains(fe.URL, "example.invalid") {
+	if !strings.Contains(fe.URL, unreachableHost) {
 		t.Errorf("FetchError.URL = %q, want it to name the URL that was tried", fe.URL)
 	}
 
@@ -132,7 +138,7 @@ func TestFetchEventsRef_UnreachableRemoteReportsTheRemote(t *testing.T) {
 	if !strings.Contains(summary, "origin") {
 		t.Errorf("error summary should name the remote it tried, got: %s", summary)
 	}
-	if !strings.Contains(summary, "example.invalid") {
+	if !strings.Contains(summary, unreachableHost) {
 		t.Errorf("error summary should name the remote URL it tried, got: %s", summary)
 	}
 	if !strings.Contains(summary, clarityrefs.EventsRef) {
@@ -140,6 +146,16 @@ func TestFetchEventsRef_UnreachableRemoteReportsTheRemote(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "object not found") {
 		t.Errorf("a reachability failure must not be reported as a missing object, got: %s", err)
+	}
+
+	// git's own diagnosis is the actionable half — it is what names the
+	// transport or auth problem — so it has to survive into the message
+	// rather than being reduced to an exit status.
+	if strings.TrimSpace(fe.Output) == "" {
+		t.Error("FetchError.Output is empty; git's diagnosis was discarded")
+	}
+	if !strings.Contains(err.Error(), strings.TrimSpace(strings.SplitN(fe.Output, "\n", 2)[0])) {
+		t.Errorf("error should include git's own output, got: %s", err)
 	}
 }
 
@@ -220,7 +236,7 @@ func TestWriteEvent_UnreachableRemoteFailsFast(t *testing.T) {
 	if err := clarityrefs.WriteEvent(clone.Path, "origin", fakeSHA, seed); err != nil {
 		t.Fatalf("seeding failed: %v", err)
 	}
-	gittest.SetRemoteURL(t, clone.Path, "origin", "https://example.invalid/nope.git")
+	gittest.SetRemoteURL(t, clone.Path, "origin", unreachableRemote)
 
 	done := make(chan error, 1)
 	go func() {

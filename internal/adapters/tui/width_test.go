@@ -282,8 +282,11 @@ func TestRenderSnapshot_WeekStatsAreWholeFactsOrAbsent(t *testing.T) {
 			if strings.Contains(line, "…") {
 				t.Errorf("at width %d the week label was rendered as a fragment: %q", width, line)
 			}
-			// Whenever any of it shows, the average shows.
-			if strings.Contains(line, "deploy") && !strings.Contains(line, "avg") {
+			// Whenever a non-zero count shows, so does the average. Zero
+			// deploys legitimately has none — there is no average of nothing.
+			if strings.Contains(line, "deploys") &&
+				!strings.Contains(line, "0 deploys") &&
+				!strings.Contains(line, "avg") {
 				t.Errorf("at width %d the count survived but the average didn't: %q", width, line)
 			}
 		}

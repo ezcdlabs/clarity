@@ -199,11 +199,21 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	// carries the CURRENT week's DORA summary on its right side (saving a
 	// row); every other week gets a standalone divider below.
 	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
-	topWeekKey, topWeekStat, hasTopWeek := core.CurrentWeekStat(statsByWeek, now)
-	if hasTopWeek {
-		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))
-	} else {
+	topWeekKey, topWeekStat, weekState := core.CurrentWeekSummary(g, statsByWeek, now)
+	if weekState == core.WeekUnknown {
+		// The limit cut through this week, so its count is unknown rather than
+		// zero. Saying nothing is the honest answer; the limit notice at the
+		// bottom says why.
 		b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
+	} else {
+		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))
+	}
+	if !core.CurrentWeekHasDeploys(g, now) {
+		// No batch from this week follows, so the section opens empty — and
+		// reads that way, like HEAD and CI Passed above it. Without the blank
+		// line the next week's divider butts against this header and the eye
+		// binds its totals to it, which is the misreading this exists to stop.
+		b.WriteString("\n")
 	}
 
 	// A week is marked once. Batches are ordered by commit, not by deploy
@@ -211,10 +221,7 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	// tracking only the previous key would mark it again further down — and
 	// the current week, already on the header row, would be marked a second
 	// time below it.
-	weekShown := map[int64]bool{}
-	if hasTopWeek {
-		weekShown[topWeekKey] = true
-	}
+	weekShown := map[int64]bool{topWeekKey: true}
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()

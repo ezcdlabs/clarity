@@ -157,6 +157,21 @@ func WeekDividerLabel(s WeekStat) string {
 	if s.Deploys == 1 {
 		deploysLabel = "deploy"
 	}
+	// Nothing measured means no average to report. A placeholder in that slot
+	// is a column spent saying nothing, and "0s avg" is worse than nothing —
+	// it reads as an extraordinarily fast week rather than an empty one.
+	//
+	// The test is the average, not the count: a week can lose its passed
+	// batches to a later failed redeploy while keeping the lead times it
+	// actually measured, and discarding those would throw away real data.
+	//
+	// A single space, unusually, so the label is one unit. The divider sheds
+	// whole facts from the left when narrow, and a shed week number would
+	// leave a bare "0 deploys" sitting above another week's rows, reading as
+	// a statement about the section rather than about this week.
+	if s.AvgLead == 0 {
+		return fmt.Sprintf("W%d-%02d %d %s", s.Year, s.Week, s.Deploys, deploysLabel)
+	}
 	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
 		s.Year, s.Week, s.Deploys, deploysLabel, FormatElapsed(s.AvgLead))
 }
@@ -190,6 +205,64 @@ func LimitNoticeLabel(limit int) string {
 func CurrentWeekStat(statsByWeek map[int64]WeekStat, now time.Time) (int64, WeekStat, bool) {
 	year, week := now.UTC().ISOWeek()
 	key := WeekKey(year, week)
-	s, ok := statsByWeek[key]
-	return key, s, ok
+	if s, ok := statsByWeek[key]; ok {
+		return key, s, true
+	}
+	// The current week is reported whether or not it has deploys: a header
+	// that names this week and says zero is what makes two repos comparable at
+	// a glance, and it leaves no headline slot for an older week to occupy.
+	return key, WeekStat{Year: year, Week: week}, false
+}
+
+// WeekState is what can honestly be said about a week's throughput.
+type WeekState int
+
+const (
+	// WeekReported: the week has a counted bucket.
+	WeekReported WeekState = iota
+	// WeekEmpty: the week is in the window and nothing deployed in it.
+	WeekEmpty
+	// WeekUnknown: the week's bucket was dropped by truncation, so its count
+	// is unknown rather than zero. Saying "0 deploys" here would print a wrong
+	// number above the very deploys it denies.
+	WeekUnknown
+)
+
+// CurrentWeekSummary describes the current week for the Deployed header.
+//
+// A truncated window drops its oldest week, because a count cut through by the
+// limit understates in a way the reader cannot see. When every deploy in the
+// window falls in the current week, that dropped bucket *is* the current week
+// — so an absent bucket means "unknown", not "none", whenever the section
+// still shows deploys from it.
+func CurrentWeekSummary(g Groupings, statsByWeek map[int64]WeekStat, now time.Time) (int64, WeekStat, WeekState) {
+	key, stat, reported := CurrentWeekStat(statsByWeek, now)
+	switch {
+	case reported:
+		return key, stat, WeekReported
+	case currentWeekHasBatch(g, key):
+		return key, stat, WeekUnknown
+	default:
+		return key, stat, WeekEmpty
+	}
+}
+
+// CurrentWeekHasDeploys reports whether the Deployed section will render a
+// batch belonging to the current week directly below its header.
+func CurrentWeekHasDeploys(g Groupings, now time.Time) bool {
+	year, week := now.UTC().ISOWeek()
+	return currentWeekHasBatch(g, WeekKey(year, week))
+}
+
+func currentWeekHasBatch(g Groupings, key int64) bool {
+	for _, b := range g.Deployed {
+		if b.Status != "passed" {
+			continue
+		}
+		year, week := b.Time.UTC().ISOWeek()
+		if WeekKey(year, week) == key {
+			return true
+		}
+	}
+	return false
 }

@@ -575,3 +575,92 @@ func TestDeployedHeader_OutOfOrderRedeployMarksEachWeekOnce(t *testing.T) {
 		}
 	}
 }
+
+// deployedSnapshot builds commits deployed at the given instants, newest first.
+func deployedSnapshot(truncated bool, at ...time.Time) core.Snapshot {
+	var commits []core.CommitView
+	for i, d := range at {
+		commits = append(commits, core.CommitView{
+			SHA: string(rune('a' + i)), Author: "alice", Subject: "commit " + string(rune('a'+i)),
+			Time: d.Add(-time.Hour),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: d.Add(-30 * time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: d},
+			},
+		})
+	}
+	return core.Snapshot{RepoName: "clarity", Commits: commits, Truncated: truncated, Limit: 2}
+}
+
+// TestDeployedHeader_RenderedStates is the renderer half of the current-week
+// rule, which nothing else covers: every assertion elsewhere is on core, so
+// reverting both renderers to their old behaviour passed the whole suite.
+func TestDeployedHeader_RenderedStates(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) // W39
+	thisWeek := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
+	lastWeek := time.Date(2026, 9, 15, 9, 0, 0, 0, time.UTC)
+
+	render := func(snap core.Snapshot) string {
+		view := core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
+		return plain.RenderSnapshot("clarity", view, now, plain.Options{})
+	}
+	headerOf := func(out string) string {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(line, "Deployed") {
+				return line
+			}
+		}
+		return ""
+	}
+	// blankAfterHeader reports whether the line following the header is blank,
+	// which is what makes an empty section read like the empty HEAD and CI
+	// Passed above it instead of running into the next week's divider.
+	blankAfterHeader := func(out string) bool {
+		lines := strings.Split(out, "\n")
+		for i, line := range lines {
+			if strings.HasPrefix(line, "Deployed") && i+1 < len(lines) {
+				return strings.TrimSpace(lines[i+1]) == ""
+			}
+		}
+		return false
+	}
+
+	t.Run("deployed this week", func(t *testing.T) {
+		out := render(deployedSnapshot(false, thisWeek, lastWeek))
+		if got := headerOf(out); !strings.Contains(got, "W2026-39") || !strings.Contains(got, "avg") {
+			t.Errorf("header does not summarise this week: %q", got)
+		}
+		if blankAfterHeader(out) {
+			t.Errorf("a blank line separated the header from its own deploys:\n%s", out)
+		}
+	})
+
+	t.Run("nothing this week", func(t *testing.T) {
+		out := render(deployedSnapshot(false, lastWeek))
+		if got := headerOf(out); !strings.Contains(got, "W2026-39 0 deploys") {
+			t.Errorf("header does not report an empty current week: %q", got)
+		}
+		if strings.Contains(headerOf(out), "avg") {
+			t.Errorf("header claims an average of no deploys: %q", headerOf(out))
+		}
+		if !blankAfterHeader(out) {
+			t.Errorf("no blank line before the next week's divider:\n%s", out)
+		}
+	})
+
+	// The limit cut through this week, so its count is unknown rather than
+	// zero. Printing "0 deploys" above that week's own deploys is a wrong
+	// number in the one slot the whole rule exists to make trustworthy.
+	t.Run("truncated through this week", func(t *testing.T) {
+		out := render(deployedSnapshot(true, thisWeek, thisWeek.Add(-25*time.Hour)))
+		if got := headerOf(out); strings.Contains(got, "0 deploys") {
+			t.Errorf("header claims zero deploys for a week it is showing deploys from: %q\n%s", got, out)
+		}
+		if got := headerOf(out); strings.TrimSpace(got) != "Deployed" {
+			t.Errorf("header should say nothing about a truncated week, got %q", got)
+		}
+		if blankAfterHeader(out) {
+			t.Errorf("a blank line separated the header from deploys that follow it:\n%s", out)
+		}
+	})
+}

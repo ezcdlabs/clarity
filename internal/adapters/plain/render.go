@@ -202,16 +202,24 @@ func renderFlowBlock(
 	b.WriteString("\n")
 
 	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
-	topWeekKey, topWeekStat, hasTopWeek := core.CurrentWeekStat(statsByWeek, now)
-	if hasTopWeek {
-		// Merge the current week's summary onto the section header row so we
-		// don't burn a line on a divider that's about to be followed by the
-		// batch subheader for the same week.
+	topWeekKey, topWeekStat, weekState := core.CurrentWeekSummary(g, statsByWeek, now)
+	// The current week's summary sits on the section header row — it saves a
+	// line when there are deploys, and when there aren't it is what stops an
+	// older week occupying the headline. Unless the limit cut through this
+	// week, in which case its count is unknown rather than zero and the
+	// honest answer is to say nothing.
+	if weekState == core.WeekUnknown {
+		b.WriteString("Deployed\n")
+	} else {
 		b.WriteString("Deployed  ·  ")
 		b.WriteString(core.WeekDividerLabel(topWeekStat))
 		b.WriteString("\n")
-	} else {
-		b.WriteString("Deployed\n")
+	}
+	if !core.CurrentWeekHasDeploys(g, now) {
+		// No batch from this week follows, so the section opens empty and
+		// reads that way. Without the blank line the next week's divider butts
+		// against this header and the eye binds its totals to it.
+		b.WriteString("\n")
 	}
 
 	// A week is marked once. Batches are ordered by commit, not by deploy
@@ -219,10 +227,7 @@ func renderFlowBlock(
 	// tracking only the previous key would mark it again further down — and
 	// the current week, already on the header row, would be marked a second
 	// time below it.
-	weekShown := map[int64]bool{}
-	if hasTopWeek {
-		weekShown[topWeekKey] = true
-	}
+	weekShown := map[int64]bool{topWeekKey: true}
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()

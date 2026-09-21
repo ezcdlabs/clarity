@@ -232,8 +232,20 @@ func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
 			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(time.Minute)}}},
 	}}
 	out := plain.RenderSnapshot("clarity", view(snap), c.Add(time.Hour), plain.Options{})
-	if strings.Contains(out, "W2026") {
-		t.Errorf("expected no week divider when there are no deploys, got:\n%s", out)
+
+	// The Deployed header always names the current week, so the check is that
+	// no *standalone* divider appears — week dividers stay a Deployed-section
+	// feature and must not leak into HEAD or CI Passed.
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "W2026") {
+			continue
+		}
+		if !strings.HasPrefix(line, "Deployed") {
+			t.Errorf("week label outside the Deployed header: %q", line)
+		}
+		if !strings.Contains(line, "0 deploys") {
+			t.Errorf("a repo with no deploys reports %q", line)
+		}
 	}
 }
 

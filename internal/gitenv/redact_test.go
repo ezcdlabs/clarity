@@ -44,6 +44,14 @@ func TestRedactURL(t *testing.T) {
 		{"relative path with at sign", "we@ird/relative/repo.git", "we@ird/relative/repo.git"},
 		{"windows path with at sign", "C:\\repos\\we@ird", "C:\\repos\\we@ird"},
 		{"file url", "file:///srv/git/repo.git", "file:///srv/git/repo.git"},
+		{"ipv6 literal", "https://u:p@[::1]:443/x", "https://[::1]:443/x"},
+		{"percent-encoded at in username", "https://user%40host:p@github.com/x", "https://github.com/x"},
+		{"several at signs, last wins", "https://a@b@c@github.com/x", "https://github.com/x"},
+		{"uppercase scheme", "HTTPS://u:p@github.com/x", "HTTPS://github.com/x"},
+		{"git scheme", "git://u:p@github.com/x", "git://github.com/x"},
+		{"at sign in the path only", "https://github.com/o/we@ird.git", "https://github.com/o/we@ird.git"},
+		{"empty authority", "https:///x", "https:///x"},
+		{"a bare dash", "-", "-"},
 		{"empty", "", ""},
 	}
 	for _, tc := range tests {
@@ -122,6 +130,24 @@ func TestRedactOutput(t *testing.T) {
 			"fatal: could not read Username for 'https://github.com': terminal prompts disabled",
 			"fatal: could not read Username for 'https://github.com': terminal prompts disabled",
 		},
+		{
+			"a credential carrying a raw newline",
+			"fatal: 'https://u:ghs_SECRET\n@github.com/x'",
+			"fatal: 'https://github.com/x'",
+		},
+
+		// The match must stop at a space, or it runs from a scheme to an
+		// unrelated "@" and deletes the diagnostic instead of the secret.
+		{
+			"prose with an unrelated at-sign is untouched",
+			"see https://example.com and mail bob@corp",
+			"see https://example.com and mail bob@corp",
+		},
+		{
+			"an at-sign on a later line is untouched",
+			"fatal: https://github.com\n  remote: contact admin@x.com",
+			"fatal: https://github.com\n  remote: contact admin@x.com",
+		},
 		{"empty", "", ""},
 	}
 	for _, tc := range tests {
@@ -141,6 +167,10 @@ func TestRedactOutput_NeverLeaksASecret(t *testing.T) {
 		"fatal: unable to access 'https://u:" + secret + "@github.com/o/r.git/': 403",
 		"remote: rejected\nfatal: https://" + secret + "@github.com/o/r.git failed",
 		"ssh://" + secret + "@github.com/o/r.git",
+		"fatal: unable to access 'https://u:" + secret + "@[::1]:443/x': err",
+		"a 'https://" + secret + "@h/x' and \"https://" + secret + "@h2/y\"",
+		"line1 https://" + secret + "@h/x\nline2 https://" + secret + "@h2/y",
+		"https://u:" + secret + "\n@github.com/x",
 	}
 	for _, o := range outputs {
 		if got := Redact(o); containsSecret(got, secret) {

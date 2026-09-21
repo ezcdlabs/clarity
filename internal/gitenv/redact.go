@@ -22,9 +22,18 @@ import (
 // So both clarity's own text and git's output have to be scrubbed.
 
 // credentialInURL matches the userinfo of any scheme-qualified URL: a scheme,
-// "://", then everything up to an "@" that precedes the first "/". Applied to
-// free text, so it must not run past the authority into the path.
-var credentialInURL = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s'"]*@`)
+// "://", then everything up to an "@" that precedes the first "/".
+//
+// Applied to free text, so it must not run past the authority into the path —
+// hence excluding "/" and quotes, which end an authority in practice.
+//
+// Newlines are deliberately allowed inside the userinfo: a URL carrying a raw
+// newline there would otherwise slip through intact, and under-redacting
+// costs a live credential. A literal space is not, because that is what stops
+// a runaway match — without it, "see https://example.com and mail bob@corp"
+// matches from the scheme all the way to an unrelated "@" and deletes the
+// line. Prose has spaces; URLs do not. The length bound is a second stop.
+var credentialInURL = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@'" ]{0,256}@`)
 
 // Redact is exported because every package that shells out to git embeds
 // git's output in its errors, and each one is a route to the same log.

@@ -1143,7 +1143,9 @@ Two rules fall out, and between them they make clarity independent of the clone:
 
 Rule 1 is what makes it *work*; rule 2 is what makes it work *well*. Once reads go through git, a lazily-held blob would be fetched on access anyway — but one object at a time, mid-read, against a ref that can hold thousands of files. `--no-filter` collapses that into the single round trip that was already happening, and it is the difference between working and failing outright where lazy fetching is refused (`GIT_NO_LAZY_FETCH=1`, which CI setups set to keep builds off the network).
 
-Where go-git is still used — the commit-log walk, and writing objects — the repository is opened via `internal/gitopen`, which is `PlainOpen` plus an alternates filesystem rooted at `/` so a shared object store resolves. Writes themselves need none of this: creating loose objects in the local store always works, and the `git push` that follows reads them back with git's own rules.
+The commit-log walk goes through git for the same reason, which closes a third layout: a **shallow clone**. `--depth=1` is the actions/checkout default, so it is the shape most CI repositories have — and it records a graft boundary in `.git/shallow` whose oldest commit claims parents that were never downloaded. git honours the graft and stops; go-git does not read `.git/shallow`, followed the parent pointer into a missing object, and failed the entire walk. That surfaced as `git clarity --plain` dying with "context deadline exceeded".
+
+What is left for go-git is writing: building the blob, tree and commit objects a report commits. That needs none of this — creating loose objects in the local store always works whatever the clone's shape, and the `git push` that follows reads them back with git's own rules. **go-git is never used to read; git is.** That one line is the whole invariant, and it is what makes the clone's shape stop mattering.
 
 Trading a fix for one checkout against a break on another is the specific failure this is all guarding against: `actions/checkout` is what nearly every consumer uses, and every one of these paths keeps working exactly as before under it.
 

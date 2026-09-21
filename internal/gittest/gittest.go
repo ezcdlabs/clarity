@@ -365,3 +365,30 @@ func countObjects(t *testing.T, repoPath string) int {
 	}
 	return n
 }
+
+// NewShallowClone creates a clone truncated to the most recent commit
+// (`--depth=1`), which is what actions/checkout produces by default and
+// therefore the shape most CI repositories actually have.
+//
+// A shallow clone records a graft boundary in .git/shallow: the oldest commit
+// it holds claims parents that are deliberately absent. git honours the graft
+// and stops there; a walker that does not will follow the parent pointer into
+// an object that was never downloaded.
+//
+// Depth is only honoured over a real transport, so this clones over file://.
+func (r *Remote) NewShallowClone(t *testing.T) *Clone {
+	t.Helper()
+	if r.Path == "" {
+		t.Skip("shallow clone requires a local on-disk remote")
+	}
+
+	dir := t.TempDir()
+	run(t, dir, "git", "clone", "--depth=1", fileURL(r.Path), ".")
+	run(t, dir, "git", "config", "user.email", "test@example.com")
+	run(t, dir, "git", "config", "user.name", "Test")
+
+	if _, err := os.Stat(filepath.Join(dir, ".git", "shallow")); err != nil {
+		t.Fatalf("clone is not shallow (no .git/shallow); --depth was ignored: %v", err)
+	}
+	return &Clone{Path: dir, t: t}
+}

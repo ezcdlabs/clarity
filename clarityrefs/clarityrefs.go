@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/internal/gitenv"
-	"github.com/ezcdlabs/clarity/internal/gitopen"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -230,7 +229,7 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 			return err
 		}
 
-		repo, err := gitopen.Repo(repoPath)
+		repo, err := gogit.PlainOpen(repoPath)
 		if err != nil {
 			return fmt.Errorf("open repo: %w", err)
 		}
@@ -555,7 +554,7 @@ func pushEventsRef(repoPath, remote string) error {
 }
 
 func deleteLocalEventsRef(repoPath string) error {
-	repo, err := gitopen.Repo(repoPath)
+	repo, err := gogit.PlainOpen(repoPath)
 	if err != nil {
 		return err
 	}

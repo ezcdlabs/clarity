@@ -196,28 +196,34 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	// Deployed: blue lifecycle accent. Only completed (deploy:passed) batches.
 	// The first batch (newest passing deploy) is THE currently-live state in
 	// production; subsequent batches are settled history. The Deployed header
-	// also carries the TOPMOST week's DORA summary on its right side (saving
-	// a row) — only older weeks need standalone week dividers below.
+	// carries the CURRENT week's DORA summary on its right side (saving a
+	// row); every other week gets a standalone divider below.
 	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
-	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
+	topWeekKey, topWeekStat, hasTopWeek := core.CurrentWeekStat(statsByWeek, now)
 	if hasTopWeek {
 		b.WriteString(renderSectionDividerWithRight("Deployed", colorBlue, core.WeekDividerLabel(topWeekStat), width))
 	} else {
 		b.WriteString(renderSectionDivider("Deployed", colorBlue, width))
 	}
-	prevWeekKey := int64(-1)
+
+	// A week is marked once. Batches are ordered by commit, not by deploy
+	// time, so a redeploy of an older commit puts a week out of sequence and
+	// tracking only the previous key would mark it again further down — and
+	// the current week, already on the header row, would be marked a second
+	// time below it.
+	weekShown := map[int64]bool{}
 	if hasTopWeek {
-		prevWeekKey = topWeekKey
+		weekShown[topWeekKey] = true
 	}
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()
 			key := core.WeekKey(year, week)
-			if key != prevWeekKey {
+			if !weekShown[key] {
 				if s, ok := statsByWeek[key]; ok {
 					b.WriteString(renderWeekDivider(s, width))
 				}
-				prevWeekKey = key
+				weekShown[key] = true
 			}
 		}
 		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0, width))

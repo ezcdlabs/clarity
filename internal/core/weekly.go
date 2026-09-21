@@ -148,26 +148,6 @@ func IndexStatsByWeek(stats []WeekStat) map[int64]WeekStat {
 	return out
 }
 
-// FirstPassedWeekStat finds the topmost (newest) passed deploy batch and
-// returns its week key, the matching WeekStat, and whether a match was
-// found. Renderers use this so the Deployed section header can absorb the
-// topmost week's stats into its own divider row instead of emitting a
-// separate one immediately below it.
-func FirstPassedWeekStat(batches []DeployBatch, statsByWeek map[int64]WeekStat) (int64, WeekStat, bool) {
-	for _, batch := range batches {
-		if batch.Status != "passed" {
-			continue
-		}
-		year, week := batch.Time.UTC().ISOWeek()
-		key := WeekKey(year, week)
-		if s, ok := statsByWeek[key]; ok {
-			return key, s, true
-		}
-		return 0, WeekStat{}, false
-	}
-	return 0, WeekStat{}, false
-}
-
 // WeekDividerLabel formats a WeekStat as the inline text for a divider
 // ("W<year>-<NN>  N deploys  Xh Ym avg"). Shared by both renderers so the
 // format stays in one place — the TUI styles around it, the plain renderer
@@ -193,4 +173,23 @@ func WeekDividerLabel(s WeekStat) string {
 // that turns a deploy below the cut into a deploy that never happened.
 func LimitNoticeLabel(limit int) string {
 	return fmt.Sprintf("--limit %d reached · raise it, or --limit 0 for all commits", limit)
+}
+
+// CurrentWeekStat returns the stats for the ISO week containing now, if that
+// week has any deploys.
+//
+// It replaces "whatever week is newest" for the Deployed section's header,
+// because that header sits in the headline position and reads as the current
+// state. A repo whose last deploy was a week ago showed last week's totals
+// there — "36 deploys" where a glance takes it for this week's velocity. When
+// the current week is empty the header carries no stats at all and the week
+// below gets its own divider, which says plainly that it is not this week.
+//
+// The week is computed in UTC, like the buckets themselves, so the headline
+// doesn't depend on who is reading it.
+func CurrentWeekStat(statsByWeek map[int64]WeekStat, now time.Time) (int64, WeekStat, bool) {
+	year, week := now.UTC().ISOWeek()
+	key := WeekKey(year, week)
+	s, ok := statsByWeek[key]
+	return key, s, ok
 }

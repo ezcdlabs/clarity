@@ -480,3 +480,98 @@ func TestCandidacy_ExcludesNonCandidatesFromLeadTime(t *testing.T) {
 			"this is the monorepo-average bug candidacy exists to fix:\n%s", webRow)
 	}
 }
+
+// TestDeployedHeader_ShowsOnlyTheCurrentWeek is the bug two side-by-side TUIs
+// made obvious: one repo had deployed this week, the other's last deploy was a
+// week earlier — and both showed a week's totals merged onto the "Deployed"
+// header. That position reads as the current state, so "36 deploys" up there
+// is taken for this week's velocity when it was last week's.
+func TestDeployedHeader_ShowsOnlyTheCurrentWeek(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) // ISO week 39
+	thisWeek := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	lastWeek := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+
+	render := func(deployed time.Time) string {
+		snap := core.Snapshot{
+			RepoName: "clarity",
+			Commits: []core.CommitView{{
+				SHA: "a", Author: "alice", Subject: "ship it", Time: deployed.Add(-time.Hour),
+				Events: []clarityrefs.Event{
+					{Stage: "ci", Status: "passed", Time: deployed.Add(-30 * time.Minute)},
+					{Stage: "deploy", Status: "passed", Time: deployed},
+				},
+			}},
+		}
+		view := core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
+		return plain.RenderSnapshot("clarity", view, now, plain.Options{})
+	}
+
+	current := render(thisWeek)
+	deployedLine := func(out string) string {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "Deployed") {
+				return line
+			}
+		}
+		return ""
+	}
+
+	// Deployed this week: the header still carries the summary, which is the
+	// line-saving reason it was merged there in the first place — and it must
+	// appear *only* there. Marking it again below would spend the line the
+	// merge exists to save, and show the same totals twice.
+	if got := deployedLine(current); !strings.Contains(got, "W2026-39") {
+		t.Errorf("a deploy this week did not reach the Deployed header: %q", got)
+	}
+	if n := strings.Count(current, "W2026-39"); n != 1 {
+		t.Errorf("the current week is marked %d times, want 1:\n%s", n, current)
+	}
+
+	// Last deploy a week ago: the header carries nothing, and the week gets
+	// its own divider below where it cannot be mistaken for now.
+	stale := render(lastWeek)
+	if got := deployedLine(stale); strings.Contains(got, "W2026-38") {
+		t.Errorf("last week's totals were merged onto the Deployed header: %q", got)
+	}
+	if !strings.Contains(stale, "W2026-38") {
+		t.Errorf("last week's totals vanished entirely instead of moving below:\n%s", stale)
+	}
+}
+
+// TestDeployedHeader_OutOfOrderRedeployMarksEachWeekOnce — deploy batches are
+// ordered by commit, not by deploy time, so a redeploy of an older commit puts
+// a week out of sequence. Tracking only the previous week key then marks that
+// week again further down, and marks the current week a second time below the
+// header that already carries it.
+func TestDeployedHeader_OutOfOrderRedeployMarksEachWeekOnce(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) // ISO week 39
+	thisWeek := time.Date(2026, 9, 22, 9, 0, 0, 0, time.UTC)
+	lastWeek := time.Date(2026, 9, 15, 9, 0, 0, 0, time.UTC)
+
+	commit := func(sha string, authored, deployed time.Time) core.CommitView {
+		return core.CommitView{
+			SHA: sha, Author: "alice", Subject: sha, Time: authored,
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: authored.Add(time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: deployed},
+			},
+		}
+	}
+
+	// Newest commit shipped last week; the older one was redeployed this week.
+	snap := core.Snapshot{
+		RepoName: "clarity",
+		Commits: []core.CommitView{
+			commit("newer", lastWeek.Add(-time.Hour), lastWeek),
+			commit("older", lastWeek.Add(-48*time.Hour), thisWeek),
+		},
+	}
+	view := core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
+	out := plain.RenderSnapshot("clarity", view, now, plain.Options{})
+
+	for _, week := range []string{"W2026-39", "W2026-38"} {
+		if n := strings.Count(out, week); n != 1 {
+			t.Errorf("%s is marked %d times, want 1:\n%s", week, n, out)
+		}
+	}
+}

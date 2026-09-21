@@ -202,9 +202,9 @@ func renderFlowBlock(
 	b.WriteString("\n")
 
 	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
-	topWeekKey, topWeekStat, hasTopWeek := core.FirstPassedWeekStat(g.Deployed, statsByWeek)
+	topWeekKey, topWeekStat, hasTopWeek := core.CurrentWeekStat(statsByWeek, now)
 	if hasTopWeek {
-		// Merge the topmost week's summary onto the section header row so we
+		// Merge the current week's summary onto the section header row so we
 		// don't burn a line on a divider that's about to be followed by the
 		// batch subheader for the same week.
 		b.WriteString("Deployed  ·  ")
@@ -213,20 +213,26 @@ func renderFlowBlock(
 	} else {
 		b.WriteString("Deployed\n")
 	}
-	prevWeekKey := int64(-1)
+
+	// A week is marked once. Batches are ordered by commit, not by deploy
+	// time, so a redeploy of an older commit puts a week out of sequence and
+	// tracking only the previous key would mark it again further down — and
+	// the current week, already on the header row, would be marked a second
+	// time below it.
+	weekShown := map[int64]bool{}
 	if hasTopWeek {
-		prevWeekKey = topWeekKey
+		weekShown[topWeekKey] = true
 	}
 	for i, batch := range g.Deployed {
 		if batch.Status == "passed" {
 			year, week := batch.Time.UTC().ISOWeek()
 			key := core.WeekKey(year, week)
-			if key != prevWeekKey {
+			if !weekShown[key] {
 				if s, ok := statsByWeek[key]; ok {
 					b.WriteString(core.WeekDividerLabel(s))
 					b.WriteString("\n")
 				}
-				prevWeekKey = key
+				weekShown[key] = true
 			}
 		}
 		b.WriteString(plainBatchSubheader(batch, now, i == 0))

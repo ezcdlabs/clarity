@@ -47,9 +47,16 @@ func TestWriteEvent_BloblessCloneWithoutLazyFetching(t *testing.T) {
 }
 
 // TestReadEvents_ReportsGitsOwnDiagnosis covers the error path that state
-// produces when the blobs were *not* asked for up front — the read cannot
-// recover, so what it says has to be useful. git's "lazy fetching disabled"
-// warning is the line that explains it; a bare parse failure does not.
+// produces when the blobs were *not* asked for up front. The read cannot
+// recover, so what it says has to be useful.
+//
+// git answers in one of two shapes depending on its version, and both are
+// legitimate: it either reports the object as "missing" — which clarity
+// turns into a message naming the object and the ref — or ends the batch
+// stream mid-object and explains itself on stderr, where "lazy fetching
+// disabled" is the line that matters. The assertion is that the failure
+// identifies itself either way, rather than surfacing as a bare parse error
+// like "object 1 of 1: EOF".
 func TestReadEvents_ReportsGitsOwnDiagnosis(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	seed := remote.NewClone(t)
@@ -73,7 +80,11 @@ func TestReadEvents_ReportsGitsOwnDiagnosis(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a read failure when the blobs are absent and cannot be fetched")
 	}
-	if !strings.Contains(err.Error(), "lazy fetching") {
-		t.Errorf("error should carry git's own explanation, got: %v", err)
+	msg := err.Error()
+	identifies := strings.Contains(msg, clarityrefs.EventsRef) ||
+		strings.Contains(msg, "lazy fetching")
+	if !identifies {
+		t.Errorf("error should say what could not be read, naming the ref or "+
+			"carrying git's own explanation; got: %v", err)
 	}
 }

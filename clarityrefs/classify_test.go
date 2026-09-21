@@ -146,33 +146,6 @@ func TestIsFastForwardRejected(t *testing.T) {
 	}
 }
 
-// TestIsPackfileNotFound documents the transient go-git read error that
-// occurs when a concurrent git gc/repack deletes a packfile out from under an
-// in-progress read. The fetched objects are still reachable on the remote, so
-// the read is retried after re-fetching into a freshly-packed object store.
-func TestIsPackfileNotFound(t *testing.T) {
-	cases := []struct {
-		msg      string
-		expected bool
-	}{
-		// go-git's dotgit.ErrPackfileNotFound, bare and wrapped
-		{"packfile not found", true},
-		{"object not found: packfile not found", true},
-		{"read events ref: packfile not found", true},
-		// unrelated errors must not be treated as a transient pack race
-		{"object not found", false},
-		{"reference not found", false},
-		{"non-fast-forward update", false},
-		{"connection refused", false},
-	}
-	for _, c := range cases {
-		got := isPackfileNotFound(fmt.Errorf("%s", c.msg))
-		if got != c.expected {
-			t.Errorf("isPackfileNotFound(%q) = %v, want %v", c.msg, got, c.expected)
-		}
-	}
-}
-
 // TestIsMissingLocalObject documents what `git push` reports when a gc has
 // pruned objects this write created but had not yet made reachable. Each case
 // is a message observed from real git, one per object type the write

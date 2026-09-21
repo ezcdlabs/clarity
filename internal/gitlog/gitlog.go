@@ -108,7 +108,7 @@ func logRecords(repoPath, ref string, max int) ([]string, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("walk log: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("walk log: %w: %s", err, gitenv.Redact(strings.TrimSpace(stderr.String())))
 	}
 
 	var records []string

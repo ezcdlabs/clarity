@@ -29,7 +29,7 @@ func git(repoPath string, args ...string) error {
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git %v: %w\n%s", args, err, out)
+		return fmt.Errorf("git %v: %w\n%s", args, err, gitenv.Redact(string(out)))
 	}
 	return nil
 }

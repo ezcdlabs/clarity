@@ -157,7 +157,7 @@ func runFetch(repoPath, remote, refspec string) error {
 		if strings.Contains(string(out), "couldn't find remote ref") {
 			return nil
 		}
-		return fmt.Errorf("fetch: %w\n%s", err, out)
+		return fmt.Errorf("fetch: %w\n%s", err, gitenv.Redact(string(out)))
 	}
 	return nil
 }

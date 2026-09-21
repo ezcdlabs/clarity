@@ -26,11 +26,6 @@ import (
 // pipeline events.
 const EventsRef = "refs/clarity/events"
 
-// maxReadRetries bounds how many times updateEventsRef re-fetches after a
-// transient "packfile not found" read error before giving up, so a genuinely
-// unreadable repo fails fast instead of looping forever.
-const maxReadRetries = 3
-
 // maxWriteRetries bounds how many times updateEventsRef rebuilds and re-pushes
 // after a concurrent gc pruned the objects it had just written, so a repo with
 // a gc running continuously fails with the real error instead of looping.
@@ -99,11 +94,13 @@ func unmarshalEvent(data []byte) (Event, error) {
 // are responsible for fetching first. Returns an empty slice when the events
 // ref is not yet present locally.
 func ReadEvents(repoPath, sha string) ([]Event, error) {
-	files, _, err := readEventsFiles(repoPath)
+	prefix := "events/" + sha + "/"
+	files, _, err := readEventsFilesMatching(repoPath, func(name string) bool {
+		return strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".json")
+	})
 	if err != nil {
 		return nil, err
 	}
-	prefix := "events/" + sha + "/"
 	var events []Event
 	for name, content := range files {
 		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {
@@ -216,7 +213,6 @@ func WriteEvents(repoPath, remote string, eventsBySHA map[string][]Event) error 
 
 func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), message string) error {
 	defer deleteLocalEventsRef(repoPath)
-	readRetries := 0
 	writeRetries := 0
 	for {
 		// A remote with no events ref yet is fine and returns nil. A remote
@@ -236,19 +232,6 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 
 		files, parentHash, err := readEventsFiles(repoPath)
 		if err != nil {
-			// A concurrent git gc/repack can delete a packfile out from under
-			// go-git mid-read ("packfile not found"). The objects are still on
-			// the remote, so drop the stale local ref and re-fetch into a
-			// freshly-packed object store rather than failing the report.
-			if isPackfileNotFound(err) && readRetries < maxReadRetries {
-				readRetries++
-				_ = deleteLocalEventsRef(repoPath)
-				continue
-			}
-			// The reader works through git, so an object the tree names but
-			// this repository cannot produce is reported by readEventsFiles
-			// itself, in git's own words. There is no missing-object case
-			// left to translate here.
 			return fmt.Errorf("read events ref: %w", err)
 		}
 
@@ -456,7 +439,9 @@ func fetchEventsRef(repoPath, remote string) error {
 		Remote: remote,
 		URL:    remoteURL(repoPath, remote),
 		Ref:    EventsRef,
-		Output: out,
+		// git prints the password redacted but the username in the clear,
+		// and a token is commonly the username.
+		Output: gitenv.Redact(out),
 		Err:    err,
 	}
 }
@@ -520,7 +505,7 @@ func remoteURL(repoPath, remote string) string {
 	if err != nil {
 		return ""
 	}
-	return redactURL(strings.TrimSpace(string(out)))
+	return gitenv.RedactURL(strings.TrimSpace(string(out)))
 }
 
 // pushEvents is the push step of the write loop. A var so tests can empty the
@@ -540,7 +525,7 @@ func pushEventsRef(repoPath, remote string) error {
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%w\n%s", err, out)
+		return fmt.Errorf("%w\n%s", err, gitenv.Redact(string(out)))
 	}
 	return nil
 }
@@ -584,19 +569,6 @@ func isFastForwardRejected(err error) bool {
 		strings.Contains(msg, "incorrect old value provided") ||
 		strings.Contains(msg, "cannot lock ref") ||
 		strings.Contains(msg, "[rejected]")
-}
-
-// isPackfileNotFound reports whether err is go-git's transient
-// dotgit.ErrPackfileNotFound. It surfaces when a concurrent git gc/repack
-// deletes a .pack out from under an in-progress read: go-git has already
-// recorded the object's pack from its .idx, then fails to open the now-removed
-// .pack. The objects remain reachable on the remote, so the read is retried
-// after re-fetching into a freshly-packed object store.
-func isPackfileNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "packfile not found")
 }
 
 // missingLocalObjectRe matches git's diagnostics for an object it cannot read

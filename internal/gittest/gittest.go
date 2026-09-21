@@ -4,6 +4,7 @@ package gittest
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -294,4 +295,73 @@ func fileURL(path string) string {
 func SetRemoteURL(t *testing.T, repoPath, remote, url string) {
 	t.Helper()
 	run(t, repoPath, "git", "remote", "set-url", remote, url)
+}
+
+// NewSharedObjectClone creates a working copy whose objects live in a separate
+// mirror repository, reached through .git/objects/info/alternates.
+//
+// This is how CI caches avoid re-downloading a repo on every run — Blacksmith's
+// checkout action keeps a mirror between jobs and points the workspace at it,
+// and does not dissociate by default. The workspace itself ends up holding
+// essentially no objects, so anything reading .git/objects directly sees an
+// empty store while git itself reads the repo perfectly.
+//
+// The returned clone is verified to hold no objects of its own, so a test
+// using it cannot quietly pass against a self-contained store.
+func (r *Remote) NewSharedObjectClone(t *testing.T) *Clone {
+	t.Helper()
+	if r.Path == "" {
+		t.Skip("shared object store requires a local on-disk remote")
+	}
+
+	mirror := filepath.Join(t.TempDir(), "mirror.git")
+	run(t, t.TempDir(), "git", "clone", "--mirror", r.URL(), mirror)
+
+	dir := t.TempDir()
+	run(t, dir, "git", "init", "--initial-branch=main")
+	run(t, dir, "git", "config", "user.email", "test@example.com")
+	run(t, dir, "git", "config", "user.name", "Test")
+
+	info := filepath.Join(dir, ".git", "objects", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatalf("creating objects/info: %v", err)
+	}
+	alt := filepath.Join(mirror, "objects")
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(alt+"\n"), 0o644); err != nil {
+		t.Fatalf("writing alternates: %v", err)
+	}
+
+	run(t, dir, "git", "remote", "add", "origin", r.URL())
+	run(t, dir, "git", "fetch", "origin", "main")
+	run(t, dir, "git", "checkout", "-B", "main", "FETCH_HEAD")
+
+	if n := countObjects(t, dir); n != 0 {
+		t.Fatalf("workspace holds %d objects of its own; the alternate is not being relied on", n)
+	}
+	return &Clone{Path: dir, t: t}
+}
+
+// countObjects returns how many object files the repo holds locally, ignoring
+// the bookkeeping under objects/info.
+func countObjects(t *testing.T, repoPath string) int {
+	t.Helper()
+	root := filepath.Join(repoPath, ".git", "objects")
+	n := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "info" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		n++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("counting objects: %v", err)
+	}
+	return n
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ezcdlabs/clarity/internal/gitenv"
+	"github.com/ezcdlabs/clarity/internal/gitopen"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -99,33 +100,21 @@ func unmarshalEvent(data []byte) (Event, error) {
 // are responsible for fetching first. Returns an empty slice when the events
 // ref is not yet present locally.
 func ReadEvents(repoPath, sha string) ([]Event, error) {
-	repo, err := gogit.PlainOpen(repoPath)
+	files, _, err := readEventsFiles(repoPath)
 	if err != nil {
-		return nil, err
-	}
-	tree, err := loadEventsTree(repo)
-	if err != nil || tree == nil {
 		return nil, err
 	}
 	prefix := "events/" + sha + "/"
 	var events []Event
-	err = tree.Files().ForEach(func(f *object.File) error {
-		if !strings.HasPrefix(f.Name, prefix) || !strings.HasSuffix(f.Name, ".json") {
-			return nil
+	for name, content := range files {
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {
+			continue
 		}
-		content, err := f.Contents()
+		ev, err := unmarshalEvent(content)
 		if err != nil {
-			return err
-		}
-		ev, err := unmarshalEvent([]byte(content))
-		if err != nil {
-			return err
+			return nil, err
 		}
 		events = append(events, ev)
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	sort.SliceStable(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
 	return events, nil
@@ -134,38 +123,26 @@ func ReadEvents(repoPath, sha string) ([]Event, error) {
 // ReadAllEvents returns events for every commit that has any, keyed by SHA.
 // Each per-SHA slice is sorted by ascending timestamp.
 func ReadAllEvents(repoPath string) (map[string][]Event, error) {
-	repo, err := gogit.PlainOpen(repoPath)
+	out := make(map[string][]Event)
+	files, _, err := readEventsFiles(repoPath)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string][]Event)
-	tree, err := loadEventsTree(repo)
-	if err != nil || tree == nil {
-		return out, err
-	}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		if !strings.HasPrefix(f.Name, "events/") || !strings.HasSuffix(f.Name, ".json") {
-			return nil
+	for name, content := range files {
+		if !strings.HasPrefix(name, "events/") || !strings.HasSuffix(name, ".json") {
+			continue
 		}
-		rest := strings.TrimPrefix(f.Name, "events/")
+		rest := strings.TrimPrefix(name, "events/")
 		slash := strings.IndexByte(rest, '/')
 		if slash < 0 {
-			return nil
+			continue
 		}
 		sha := rest[:slash]
-		content, err := f.Contents()
+		ev, err := unmarshalEvent(content)
 		if err != nil {
-			return err
-		}
-		ev, err := unmarshalEvent([]byte(content))
-		if err != nil {
-			return err
+			return nil, err
 		}
 		out[sha] = append(out[sha], ev)
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	for sha, evs := range out {
 		sort.SliceStable(evs, func(i, j int) bool { return evs[i].Time.Before(evs[j].Time) })
@@ -253,12 +230,12 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 			return err
 		}
 
-		repo, err := gogit.PlainOpen(repoPath)
+		repo, err := gitopen.Repo(repoPath)
 		if err != nil {
 			return fmt.Errorf("open repo: %w", err)
 		}
 
-		files, parentHash, err := readEventsRefFiles(repo)
+		files, parentHash, err := readEventsFiles(repoPath)
 		if err != nil {
 			// A concurrent git gc/repack can delete a packfile out from under
 			// go-git mid-read ("packfile not found"). The objects are still on
@@ -296,7 +273,11 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 		// a tree identical to the parent's, the caller's events are already
 		// recorded. Skip the no-op commit + push so a re-run is truly free.
 		if parentHash != plumbing.ZeroHash {
-			if parent, err := repo.CommitObject(parentHash); err == nil && parent.TreeHash == treeHash {
+			// Via git, for the same reason the read above is: the parent
+			// commit can live in a mirror this process cannot open directly,
+			// and losing the short-circuit there would push an empty commit
+			// on every re-run of an already-recorded event.
+			if parentTree, ok := commitTree(repoPath, parentHash); ok && parentTree == treeHash {
 				return nil
 			}
 		}
@@ -351,46 +332,6 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 		}
 		return fmt.Errorf("push events ref: %w", pushErr)
 	}
-}
-
-func loadEventsTree(repo *gogit.Repository) (*object.Tree, error) {
-	ref, err := repo.Reference(plumbing.ReferenceName(EventsRef), true)
-	if err != nil {
-		return nil, nil // no events ref yet
-	}
-	commit, err := repo.CommitObject(ref.Hash())
-	if err != nil {
-		return nil, err
-	}
-	return commit.Tree()
-}
-
-func readEventsRefFiles(repo *gogit.Repository) (map[string][]byte, plumbing.Hash, error) {
-	files := make(map[string][]byte)
-	ref, err := repo.Reference(plumbing.ReferenceName(EventsRef), true)
-	if err != nil {
-		return files, plumbing.ZeroHash, nil
-	}
-	commit, err := repo.CommitObject(ref.Hash())
-	if err != nil {
-		return nil, plumbing.ZeroHash, err
-	}
-	tree, err := commit.Tree()
-	if err != nil {
-		return nil, plumbing.ZeroHash, err
-	}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		content, err := f.Contents()
-		if err != nil {
-			return err
-		}
-		files[f.Name] = []byte(content)
-		return nil
-	})
-	if err != nil {
-		return nil, plumbing.ZeroHash, err
-	}
-	return files, ref.Hash(), nil
 }
 
 // buildTree creates the blob objects and constructs a fully nested git tree.
@@ -614,7 +555,7 @@ func pushEventsRef(repoPath, remote string) error {
 }
 
 func deleteLocalEventsRef(repoPath string) error {
-	repo, err := gogit.PlainOpen(repoPath)
+	repo, err := gitopen.Repo(repoPath)
 	if err != nil {
 		return err
 	}

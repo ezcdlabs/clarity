@@ -6,9 +6,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	gogit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 // ScopePrefix is the sibling tree candidacy records live under, alongside
@@ -107,40 +104,28 @@ func WriteScope(repoPath, remote, sha string, scope Scope) error {
 // ReadAllScope returns every candidacy record on the ref, keyed by commit SHA.
 // Reads the local ref only; callers fetch first.
 func ReadAllScope(repoPath string) (map[string][]Scope, error) {
-	repo, err := gogit.PlainOpen(repoPath)
+	files, _, err := readEventsFiles(repoPath)
 	if err != nil {
 		return nil, err
-	}
-	tree, err := loadEventsTree(repo)
-	if err != nil || tree == nil {
-		return map[string][]Scope{}, err
 	}
 
 	out := map[string][]Scope{}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		if !strings.HasPrefix(f.Name, ScopePrefix) || !strings.HasSuffix(f.Name, ".json") {
-			return nil
+	for name, content := range files {
+		if !strings.HasPrefix(name, ScopePrefix) || !strings.HasSuffix(name, ".json") {
+			continue
 		}
-		rest := strings.TrimPrefix(f.Name, ScopePrefix)
+		rest := strings.TrimPrefix(name, ScopePrefix)
 		sha, _, ok := strings.Cut(rest, "/")
 		if !ok {
-			return nil
+			continue
 		}
-		content, err := f.Contents()
-		if err != nil {
-			return err
-		}
-		s, err := unmarshalScope([]byte(content))
+		s, err := unmarshalScope(content)
 		if err != nil {
 			// A record this build can't parse is skipped rather than fatal:
 			// one unreadable file must not blank out a repo's whole view.
-			return nil
+			continue
 		}
 		out[sha] = append(out[sha], s)
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	// Ascending by time, matching the event readers. A consumer resolving
 	// "the latest record wins" would otherwise be reading git tree order,
@@ -163,55 +148,39 @@ func ReadAllScope(repoPath string) (map[string][]Scope, error) {
 // files — roughly doubling the cost of a snapshot for every repo, including
 // the ones that report no candidacy at all.
 func ReadAllRef(repoPath string) (map[string][]Event, map[string][]Scope, error) {
-	repo, err := gogit.PlainOpen(repoPath)
+	files, _, err := readEventsFiles(repoPath)
 	if err != nil {
 		return nil, nil, err
-	}
-	tree, err := loadEventsTree(repo)
-	if err != nil || tree == nil {
-		return map[string][]Event{}, map[string][]Scope{}, err
 	}
 
 	events := map[string][]Event{}
 	scope := map[string][]Scope{}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		if !strings.HasSuffix(f.Name, ".json") {
-			return nil
+	for name, content := range files {
+		if !strings.HasSuffix(name, ".json") {
+			continue
 		}
 		switch {
-		case strings.HasPrefix(f.Name, "events/"):
-			sha, ok := shaFromPath(f.Name, "events/")
+		case strings.HasPrefix(name, "events/"):
+			sha, ok := shaFromPath(name, "events/")
 			if !ok {
-				return nil
+				continue
 			}
-			content, err := f.Contents()
+			e, err := unmarshalEvent(content)
 			if err != nil {
-				return err
-			}
-			e, err := unmarshalEvent([]byte(content))
-			if err != nil {
-				return nil
+				continue
 			}
 			events[sha] = append(events[sha], e)
-		case strings.HasPrefix(f.Name, ScopePrefix):
-			sha, ok := shaFromPath(f.Name, ScopePrefix)
+		case strings.HasPrefix(name, ScopePrefix):
+			sha, ok := shaFromPath(name, ScopePrefix)
 			if !ok {
-				return nil
+				continue
 			}
-			content, err := f.Contents()
+			s, err := unmarshalScope(content)
 			if err != nil {
-				return err
-			}
-			s, err := unmarshalScope([]byte(content))
-			if err != nil {
-				return nil
+				continue
 			}
 			scope[sha] = append(scope[sha], s)
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, err
 	}
 
 	sortEventsByTime(events)

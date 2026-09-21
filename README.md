@@ -1123,21 +1123,27 @@ The rule that falls out: **a renderer consumes the `View` it is handed and never
 
 ### go-git vs shelling out
 
-Use `go-git` for: reading the events ref, walking the commit log, reading event files from the tree.
+Use `go-git` for: walking the commit log, and building the objects a write commits.
 
-Shell out to `git` for anything that talks to a remote — `fetch` and `push` — because git handles credentials, transports and refspecs, and because it is the only thing that knows how this particular working copy was cloned. This matches pushq's pattern.
+Shell out to `git` for anything that talks to a remote — `fetch` and `push` — because git handles credentials, transports and refspecs. And for reading the events ref, because git is the only thing that knows how this particular working copy was cloned; see "Clone shapes and the object store" below. This matches pushq's pattern.
 
 ### Clone shapes and the object store
 
-Everything clarity reads, it reads out of the local object store through go-git. go-git resolves objects directly from `.git/objects`; it has no notion of a promisor remote, so an object that git would happily fetch on demand simply does not exist as far as go-git is concerned.
+Clarity is handed a working copy made by whatever checkout action the user's CI happens to run. It must not care how that clone was shaped — but it did, because it resolved objects through go-git, which reads `.git/objects` directly.
 
-That makes clarity sensitive to *how the repo was cloned* — a dependency it must not have, because the clone is made by whatever checkout action the user's CI happens to use, and clarity is handed the result.
+Two layouts that CI produces routinely break that assumption, and both present identically: a bare `object not found` against a ref that is present and correct, locally *and* on the remote.
 
-The case that bit: a **blobless partial clone** (`--filter=blob:none`, what checkout actions produce when a filter or sparse checkout is configured) sets `remote.origin.promisor`, and a later `git fetch` of any ref *inherits that filter*. Fetching `refs/clarity/events` brought the commit and its trees but left the event JSON blobs on the server, to be fetched lazily on first access. go-git then failed the first blob read with a bare `object not found` — while the ref it was reading was present and correct, both locally and on the remote.
+- **Partial clone** (`--filter=blob:none`). Sets `remote.origin.promisor`, and a later fetch *inherits the filter* — so fetching `refs/clarity/events` brings the commit and its trees but leaves the event JSON blobs on the server, to be retrieved lazily on access. git does that transparently; go-git has no promisor support.
+- **Shared object store** (`.git/objects/info/alternates`). How CI caches avoid re-downloading a repo on every run: the checkout keeps a mirror between jobs and points the workspace at it, so the workspace holds almost no objects of its own. go-git *has* alternates support, but its filesystem abstraction refuses to cross the repository boundary, so an absolute path to a mirror elsewhere on disk never resolves.
 
-So the rule: **clarity's own fetch always asks for a complete object graph** (`git fetch --no-filter`), regardless of the filter the working copy was cloned with. A full, shallow, bare or partial clone all end up with the same self-contained events ref locally, which is what every reader in the package already assumed.
+Two rules fall out, and between them they make clarity independent of the clone:
 
-`--no-filter` arrived with partial clone in git 2.19. Older git rejects the flag, so the fetch retries without it — safe, because a git that cannot make a partial clone has no filter to opt out of. Trading a fix for one checkout against a break on another is the specific failure mode that fallback exists to prevent.
+1. **Reads of the events ref go through git, not go-git** — `git ls-tree` plus a single `git cat-file --batch`. git is the only thing that knows how this working copy was cloned, so it handles both layouts, and any future variation, by construction. It is also where a lazily-held blob gets fetched, which a direct object-store read cannot do at all.
+2. **Clarity's own fetch asks for a complete object graph** (`git fetch --no-filter`), whatever filter the working copy was cloned with. `--no-filter` arrived with partial clone in git 2.19; older git rejects the flag and the fetch retries without it, which is safe because such a git cannot have made a partial clone to begin with.
+
+Where go-git is still used — the commit-log walk, and writing objects — the repository is opened via `internal/gitopen`, which is `PlainOpen` plus an alternates filesystem rooted at `/` so a shared object store resolves. Writes themselves need none of this: creating loose objects in the local store always works, and the `git push` that follows reads them back with git's own rules.
+
+Trading a fix for one checkout against a break on another is the specific failure this is all guarding against: `actions/checkout` is what nearly every consumer uses, and every one of these paths keeps working exactly as before under it.
 
 ### Distinguishing "no ref yet" from "cannot reach the ref"
 

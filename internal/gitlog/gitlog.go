@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ezcdlabs/clarity/internal/core"
+	"github.com/ezcdlabs/clarity/internal/gitopen"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -50,7 +51,7 @@ func Resolve(limit int) int {
 // --limit stopped here".
 func Walk(repoPath, branch string, limit int) ([]core.Commit, bool, error) {
 	limit = Resolve(limit)
-	repo, err := gogit.PlainOpen(repoPath)
+	repo, err := gitopen.Repo(repoPath)
 	if err != nil {
 		return nil, false, fmt.Errorf("open repo: %w", err)
 	}

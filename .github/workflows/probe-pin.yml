@@ -12,4 +12,4 @@ jobs:
 
       # Pin an OLD tag. If pinning works we get v0.12.2; if the ref is
       # invisible to the action we get whatever "latest" is.
-      - uses: ezcdlabs/clarity@062b19ca0c7200ea5ba8e07e80bde100b720c27e
+      - uses: ezcdlabs/clarity@781bc347b1d4731c13a625a24af190aaf385880d

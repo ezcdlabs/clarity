@@ -137,7 +137,14 @@ func fetchAll(repoPath, remote, branch string) error {
 		"+refs/heads/"+branch+":refs/remotes/"+remote+"/"+branch); err != nil {
 		return fmt.Errorf("fetch branch: %w", err)
 	}
-	_ = runFetch(repoPath, remote, "+"+clarityrefs.EventsRef+":"+clarityrefs.EventsRef)
+	// Via clarityrefs rather than runFetch: the events ref is read back
+	// through go-git, so it has to arrive with its blobs even when the working
+	// copy is a partial clone. The branch fetch above has no such requirement
+	// — only commit metadata is read from it, never file contents.
+	//
+	// Still best-effort. A watcher that cannot reach the remote should keep
+	// rendering the last known state rather than blank the view.
+	_ = clarityrefs.FetchEventsRef(repoPath, remote)
 	return nil
 }
 

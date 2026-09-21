@@ -243,7 +243,15 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 	readRetries := 0
 	writeRetries := 0
 	for {
-		_ = fetchEventsRef(repoPath, remote) // may not exist yet; that's fine
+		// A remote with no events ref yet is fine and returns nil. A remote
+		// that could not be reached is not: continuing would rebuild the ref
+		// from an empty tree, so a push that did somehow succeed would
+		// discard every event already recorded, and one that was rejected as
+		// non-fast-forward would send this loop around to fetch and fail
+		// again forever. Surface it instead.
+		if err := fetchEventsRef(repoPath, remote); err != nil {
+			return err
+		}
 
 		repo, err := gogit.PlainOpen(repoPath)
 		if err != nil {
@@ -260,6 +268,18 @@ func updateEventsRef(repoPath, remote string, mutate func(map[string][]byte), me
 				readRetries++
 				_ = deleteLocalEventsRef(repoPath)
 				continue
+			}
+			if errors.Is(err, plumbing.ErrObjectNotFound) {
+				// The ref is present locally but part of what it points at
+				// is not, so this is not the missing-ref case it reads like.
+				// A complete fetch happens just above, which leaves an
+				// object store incomplete some other way — alternates, a
+				// mirror, a hand-pruned cache.
+				return fmt.Errorf(
+					"read events ref: %s was fetched from %s but its contents are "+
+						"not all present in the local object store (an incomplete "+
+						"clone — partial, alternates or a shared object cache): %w",
+					EventsRef, remote, err)
 			}
 			return fmt.Errorf("read events ref: %w", err)
 		}
@@ -447,19 +467,128 @@ func buildNestedTree(st storer.EncodedObjectStorer, blobs map[string]plumbing.Ha
 	return storeObject(st, enc)
 }
 
+// FetchError reports that clarity could not fetch the events ref from a
+// remote. It is deliberately distinct from the remote simply not having an
+// events ref yet, which is the ordinary first-run case and not an error at
+// all: that returns nil. Telling the two apart is the whole point — a report
+// that fails because the ref is unreachable used to be indistinguishable from
+// one that failed because the ref was missing, and the reader would go
+// looking for a ref that was present all along.
+type FetchError struct {
+	Remote string // remote name as configured, e.g. "origin"
+	URL    string // its URL, when it could be read; empty otherwise
+	Ref    string // the ref clarity tried to fetch
+	Output string // git's combined output
+	Err    error
+}
+
+func (e *FetchError) Error() string {
+	where := e.Remote
+	if e.URL != "" {
+		where = e.Remote + " (" + e.URL + ")"
+	}
+	msg := fmt.Sprintf("could not fetch %s from %s: %v", e.Ref, where, e.Err)
+	if out := strings.TrimSpace(e.Output); out != "" {
+		msg += "\n" + out
+	}
+	return msg
+}
+
+func (e *FetchError) Unwrap() error { return e.Err }
+
+// FetchEventsRef updates the local events ref from the remote, bringing the
+// whole object graph with it. Read operations in this package work on the
+// local ref only, so a caller that wants current data — the watcher, the TUI,
+// anything rendering a snapshot — fetches first.
+//
+// A remote with no events ref yet is not an error: it is what every repo
+// looks like before its first report. A remote that could not be reached is,
+// and comes back as a *FetchError naming the remote it tried.
+func FetchEventsRef(repoPath, remote string) error {
+	if remote == "" {
+		remote = "origin"
+	}
+	return fetchEventsRef(repoPath, remote)
+}
+
 func fetchEventsRef(repoPath, remote string) error {
-	cmd := exec.Command("git", append(noAutoGC, "fetch", remote, "+"+EventsRef+":"+EventsRef)...)
+	refspec := "+" + EventsRef + ":" + EventsRef
+	out, err := fetchRefspec(repoPath, remote, refspec)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(out, "couldn't find remote ref") {
+		return nil // no events reported yet; nothing to merge with
+	}
+	return &FetchError{
+		Remote: remote,
+		URL:    remoteURL(repoPath, remote),
+		Ref:    EventsRef,
+		Output: out,
+		Err:    err,
+	}
+}
+
+// fetchRefspec runs one fetch of a single refspec, asking for a complete
+// object graph.
+//
+// --no-filter is load-bearing. In a partial clone (remote.origin.promisor),
+// a fetch inherits the clone's filter, so fetching the events ref brings its
+// commit and trees but leaves the event JSON blobs on the server to be
+// retrieved lazily on first access. Plain git does that transparently; this
+// package reads the object store through go-git, which has no promisor
+// support and instead fails with a bare "object not found" — while the ref
+// being read is present and correct. Asking for the blobs up front keeps the
+// object store self-contained, which every reader here assumes.
+//
+// That makes clarity independent of how the working copy was cloned:
+// full, shallow, bare or partial all end up with the same complete events
+// ref locally.
+func fetchRefspec(repoPath, remote, refspec string) (string, error) {
+	out, err := runGitFetch(repoPath, "--no-filter", remote, refspec)
+	if err != nil && isUnknownOption(out) {
+		// A git too old to know --no-filter (it arrived alongside partial
+		// clone in 2.19) is also too old to have made a partial clone, so
+		// there is nothing to opt out of and the plain fetch is equivalent.
+		return runGitFetch(repoPath, "", remote, refspec)
+	}
+	return out, err
+}
+
+func runGitFetch(repoPath, flag, remote, refspec string) (string, error) {
+	args := make([]string, 0, len(noAutoGC)+4)
+	args = append(args, noAutoGC...)
+	args = append(args, "fetch")
+	if flag != "" {
+		args = append(args, flag)
+	}
+	args = append(args, remote, refspec)
+
+	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
 	cmd.Env = gitenv.Clean()
 	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// isUnknownOption reports whether git rejected a flag it does not recognise,
+// e.g. "error: unknown option `no-filter'".
+func isUnknownOption(out string) bool {
+	return strings.Contains(out, "unknown option") ||
+		strings.Contains(out, "unrecognized option")
+}
+
+// remoteURL returns the configured URL for a remote, or "" if it cannot be
+// read. Only used to make an error message concrete, so failure is not fatal.
+func remoteURL(repoPath, remote string) string {
+	cmd := exec.Command("git", "remote", "get-url", remote)
+	cmd.Dir = repoPath
+	cmd.Env = gitenv.Clean()
+	out, err := cmd.Output()
 	if err != nil {
-		msg := string(out)
-		if strings.Contains(msg, "couldn't find remote ref") {
-			return nil
-		}
-		return fmt.Errorf("fetch events ref: %w\n%s", err, msg)
+		return ""
 	}
-	return nil
+	return strings.TrimSpace(string(out))
 }
 
 // pushEvents is the push step of the write loop. A var so tests can empty the

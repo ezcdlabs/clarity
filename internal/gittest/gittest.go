@@ -245,3 +245,53 @@ func runOutput(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// NewBloblessClone creates a blobless partial clone (`--filter=blob:none`) of
+// the remote: the shape a checkout action produces when it passes a filter,
+// as Blacksmith's checkout does when sparse checkout is enabled.
+//
+// Such a clone has `remote.origin.promisor=true`, so a later `git fetch` of
+// any ref brings its commits and trees but leaves the blobs on the server, to
+// be fetched lazily on first access. Plain `git` handles that transparently;
+// a library reading the object store directly does not, which is the shape
+// this helper exists to reproduce.
+//
+// The filter is only honoured over a real transport — `git clone --filter`
+// against a local path silently ignores it ("--filter is ignored in local
+// clones") — so this clones over file:// and enables uploadpack.allowfilter
+// on the remote. SSH-backed remotes have no on-disk Path to serve, so the
+// test is skipped there rather than silently producing a full clone.
+func (r *Remote) NewBloblessClone(t *testing.T) *Clone {
+	t.Helper()
+	if r.Path == "" {
+		t.Skip("blobless clone requires a local on-disk remote")
+	}
+	run(t, r.Path, "git", "config", "uploadpack.allowfilter", "true")
+
+	dir := t.TempDir()
+	run(t, dir, "git", "clone", "--filter=blob:none", fileURL(r.Path), ".")
+	run(t, dir, "git", "config", "user.email", "test@example.com")
+	run(t, dir, "git", "config", "user.name", "Test")
+
+	if got := runOutput(t, dir, "git", "config", "--get", "remote.origin.promisor"); strings.TrimSpace(got) != "true" {
+		t.Fatalf("clone is not a promisor/partial clone (remote.origin.promisor=%q); the filter was ignored", strings.TrimSpace(got))
+	}
+	return &Clone{Path: dir, t: t}
+}
+
+// fileURL converts an absolute on-disk path into a file:// URL, which is what
+// forces git to use a real transport instead of the local-clone shortcut.
+func fileURL(path string) string {
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p // Windows drive letters: file:///C:/...
+	}
+	return "file://" + p
+}
+
+// SetRemoteURL repoints a remote at a different URL, so a test can make the
+// remote unreachable without touching the rest of the repo.
+func SetRemoteURL(t *testing.T, repoPath, remote, url string) {
+	t.Helper()
+	run(t, repoPath, "git", "remote", "set-url", remote, url)
+}

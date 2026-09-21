@@ -1071,7 +1071,7 @@ func ReadAllScope(repoPath string) (map[string][]Scope, error)
 func WriteScope(repoPath, remote, sha string, scope Scope) error
 ```
 
-Reads operate on the local events ref only — callers (typically the watcher) fetch first. `WriteEvent` fetches the remote ref before writing and pushes after, retrying on fast-forward rejection so concurrent reporters never lose events. Repository handles are passed as paths rather than `*git.Repository` so callers don't have to depend on a specific go-git version.
+Reads operate on the local events ref only — callers (typically the watcher) fetch first, via `FetchEventsRef`, which brings the complete object graph (see "Clone shapes and the object store"). `WriteEvent` fetches the remote ref before writing and pushes after, retrying on fast-forward rejection so concurrent reporters never lose events. Repository handles are passed as paths rather than `*git.Repository` so callers don't have to depend on a specific go-git version.
 
 This mirrors the pattern pushq uses with its `pushqrefs` package — the ref format is the public contract, exposed via a Go package.
 
@@ -1123,9 +1123,32 @@ The rule that falls out: **a renderer consumes the `View` it is handed and never
 
 ### go-git vs shelling out
 
-Use `go-git` for: fetching, reading the events ref, walking the commit log, reading event files from the tree.
+Use `go-git` for: reading the events ref, walking the commit log, reading event files from the tree.
 
-Shell out to `git push` for writing — robust handling of credentials and refspecs. This matches pushq's pattern.
+Shell out to `git` for anything that talks to a remote — `fetch` and `push` — because git handles credentials, transports and refspecs, and because it is the only thing that knows how this particular working copy was cloned. This matches pushq's pattern.
+
+### Clone shapes and the object store
+
+Everything clarity reads, it reads out of the local object store through go-git. go-git resolves objects directly from `.git/objects`; it has no notion of a promisor remote, so an object that git would happily fetch on demand simply does not exist as far as go-git is concerned.
+
+That makes clarity sensitive to *how the repo was cloned* — a dependency it must not have, because the clone is made by whatever checkout action the user's CI happens to use, and clarity is handed the result.
+
+The case that bit: a **blobless partial clone** (`--filter=blob:none`, what checkout actions produce when a filter or sparse checkout is configured) sets `remote.origin.promisor`, and a later `git fetch` of any ref *inherits that filter*. Fetching `refs/clarity/events` brought the commit and its trees but left the event JSON blobs on the server, to be fetched lazily on first access. go-git then failed the first blob read with a bare `object not found` — while the ref it was reading was present and correct, both locally and on the remote.
+
+So the rule: **clarity's own fetch always asks for a complete object graph** (`git fetch --no-filter`), regardless of the filter the working copy was cloned with. A full, shallow, bare or partial clone all end up with the same self-contained events ref locally, which is what every reader in the package already assumed.
+
+`--no-filter` arrived with partial clone in git 2.19. Older git rejects the flag, so the fetch retries without it — safe, because a git that cannot make a partial clone has no filter to opt out of. Trading a fix for one checkout against a break on another is the specific failure mode that fallback exists to prevent.
+
+### Distinguishing "no ref yet" from "cannot reach the ref"
+
+These look identical at the point of failure and mean opposite things, so they are reported differently:
+
+- **The remote has no events ref yet.** The ordinary state of every repo before its first report. Not an error — the fetch returns `nil` and the write builds from an empty tree.
+- **The remote could not be reached.** A `*clarityrefs.FetchError`, naming the ref, the remote and its URL, with git's own output below it. This is where a credential or configuration problem surfaces, and it must never be phrased as something missing.
+
+A fetch failure is fatal to a write rather than ignored. Continuing would rebuild the ref from an empty tree, so a push that somehow landed would discard every event already recorded — and a push rejected as non-fast-forward would send the retry loop back to a fetch that fails identically, forever.
+
+The read side (the watcher) still ignores a failed events fetch: a TUI that cannot reach the remote should keep rendering the last known state rather than blank the view.
 
 ### TUI library
 

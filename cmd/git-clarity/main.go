@@ -59,6 +59,9 @@ func dispatch(args []string) error {
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:])
 	}
+	if len(args) > 0 && args[0] == "metrics" {
+		return runMetrics(args[1:])
+	}
 	opts, err := parseRootArgs(args)
 	if err != nil {
 		return err
@@ -69,6 +72,139 @@ func dispatch(args []string) error {
 		return runPlain(opts)
 	}
 	return runTUI(opts)
+}
+
+// runMetrics drives `git clarity metrics` — the weekly aggregates view.
+//
+// It reads exactly one snapshot and never polls. `git clarity` answers "is
+// main green right now?"; this answers "are we getting better?", which is a
+// question about trend and therefore about history, not about the last few
+// seconds. Nothing here goes stale in a way a refresh would fix.
+//
+// Interactive on a terminal, because the deploy strip is a control and a tab
+// bar you cannot press is not one. Piped or redirected, it prints once and
+// exits — a strip is meaningless without a keyboard.
+func runMetrics(args []string) error {
+	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	deploy := fs.String("deploy", "", "open on one deploy flow by name")
+	weeks := fs.Int("weeks", 12, "how many whole weeks to show")
+	limit := fs.Int("limit", 0, "commits to read; 0 reads the default window")
+	cacheDir := fs.String("cache-dir", "", "override the cache directory")
+	plain := fs.Bool("plain", false, "print once instead of opening the interactive view")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("usage: git clarity metrics [--deploy <flow>] [--weeks N] [--plain]: %w", err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unknown argument %q", fs.Arg(0))
+	}
+	if *weeks < 1 {
+		return fmt.Errorf("--weeks must be at least 1, got %d", *weeks)
+	}
+
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return err
+	}
+	resolvedCache := config.ResolveCacheDir(config.CacheDirSources{
+		Flag:     *cacheDir,
+		Env:      os.Getenv("CLARITY_CACHE_DIR"),
+		RepoRoot: repoPath,
+	})
+
+	// A trend view wants history, and without a poll loop it can afford it:
+	// the cost is paid once at startup rather than on every tick.
+	opts := rootOptions{limit: *limit, cacheDir: *cacheDir, deploy: *deploy}
+	if opts.limit == 0 {
+		opts.limit = metricsCommitWindow
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	src, err := buildSource(ctx, cfg, opts, repoPath, resolvedCache)
+	if err != nil {
+		return err
+	}
+
+	view, err := firstFreshView(ctx, lensFor(cfg, src).Views(ctx))
+	if err != nil {
+		return err
+	}
+	view = trimToWholeWeeks(view, *weeks)
+
+	if *plain || !isTerminal(os.Stdout) {
+		out, err := renderMetricsOnce(view, *deploy, metricsPlainWidth)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprint(os.Stdout, out)
+		return err
+	}
+	return tui.RunWeekly(ctx, view, *deploy)
+}
+
+// metricsPlainWidth is the width the non-interactive render uses. Fixed
+// rather than probed: piped output should be byte-identical run to run, and
+// there is no terminal to measure when the destination is a file.
+const metricsPlainWidth = 100
+
+// metricsCommitWindow is how far back the weekly view reads when no --limit
+// is given. Generous because twelve weeks of history is the point, and a
+// one-shot read can afford what a five-second poll cannot.
+const metricsCommitWindow = 2000
+
+// firstFreshView takes the single snapshot the weekly view is built from.
+func firstFreshView(ctx context.Context, views <-chan core.View) (core.View, error) {
+	for {
+		select {
+		case v, ok := <-views:
+			if !ok {
+				return core.View{}, fmt.Errorf("source closed before emitting a view")
+			}
+			// The cached lens paints a stale view first so the live TUI has
+			// something immediate; a one-shot read should wait for the real
+			// one rather than report last week's numbers as this week's.
+			if v.Stale {
+				continue
+			}
+			return v, nil
+		case <-ctx.Done():
+			return core.View{}, ctx.Err()
+		}
+	}
+}
+
+// trimToWholeWeeks keeps the newest n weeks on every flow.
+//
+// The window is weeks rather than commits so that how far back you can see
+// does not depend on how busy the repository was. Weeks the data window cut
+// through are already dropped upstream, in weeklyStats.
+func trimToWholeWeeks(view core.View, n int) core.View {
+	for i := range view.Flows {
+		if len(view.Flows[i].Weekly) > n {
+			view.Flows[i].Weekly = view.Flows[i].Weekly[:n]
+		}
+	}
+	return view
+}
+
+// renderMetricsOnce is the non-interactive path.
+func renderMetricsOnce(view core.View, deploy string, width int) (string, error) {
+	if deploy != "" {
+		if _, ok := core.MatchFlow(view.Flows, deploy); !ok {
+			return "", fmt.Errorf("no deploy flow named %q — this repo has: %s",
+				deploy, strings.Join(core.FlowNames(view.Flows), ", "))
+		}
+	}
+	selected := deploy
+	if selected == "" && len(view.Flows) > 0 {
+		selected = view.Flows[0].Name
+	}
+	return tui.RenderWeekly(view.Flows, selected, width), nil
 }
 
 // runInit drives `git clarity init --github` — the interactive

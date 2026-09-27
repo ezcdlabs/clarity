@@ -63,6 +63,15 @@ type FlowView struct {
 	// two-minute web deploy with a multi-day store review produces a number
 	// that describes neither.
 	Weekly []WeekStat
+	// LeadAxis is the shared x-axis the weekly view draws every one of this
+	// flow's weeks against, chosen from the flow's own pooled lead times.
+	// Per-flow for the same reason Weekly is: a store review and a web deploy
+	// need different scales, and one axis across both would squash the faster
+	// of them into a column.
+	//
+	// Derived here rather than in the renderer because a renderer consumes
+	// the View it is handed and never re-derives from the Snapshot.
+	LeadAxis LeadAxis
 	// Deploy is the resolved deploy status for this flow: "" / "passed" /
 	// "failed", by the same newest-commit-that-resolved-it rule the header
 	// has always used.

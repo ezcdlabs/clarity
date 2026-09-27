@@ -20,6 +20,9 @@ type WeekStat struct {
 	Week    int // ISO week (1–53).
 	Deploys int
 	AvgLead time.Duration
+	// Leads is the same week's distribution. The deploy strip reads AvgLead;
+	// the weekly view draws a box plot, which a mean cannot describe.
+	Leads LeadQuantiles
 }
 
 // WeeklyStats computes per-ISO-week throughput from snap. Results are
@@ -48,21 +51,29 @@ func WeeklyStats(snap Snapshot) []WeekStat {
 // always "the mean of the lead times visible in the Deployed section", under
 // any mode.
 func WeeklyStatsMode(snap Snapshot, mode LeadTimeMode) []WeekStat {
-	return weeklyStats(snap, GroupCommitsMode(snap.Commits, mode))
+	stats, _ := weeklyStats(snap, GroupCommitsMode(snap.Commits, mode))
+	return stats
 }
 
 // WeeklyStatsForFlow is WeeklyStatsMode with candidacy applied, so a flow's
 // throughput average is built only from commits that flow actually ships.
 func WeeklyStatsForFlow(snap Snapshot, mode LeadTimeMode, f Flow) []WeekStat {
-	return weeklyStats(snap, GroupCommitsForFlow(snap.Commits, mode, f))
+	stats, _ := weeklyStats(snap, GroupCommitsForFlow(snap.Commits, mode, f))
+	return stats
 }
 
-func weeklyStats(snap Snapshot, g Groupings) []WeekStat {
+// weeklyStats also returns every lead time it bucketed, pooled across weeks
+// and unsummarised. The shared x-axis has to be chosen from the real
+// distribution: pooling per-week quantiles instead would give a two-deploy
+// week the same weight as a forty-deploy one and bias the outlier fence.
+// Callers that only want the per-week summary discard it.
+func weeklyStats(snap Snapshot, g Groupings) ([]WeekStat, []time.Duration) {
 
 	type bucket struct {
 		deploys       int
 		totalLeadNs   int64
 		leadCommitCnt int
+		leads         []time.Duration
 	}
 	byWeek := map[int64]*bucket{}
 	var keys []int64
@@ -88,8 +99,10 @@ func weeklyStats(snap Snapshot, g Groupings) []WeekStat {
 		}
 		year, week := deployedAt.UTC().ISOWeek()
 		bk := getOrCreate(int64(year)*100 + int64(week))
-		bk.totalLeadNs += int64(deployedAt.Sub(start))
+		lead := deployedAt.Sub(start)
+		bk.totalLeadNs += int64(lead)
 		bk.leadCommitCnt++
+		bk.leads = append(bk.leads, lead)
 	}
 
 	for _, b := range g.Deployed {
@@ -115,6 +128,7 @@ func weeklyStats(snap Snapshot, g Groupings) []WeekStat {
 	}
 
 	out := make([]WeekStat, 0, len(keys))
+	var pooled []time.Duration
 	for _, k := range keys {
 		year := int(k / 100)
 		week := int(k % 100)
@@ -128,9 +142,13 @@ func weeklyStats(snap Snapshot, g Groupings) []WeekStat {
 			Week:    week,
 			Deploys: bk.deploys,
 			AvgLead: avg,
+			Leads:   Quantiles(bk.leads),
 		})
+		// Only weeks that survived truncation contribute, so a week dropped
+		// for being cut through cannot influence the axis either.
+		pooled = append(pooled, bk.leads...)
 	}
-	return out
+	return out, pooled
 }
 
 // WeekKey packs an ISO (year, week) pair into a single int64 for map keys.

@@ -1047,9 +1047,16 @@ The generator is the only GitHub-specific piece of the migration; everything dow
 
 ## Weekly Metrics: `git clarity metrics`
 
-**Status: designed, not built.** Every decision below is settled; none of it is implemented.
-
 `git clarity` answers *"is main green right now?"* — a live view of the most recent commits. It cannot answer *"are we getting better?"*, because trend is invisible in a list of commits. That is a different question, for a different reader, on a different cadence, and it gets its own command rather than a mode of the TUI.
+
+```
+git clarity metrics                      # interactive, opens on the first flow
+git clarity metrics --deploy ios         # open on one deploy flow
+git clarity metrics --weeks 26           # a longer window
+git clarity metrics --plain              # print once and exit
+```
+
+`tab` / `shift+tab` switch flow, `1`–`9` jump to one, `↑`/`↓` scroll a long history, `q` quits.
 
 One row per ISO week, newest first: a box plot of that week's lead times on the left, a bar of that week's deploy count on the right.
 
@@ -1066,11 +1073,19 @@ One row per ISO week, newest first: a box plot of that week's lead times on the 
 
 The two halves are one signal. A bad week pushes the box right *and* pulls the bar back, so degradation reads as ink migrating rightward across the whole row — which is the entire reason the bars are mirrored rather than growing from a shared left edge.
 
-### Not live, and not in the TUI
+### Interactive, but not live
 
-No watcher, no re-render loop, no Bubble Tea: read a snapshot, derive, print, exit. Closer to `--plain` than to the TUI.
+Two different things, easily conflated: **live** means a watcher polling the remote; **interactive** means an event loop responding to keys. This view is the second without the first.
 
-That is a deliberate simplification rather than a limitation. A *view* selector inside the TUI would have had to coexist with the deploy-target tabs as a second orthogonal dimension, and a tick budget would have capped how much history could be read. Neither applies to a command that runs once.
+It reads one snapshot and never polls. There is no tick, no re-fetch, and no staleness to signal — so it can afford to read far more history than the live view ever could.
+
+It is still a Bubble Tea program, because the deploy strip is a control. Rendering the tab bar while requiring `--deploy` to change flows would be showing a control that does not work. Switching flows costs nothing: every flow is already derived on the `View`, so selection is local UI state with no round trip to the Lens (see `FlowView`).
+
+Not a mode of the main TUI, though. A *view* selector there would have had to coexist with the deploy-target tabs as a second orthogonal dimension, and the tick budget would have capped the history.
+
+Piped or redirected output falls back to a single static render, the same way `--plain` does for the live view — a tab bar is meaningless when there is no keyboard. That path uses a fixed width rather than probing the terminal, so piped output is byte-identical run to run and there is nothing to measure when the destination is a file.
+
+Because there is no tick to keep cheap, the one-shot read takes a far larger commit window than the live view's default. The cost is paid once at startup.
 
 ### Box plots, and medians
 
@@ -1082,15 +1097,19 @@ Spread matters as much as speed. A team with a 2h median and a three-day p90 has
 
 **Below five deploys a week, plot the points instead.** A box plot over two deploys is theatre: quartiles of two numbers mean nothing. The strip form degrades honestly — two deploys look like two deploys.
 
-### One axis for every week, chosen from the data
+That needs the individual values, not the summary: below the floor the quantiles are interpolations between two or three real numbers, so drawing them would put a smear on screen where there were only two deploys. `LeadQuantiles.Samples` carries them, and only below the floor, so it cannot grow with a busy week.
+
+### One axis per flow, chosen from that flow's data
 
 Per-row autoscaling would make the rows incomparable, which is the whole point of the view. A fixed ceiling is no better: it wastes the width for a fast team and squashes a slow one.
 
-So the axis is shared across every visible week and derived from the pooled lead times:
+The axis is per flow, for the same reason `Weekly` is: a store review and a web deploy need different scales, and one axis across both squashes the faster of them into a column. Within a flow it is shared across every visible week, and derived from that flow's pooled lead times:
 
 1. Take Q1 and Q3 of the **log** of every lead time in the window.
 2. Fence = `exp(Q3 + 1.5 × IQR)` — Tukey's rule, which is the box plot's own definition of an outlier, so it answers exactly the question being asked.
 3. Axis maximum = the next readable boundary at or above `min(largest value, fence)`.
+
+It is computed from the raw lead times inside `core`, not from the per-week quantiles. Pooling quantiles instead would give a two-deploy week the same weight as a forty-deploy one and bias the fence. The result reaches the renderer as `FlowView.LeadAxis`, so nothing downstream re-derives it.
 
 **The log step is load-bearing.** A raw Tukey fence clips tidy data, because a long tail is normal for lead times and the raw fence reads ordinary skew as a crowd of outliers. In log space the fence is multiplicative, which is how lead times actually vary: *five times the typical commit* is an outlier, *two hours longer than the typical commit* is not.
 

@@ -767,3 +767,71 @@ func TestDispatchReport_RoutesToTheRightGrammar(t *testing.T) {
 		})
 	}
 }
+
+// TestTrimToWholeWeeks covers the weekly window.
+//
+// The window is weeks rather than commits so that how far back you can see
+// does not depend on how busy the repository was — a commit limit gives a
+// quiet repo a year and a busy one four days, which is useless for comparing
+// trend.
+func TestTrimToWholeWeeks(t *testing.T) {
+	weeks := func(n int) []core.WeekStat {
+		out := make([]core.WeekStat, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, core.WeekStat{Year: 2026, Week: 40 - i})
+		}
+		return out
+	}
+	view := core.View{Flows: []core.FlowView{
+		{Flow: core.Flow{Name: "web"}, Weekly: weeks(20)},
+		{Flow: core.Flow{Name: "ios"}, Weekly: weeks(3)},
+	}}
+
+	got := trimToWholeWeeks(view, 12)
+	if n := len(got.Flows[0].Weekly); n != 12 {
+		t.Errorf("web kept %d weeks, want 12", n)
+	}
+	// A flow with less history than the window keeps what it has rather than
+	// being padded with weeks it never had.
+	if n := len(got.Flows[1].Weekly); n != 3 {
+		t.Errorf("ios kept %d weeks, want its own 3", n)
+	}
+	// Newest first, so trimming takes the oldest off the end.
+	if got.Flows[0].Weekly[0].Week != 40 {
+		t.Errorf("trimmed from the wrong end: first week is %d", got.Flows[0].Weekly[0].Week)
+	}
+}
+
+// TestRenderMetricsOnce_UnknownFlowNamesTheAlternatives verifies a typo tells
+// the user what they could have asked for. A bare "not found" leaves them
+// guessing at names that only exist in the events.
+func TestRenderMetricsOnce_UnknownFlowNamesTheAlternatives(t *testing.T) {
+	view := core.View{Flows: []core.FlowView{
+		{Flow: core.Flow{Name: "web"}},
+		{Flow: core.Flow{Name: "ios"}},
+	}}
+	_, err := renderMetricsOnce(view, "andriod", 100)
+	if err == nil {
+		t.Fatal("a misspelled flow should be an error")
+	}
+	for _, want := range []string{"andriod", "web", "ios"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
+	}
+}
+
+// TestRenderMetricsOnce_DefaultsToTheFirstFlow covers the no---deploy case.
+func TestRenderMetricsOnce_DefaultsToTheFirstFlow(t *testing.T) {
+	view := core.View{Flows: []core.FlowView{
+		{Flow: core.Flow{Name: "web"}, Weekly: []core.WeekStat{{Year: 2026, Week: 39, Deploys: 7}}},
+		{Flow: core.Flow{Name: "ios"}, Weekly: []core.WeekStat{{Year: 2026, Week: 39, Deploys: 2}}},
+	}}
+	out, err := renderMetricsOnce(view, "", 100)
+	if err != nil {
+		t.Fatalf("renderMetricsOnce: %v", err)
+	}
+	if !strings.Contains(out, "W2026-39") {
+		t.Errorf("expected the week row:\n%s", out)
+	}
+}

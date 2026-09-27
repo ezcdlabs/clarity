@@ -47,7 +47,8 @@ type HeaderStatus struct {
 // that predates flows keeps the numbers it always had.
 func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
 	groups := GroupCommitsMode(snap.Commits, mode)
-	weekly := WeeklyStatsMode(snap, mode)
+	wholeRepo := WeeklyReport(snap, mode)
+	weekly := wholeRepo.Weeks
 
 	resolved := ResolveFlows(snap.Commits, flows)
 	for i := range resolved {
@@ -69,6 +70,7 @@ func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
 		if len(resolved) == 1 && !hasCandidacy(snap.Commits) {
 			resolved[i].Groups = groups
 			resolved[i].Weekly = weekly
+			resolved[i].LeadAxis = wholeRepo.LeadAxis
 			resolved[i].Deploy = CurrentStageStatus(snap.Commits, "deploy")
 			continue
 		}
@@ -78,7 +80,9 @@ func DeriveView(snap Snapshot, mode LeadTimeMode, flows []Flow) View {
 		flowSnap.Commits = scoped
 
 		resolved[i].Groups = GroupCommitsForFlow(scoped, mode, f.Flow)
-		resolved[i].Weekly = WeeklyStatsForFlow(flowSnap, mode, f.Flow)
+		rep := WeeklyReportForFlow(flowSnap, mode, f.Flow)
+		resolved[i].Weekly = rep.Weeks
+		resolved[i].LeadAxis = rep.LeadAxis
 		resolved[i].Deploy = CurrentStageStatus(scoped, "deploy")
 	}
 

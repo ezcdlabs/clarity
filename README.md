@@ -1045,6 +1045,92 @@ The generator is the only GitHub-specific piece of the migration; everything dow
 
 ---
 
+## Weekly Metrics: `git clarity metrics`
+
+**Status: designed, not built.** Every decision below is settled; none of it is implemented.
+
+`git clarity` answers *"is main green right now?"* — a live view of the most recent commits. It cannot answer *"are we getting better?"*, because trend is invisible in a list of commits. That is a different question, for a different reader, on a different cadence, and it gets its own command rather than a mode of the TUI.
+
+One row per ISO week, newest first: a box plot of that week's lead times on the left, a bar of that week's deploy count on the right.
+
+```
+             lead time  ·  median, p25–p75                                    deploys
+  W2026-39       ├─────▓▓▓▓█▓▓▓───────────────┤                █████████████████  18
+  W2026-38     ├───▓▓▓▓█▓▓────────────┤                   ██████████████████████  24
+  W2026-37          ├─────▓▓▓▓▓▓▓█▓▓▓──────────────────┤                ████████   9
+  W2026-36        ├─────▓▓▓▓▓▓█▓▓────────────────┤                    ██████████  11
+  W2026-35      ├────▓▓▓▓█▓▓▓───────────────┤                    ███████████████  16
+  W2026-34     ├───▓▓▓█▓▓───────────┤                        ███████████████████  21
+            0─────────2h─────────4h─────────6h────────8h
+```
+
+The two halves are one signal. A bad week pushes the box right *and* pulls the bar back, so degradation reads as ink migrating rightward across the whole row — which is the entire reason the bars are mirrored rather than growing from a shared left edge.
+
+### Not live, and not in the TUI
+
+No watcher, no re-render loop, no Bubble Tea: read a snapshot, derive, print, exit. Closer to `--plain` than to the TUI.
+
+That is a deliberate simplification rather than a limitation. A *view* selector inside the TUI would have had to coexist with the deploy-target tabs as a second orthogonal dimension, and a tick budget would have capped how much history could be read. Neither applies to a command that runs once.
+
+### Box plots, and medians
+
+Lead times are strongly right-skewed — one commit that sat over a weekend drags a mean badly — so the headline is the median, and the box plot gives it for free. Note this is a change in published numbers: `WeekStat.AvgLead` is a mean today.
+
+Spread matters as much as speed. A team with a 2h median and a three-day p90 has a problem the median alone hides, which is why the whiskers stay and an interquartile band is not enough.
+
+`WeekStat` therefore needs quantiles it does not currently carry — `Min/P25/P50/P75/Max` on the View, not raw samples, so the renderer stays dumb per the rule in "Acceptance tests".
+
+**Below five deploys a week, plot the points instead.** A box plot over two deploys is theatre: quartiles of two numbers mean nothing. The strip form degrades honestly — two deploys look like two deploys.
+
+### One axis for every week, chosen from the data
+
+Per-row autoscaling would make the rows incomparable, which is the whole point of the view. A fixed ceiling is no better: it wastes the width for a fast team and squashes a slow one.
+
+So the axis is shared across every visible week and derived from the pooled lead times:
+
+1. Take Q1 and Q3 of the **log** of every lead time in the window.
+2. Fence = `exp(Q3 + 1.5 × IQR)` — Tukey's rule, which is the box plot's own definition of an outlier, so it answers exactly the question being asked.
+3. Axis maximum = the next readable boundary at or above `min(largest value, fence)`.
+
+**The log step is load-bearing.** A raw Tukey fence clips tidy data, because a long tail is normal for lead times and the raw fence reads ordinary skew as a crowd of outliers. In log space the fence is multiplicative, which is how lead times actually vary: *five times the typical commit* is an outlier, *two hours longer than the typical commit* is not.
+
+A percentile is the wrong instrument for the same reason it looks right. p95 is a quantile, so there is always data above it: it clips whether or not anything deserves clipping.
+
+The result satisfies both constraints at once — tidy data is never clipped, and a single 74-hour outlier is clipped without compressing every other week into two columns.
+
+Rounding to a readable boundary does two jobs: the ticks read as durations rather than arbitrary fractions of the data, and the axis stops moving every time a deploy lands, so weeks stay comparable between runs and not only within one render.
+
+**The `→` marker and the `+` on the final tick must agree.** A value landing exactly on the axis is shown, not clipped. Drawing the arrow on `>=` while setting the `+` on `>` makes the view contradict itself about whether it is showing everything.
+
+### Whole weeks only
+
+The window is a number of whole weeks, not a commit count. A week the window cuts through is **dropped, not drawn partial** — its deploy count and its distribution would both understate, and there is no honest way to render that in a bar.
+
+This is the `WeekUnknown` principle from the deploy strip, taken further: rather than inventing a way to say "we do not know", do not show the row. It removes a state from the code as well as from the screen.
+
+A commit-count limit would also make how far back you can see depend on how busy the repository was, which is not a useful property for a trend view.
+
+### Colour and weight
+
+- **Box plot** — blue (ANSI 12), the existing accent. The interquartile box is `▓`, the median a solid `█`.
+- **Deploy bars** — **ANSI 8**, the same grey as the `lead time` label, as full blocks.
+- **Counts and week labels** — the terminal's default foreground.
+
+Grey for the bars is not an absence of choice. Green already means *passed* and amber *in-flight*, so either would assert that a deploy count is good or bad; grey carries no verdict, which is right for a measurement. It is also already in the palette, so there is no 256-colour dependency and no fallback to write, and it works on light and dark backgrounds without detection.
+
+The concern that grey would collide with the chrome — the axis and labels are ANSI 8 too — does not survive contact: a solid 22-column block and thin glyph text read as completely different things at identical colour. Shaded variants (`▓`, `▒`) were tried and are too weak, especially on light backgrounds, where short bars nearly vanish and the length comparison is lost.
+
+### Narrow terminals squeeze the plot, they do not replace it
+
+The box plot stays a box plot down to about 10 columns. Precision degrades, but which weeks are better or worse remains readable, which is what the view is for. Two things shed before the plot does:
+
+- **Axis ticks**, which collide first — intermediate labels drop, leaving the ends.
+- **The empty-week note**, `· no deploys`, which becomes `·`.
+
+An earlier design fell back to text (`3h 18m (2h 08m–5h 55m)`) below a width threshold. It reads well and is more precise, but it is not scannable down a column, and scanning is the point.
+
+---
+
 ## Repository Structure
 
 ```
@@ -1268,7 +1354,7 @@ Three layers of defence, because none is sufficient alone:
 - **Notes summarisation** — generate a derived digest into `refs/notes/clarity` so the latest status per stage is inspectable via `git notes show <sha>` and visible in `git log --show-notes`. The custom ref remains the source of truth; notes are a read-side convenience that can be regenerated at any time.
 - **Web UI mode** — a `--serve` flag that runs an HTTP server with an embedded SPA, for shared team dashboards
 - **Prometheus metrics endpoint** — `--metrics` exposing `/metrics` with DORA-style aggregates derived from the events, for Grafana integration
-- **Full DORA metrics support** — extending the event model to capture incidents and hotfixes so that MTTR and change failure rate can be derived alongside the lead time and deploy frequency metrics that already fall out of the v1 design
+- **Full DORA metrics support** — extending the event model to capture incidents and hotfixes so that MTTR and change failure rate can be derived alongside the lead time and deploy frequency metrics that already fall out of the v1 design. [Weekly Metrics](#weekly-metrics-git-clarity-metrics) is the surface those would be shown on
 - **pushq integration** — when `refs/push-queue/*` exists in the repo, render the queue as a "pending" section above the most recent commit on main. Implemented by importing `github.com/ezcdlabs/pushq/pushqrefs` and adding a section to the TUI render
 - **CI-specific integrations** — clickable run links, actor avatars, job-level breakdowns, derived from the `ci` metadata block on events
 - **Relay mode** — a long-running process with git access that forwards normalised events to a hosted dashboard, enabling a SaaS tier without giving the SaaS git access

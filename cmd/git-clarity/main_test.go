@@ -965,3 +965,106 @@ func TestMetricsRenderContext_HasNoDeadline(t *testing.T) {
 		t.Errorf("context starts cancelled: %v", err)
 	}
 }
+
+// configWithLeadTime writes a config selecting an explicit lead time mode.
+func configWithLeadTime(t *testing.T, mode string) config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	body := `{"clarity": {"leadTime": "` + mode + `"}}`
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write .ezcd.json: %v", err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	return cfg
+}
+
+// pipelineSnapshot is one commit authored long before its pipeline ran, so
+// the configured mode changes the answer by orders of magnitude rather than
+// by a rounding error: measured from authoring it is ~28 hours, measured from
+// the first pipeline event it is 1.
+func pipelineSnapshot() core.Snapshot {
+	authored := time.Unix(0, 0)
+	ciStarted := authored.Add(27 * time.Hour)
+	deployed := authored.Add(28 * time.Hour)
+	return core.Snapshot{
+		RepoName: "clarity",
+		Commits: []core.CommitView{{
+			SHA: "a", Author: "alice", Subject: "x", Time: authored,
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "started", Time: ciStarted},
+				{Stage: "ci", Status: "passed", Time: deployed},
+				{Stage: "deploy", Status: "passed", Time: deployed},
+			},
+		}},
+	}
+}
+
+// TestLensWiring_PassesLeadTimeMode guards the three lines where a configured
+// lead time mode can silently do nothing.
+//
+// This is the shape of the bug that produced the rule about renderers: core
+// computed every mode correctly and had tests proving it, both renderers then
+// rebuilt their own groupings from the raw snapshot, and the setting did
+// nothing at all while every unit test passed. Nothing crossed from the
+// config file to a number a user reads.
+//
+// The weekly view made that gap wider, because it derives a distribution and
+// an axis rather than one average — so it has more to get wrong, and builds
+// its own lens.
+func TestLensWiring_PassesLeadTimeMode(t *testing.T) {
+	// Authored-to-deployed is 28h; first-pipeline-event-to-deployed is 1h.
+	const fromAuthoring = 28 * time.Hour
+	const fromPipeline = 1 * time.Hour
+
+	modes := []struct {
+		name string
+		want time.Duration
+	}{
+		{"all", fromAuthoring},
+		{"reported", fromAuthoring},
+		{"pipeline", fromPipeline},
+	}
+
+	for _, m := range modes {
+		t.Run(m.name, func(t *testing.T) {
+			cfg := configWithLeadTime(t, m.name)
+
+			t.Run("plain and metrics path", func(t *testing.T) {
+				view := firstView(t, lensFor(cfg, &stubSource{snap: pipelineSnapshot()}).Views(t.Context()))
+				assertWeeklyLead(t, view, m.want)
+			})
+
+			t.Run("tui path", func(t *testing.T) {
+				cf := cache.New(filepath.Join(t.TempDir(), "snapshot-cache.json.gz"))
+				lens := cachedLensFor(cfg, &stubSource{snap: pipelineSnapshot()}, cf)
+				assertWeeklyLead(t, firstView(t, lens.Views(t.Context())), m.want)
+			})
+		})
+	}
+}
+
+// assertWeeklyLead checks the distribution the weekly view draws, not only
+// the average the deploy strip prints — the metrics view reads Leads, so a
+// mode that reached AvgLead but not the quantiles would still be broken.
+func assertWeeklyLead(t *testing.T, view core.View, want time.Duration) {
+	t.Helper()
+	if len(view.Flows) == 0 || len(view.Flows[0].Weekly) == 0 {
+		t.Fatal("no weekly stats derived")
+	}
+	w := view.Flows[0].Weekly[0]
+	if w.AvgLead != want {
+		t.Errorf("AvgLead = %v, want %v — the configured mode did not reach the lens", w.AvgLead, want)
+	}
+	if w.Leads.P50 != want {
+		t.Errorf("median = %v, want %v — the mode reached the average but not the "+
+			"distribution the weekly view draws", w.Leads.P50, want)
+	}
+	// The axis is chosen from those same lead times, so a mode that missed it
+	// would draw a correct distribution against the wrong scale.
+	if view.Flows[0].LeadAxis.Max < want {
+		t.Errorf("axis %v cannot contain a %v lead time", view.Flows[0].LeadAxis.Max, want)
+	}
+}

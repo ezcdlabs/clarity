@@ -1065,6 +1065,12 @@ It deliberately does **not** carry ci/deploy status, and the deploy strip here s
 
 The footer lists only keys that change what is on screen; every terminal program quits, and saying so spends the line on the one hint carrying no information.
 
+### Lead time mode
+
+The weekly view obeys `clarity.leadTime` exactly as the commit list does — it builds its lens the same way, so `pipeline` measures from the first pipeline event here too. The mode changes the distribution and therefore the axis, not only the average, which is a wider surface than the deploy strip has.
+
+That is guarded by a test crossing from a config file to the derived numbers, on both lens paths, because this is the shape of the bug that produced the renderer rule: core computed every mode correctly and had tests proving it, both renderers rebuilt their own groupings from the raw snapshot, and the setting did nothing while every unit test passed.
+
 `--weeks` bounds what is drawn; `--limit` bounds what is read. They are different windows, and the second can cut the first short — when it does, a footnote says so, because an aggregate that is a few deploys short is wrong in a way no reader can see.
 
 One row per ISO week, newest first: a box plot of that week's lead times on the left, a bar of that week's deploy count on the right.

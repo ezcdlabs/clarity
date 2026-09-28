@@ -44,6 +44,65 @@ jobs:
 
       - run: go test -tags ssh ./... -timeout 300s
 
+  # The action, on every platform and every push. No path filter: the job
+  # begins by checking out the whole repository, so any file in it can break
+  # this — internal/core/aux.go made the repo uncheckoutable on Windows for
+  # four months precisely because it matched no action path and this never
+  # ran. This is also the only cross-platform signal in the repo; `test` and
+  # `integration` are Linux-only.
+  #
+  # It installs an OLD release deliberately. What is under test is the
+  # installer and the checkout, both of which exist in this commit; the binary
+  # it fetches is incidental, and the version this commit will become does not
+  # exist yet. Whether *that* installs is a question only the smoke job below
+  # can ask.
+  action:
+    name: Action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install with an explicit version
+        uses: ./
+        with:
+          version: v0.1.1
+
+      - name: Verify it is on PATH
+        shell: bash
+        run: |
+          which git-clarity
+          git-clarity --version
+
+      # Drives the installer the way `uses: ezcdlabs/clarity@v0.1.1` does:
+      # no version input, no GITHUB_ACTION_REF (the runner does not set one
+      # inside a composite action), nothing but the unpack path carrying the
+      # ref. This cannot be tested through `uses: ./`, which has no ref in its
+      # path — which is why pinning silently resolved to latest for so long.
+      #
+      # The pinned version is deliberately an OLD one, so "we installed the
+      # latest release" cannot pass as success.
+      - name: Install using only the ref in the action path
+        shell: bash
+        run: |
+          fake="${RUNNER_TEMP}/_actions/ezcdlabs/clarity/v0.1.1"
+          mkdir -p "$fake"
+          INPUT_VERSION="" GITHUB_ACTION_REF="" GITHUB_ACTION_PATH="$fake" \
+            bash scripts/action-install.sh
+
+      - name: Assert the pinned version is the one that landed
+        shell: bash
+        run: |
+          got="$(git-clarity --version)"
+          echo "installed: $got"
+          case "$got" in
+            *0.1.1*) echo "pinned version honoured" ;;
+            *) echo "::error::pin ignored — expected 0.1.1, got: $got"; exit 1 ;;
+          esac
+
   # Auto-release: only after both test suites pass, and only for pushes to
   # main. A failing build therefore never produces a tag. When a release-worthy
   # commit (feat/fix/breaking, per Conventional Commits) lands green, the next
@@ -56,7 +115,7 @@ jobs:
   # avoids needing a separate tag-driven workflow (and a PAT to drive it).
   release:
     name: Release
-    needs: [test, integration]
+    needs: [test, integration, action]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -64,6 +123,8 @@ jobs:
     concurrency:
       group: release
       cancel-in-progress: false
+    outputs:
+      version: ${{ steps.ver.outputs.next }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,3 +159,43 @@ jobs:
       - name: No release needed
         if: steps.ver.outputs.next == ''
         run: echo "No feat/fix/breaking commits since the last tag — skipping release."
+
+  # Post-release smoke: does the thing we just published actually install?
+  #
+  # This is the question the action job structurally cannot answer. It runs
+  # before the release exists, so it can only ever install some older binary —
+  # which verifies the installer, not the artefact. Nothing checked that a
+  # freshly cut release was installable at all until this job.
+  #
+  # It asks the local action for the exact version just tagged, so a release
+  # that published broken or missing assets for a platform fails here rather
+  # than in a user's pipeline. Skipped when no release was cut: a docs- or
+  # test-only push has nothing new to smoke.
+  smoke:
+    name: Smoke (${{ matrix.os }})
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the version just released
+        uses: ./
+        with:
+          version: ${{ needs.release.outputs.version }}
+
+      - name: Assert it runs and reports that version
+        shell: bash
+        env:
+          WANT: ${{ needs.release.outputs.version }}
+        run: |
+          got="$(git-clarity --version)"
+          echo "installed: $got  (released: $WANT)"
+          case "$got" in
+            *"${WANT#v}"*) echo "the released binary installs and runs" ;;
+            *) echo "::error::expected ${WANT}, got: $got"; exit 1 ;;
+          esac

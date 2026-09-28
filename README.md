@@ -908,7 +908,7 @@ The ref survives only in `GITHUB_ACTION_PATH`, where the runner unpacks the acti
 
 A ref that is not a plain version tag — a branch, a commit sha, or a local `uses: ./` checkout, whose path is the workspace rather than an unpack directory — means "track the newest release", because no release exists under that name to install.
 
-This regressed silently and shipped that way: for a period, every pinned `uses: ezcdlabs/clarity@vX` installed whatever had shipped most recently. Nothing caught it because the pinned-tag branch was the one path no test executed — the workflow self-test invokes the action as `uses: ./`, which has no ref in its path, and the local harness hardcoded an empty ref. Both now clear the ref explicitly *and* there are two tests that cannot pass without it: a hermetic resolution table in `internal/actioninstall` that runs on every push, and a workflow job that installs from nothing but a ref-carrying path and asserts the binary reports that exact version. The version it pins is deliberately an old one, so "we installed the latest release" cannot pass as success.
+This regressed silently and shipped that way: for a period, every pinned `uses: ezcdlabs/clarity@vX` installed whatever had shipped most recently. Nothing caught it because the pinned-tag branch was the one path no test executed — the action self-test invokes the action as `uses: ./`, which has no ref in its path, and the local harness hardcoded an empty ref. Both now clear the ref explicitly *and* there are two tests that cannot pass without it: a hermetic resolution table in `internal/actioninstall` that runs on every push, and a workflow job that installs from nothing but a ref-carrying path and asserts the binary reports that exact version. The version it pins is deliberately an old one, so "we installed the latest release" cannot pass as success.
 
 ### Concurrency
 
@@ -1213,6 +1213,32 @@ Reads operate on the local events ref only — callers (typically the watcher) f
 
 This mirrors the pattern pushq uses with its `pushqrefs` package — the ref format is the public contract, exposed via a Go package.
 
+---
+
+## What CI Covers, and Where
+
+Four stages in one workflow, ordered so each answers a question the one before it cannot.
+
+- **Test / Integration (SSH)** — `go vet`, `go test`, and the SSH-backed suite. Linux only.
+- **Action** — the composite action on Linux, macOS and Windows, on every push and pull request.
+- **Release** — tag and publish, gated on all three.
+- **Smoke** — install the version just published, on all three platforms.
+
+### Why the action is tested before the release and smoked after
+
+They are different questions, and one workflow cannot answer both.
+
+**Before**: does the repository check out, and does the installer work? Both exist in the commit under test, so this belongs pre-merge — and it is gated on nothing, because the job starts by checking out the whole repository and *any* file in it can break that. It installs an old release deliberately: the binary is incidental, the installer is the subject, and the version this commit will become does not exist yet.
+
+**After**: is the thing we just published actually installable? Structurally unanswerable earlier — before the release job runs there is no such artefact, so a pre-merge job can only ever verify some older binary. Nothing checked that a freshly cut release was installable at all until this existed. It is skipped when no release was cut, since a docs- or test-only push has nothing new to smoke.
+
+### Why the action job carries no path filter
+
+It used to live in its own workflow, gated on `action.yml`, `scripts/action-install.sh` and the workflow file — on the assumption that only a change to the action can break the action's test.
+
+That assumption is false, and it cost four months. `internal/core/aux.go` matched none of those paths, so the workflow did not run; AUX is a reserved device name on Windows, and the repository was uncheckoutable there from 2026-05-17 until it was found on 2026-09-28. The last green run was 2026-05-11, six days before the file landed. The filter also hid the fix: the rename touched only `internal/core/`, so the workflow did not run on that commit either and had to be dispatched by hand.
+
+The general rule it broke: **a filter may only be narrower than what the job actually depends on.** This job depends on every file in the repository, because it checks all of them out.
 ---
 
 ## Releasing

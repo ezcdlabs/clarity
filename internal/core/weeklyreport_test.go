@@ -401,3 +401,40 @@ func TestWeeklyReport_AxisWeightsWeeksByTheirDeploys(t *testing.T) {
 			"a scale that wide", rep.Max)
 	}
 }
+
+// TestAxisForWeeks_WeightsWeeksByTheirDeploys covers the approximation used
+// when a window is narrowed after derivation.
+//
+// Raw lead times only exist inside weeklyStats, so this path reconstructs a
+// stand-in distribution from each week's five-number summary. Pooling those
+// flat would give a six-deploy week the same say as a forty-deploy one —
+// the exact bias the derivation path avoids — so each summary is repeated in
+// proportion to the deploys behind it.
+//
+// Here forty ordinary deploys should set the scale and the six freak ones
+// should fall outside it. Weighted flat, the freaks drag the axis out far
+// enough to swallow themselves and nothing reads as clipped.
+func TestAxisForWeeks_WeightsWeeksByTheirDeploys(t *testing.T) {
+	ordinary := make([]time.Duration, 0, 40)
+	for i := 0; i < 40; i++ {
+		ordinary = append(ordinary, time.Duration(1+i%4)*time.Hour)
+	}
+	freak := []time.Duration{
+		hrs(200), hrs(204), hrs(208), hrs(212), hrs(216), hrs(220),
+	}
+
+	weeks := []core.WeekStat{
+		{Year: 2026, Week: 40, Deploys: 40, Leads: core.Quantiles(ordinary)},
+		{Year: 2026, Week: 39, Deploys: 6, Leads: core.Quantiles(freak)},
+	}
+
+	axis := core.AxisForWeeks(weeks)
+	if !axis.Clamped {
+		t.Errorf("axis %v swallowed six freak deploys among forty ordinary ones; "+
+			"weighting each week's summary equally is what does that", axis.Max)
+	}
+	if axis.Max > hrs(48) {
+		t.Errorf("axis = %v; forty commits between 1h and 4h should not produce "+
+			"a scale that wide", axis.Max)
+	}
+}

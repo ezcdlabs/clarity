@@ -300,8 +300,12 @@ func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
 		LeadAxis: core.LeadAxis{Max: dur(10), Clamped: true},
 		Weekly: []core.WeekStat{{
 			Year: 2026, Week: 39, Deploys: 6,
+			// Spread, so the box has extent and the upper whisker reaches
+			// the axis — the cell the arrow used to overwrite. All-identical
+			// values would collapse the plot to a single cell and prove
+			// nothing about the arrow.
 			Leads: core.Quantiles([]time.Duration{
-				dur(10), dur(10), dur(10), dur(10), dur(10), dur(100),
+				dur(2), dur(4), dur(6), dur(8), dur(10), dur(100),
 			}),
 		}},
 	}
@@ -317,9 +321,17 @@ func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
 	if !strings.Contains(row, "→") {
 		t.Errorf("a lead beyond the axis should be marked: %q", row)
 	}
-	if !strings.ContainsAny(row, "█▓") {
-		t.Errorf("the arrow erased the distribution; five of six values sit on "+
-			"the axis and should still be drawn: %q", row)
+	// On ▓ specifically, not on "█▓": the deploy bar on the same row is drawn
+	// with █, so the looser assertion was satisfied by the bar no matter what
+	// happened to the plot — a test that could not fail.
+	if !strings.Contains(row, "▓") {
+		t.Errorf("the arrow erased the distribution: %q", row)
+	}
+	// The upper whisker is the cell the arrow used to take. Its survival is
+	// the precise property: the plot scales into one fewer column so the
+	// arrow has one of its own.
+	if !strings.Contains(row, "┤") {
+		t.Errorf("the arrow overwrote the end of the whisker: %q", row)
 	}
 
 	// The scale has to admit it is incomplete too. The row arrow says this
@@ -445,6 +457,37 @@ func TestRenderWeekly_GoldenLayout(t *testing.T) {
 	}
 
 	got := plainLines(tui.RenderWeekly([]core.FlowView{goldenFlow()}, "deploy", 100))
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d:\n got %q\nwant %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestRenderWeekly_GoldenClampedRow pins the exact columns of a week that
+// runs off the axis — the case the main golden fixture does not reach, and
+// the one where the arrow and the plot compete for the last column.
+func TestRenderWeekly_GoldenClampedRow(t *testing.T) {
+	f := core.FlowView{
+		Flow:     core.Flow{Name: "deploy"},
+		LeadAxis: core.LeadAxis{Max: dur(8), Clamped: true},
+		Weekly: []core.WeekStat{{
+			Year: 2026, Week: 39, Deploys: 6,
+			Leads: core.Quantiles([]time.Duration{
+				dur(2), dur(3), dur(4), dur(6), dur(8), dur(40),
+			}),
+		}},
+	}
+	want := []string{
+		"           lead time  ·  median, p25–p75                                                     deploys",
+		"  W2026-39              ├───────▓▓▓▓▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓───┤→  ████████████████████████████   6",
+		"           0────────────2h────────────4h───────────6h──────────8h+",
+		"",
+	}
+	got := plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100))
 	if len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
 	}

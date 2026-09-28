@@ -100,11 +100,15 @@ func weeklyLayout(width int) (plotCols, barCols int) {
 	if available < minPlotCols+1 {
 		available = minPlotCols + 1
 	}
+	// The floor is applied before the remainder is handed to the bars, so the
+	// two always sum to the budget. Computing barCols from the unclamped
+	// plotCols let them overshoot it, and the row was then clipped through
+	// the count while the header still advertised a deploys column.
 	plotCols = available * 2 / 3
-	barCols = available - plotCols
 	if plotCols < minPlotCols {
 		plotCols = minPlotCols
 	}
+	barCols = available - plotCols
 	if barCols < 1 {
 		barCols = 1
 	}

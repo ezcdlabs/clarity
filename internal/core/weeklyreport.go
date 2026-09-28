@@ -164,6 +164,15 @@ func roundUpToAxisStep(d time.Duration) time.Duration {
 			return s
 		}
 	}
+	// Past the named steps, round up to a whole day rather than returning the
+	// raw value. Two reasons: the ticks stay readable at that scale, and
+	// math.Exp(math.Log(x)) does not round-trip exactly in float64 — an
+	// unrounded axis could land a few nanoseconds below a uniform week's own
+	// lead time and report it as clipped.
+	const day = 24 * time.Hour
+	if rem := d % day; rem != 0 {
+		return d + (day - rem)
+	}
 	return d
 }
 
@@ -242,12 +251,13 @@ func AxisForWeeks(weeks []WeekStat) LeadAxis {
 			pooled = append(pooled, w.Leads.Samples...)
 			continue
 		}
+		// Repeated N times, not N/5: integer division truncated, so every
+		// week with five to nine deploys carried identical weight and each
+		// week lost up to four units of influence. The absolute count does
+		// not matter, only the ratio between weeks, so N is as good a
+		// multiplier as any and is exactly proportional.
 		summary := []time.Duration{w.Leads.Min, w.Leads.P25, w.Leads.P50, w.Leads.P75, w.Leads.Max}
-		repeat := w.Leads.N / len(summary)
-		if repeat < 1 {
-			repeat = 1
-		}
-		for i := 0; i < repeat; i++ {
+		for i := 0; i < w.Leads.N; i++ {
 			pooled = append(pooled, summary...)
 		}
 	}

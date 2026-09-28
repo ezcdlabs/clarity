@@ -121,14 +121,17 @@ func runMetrics(args []string) error {
 	// means unlimited, as it does on every other command.
 	opts := rootOptions{limit: *limit, cacheDir: *cacheDir, deploy: *deploy}
 
-	ctx, cancel := context.WithTimeout(context.Background(), metricsTimeout)
-	defer cancel()
-	src, err := buildSource(ctx, cfg, opts, repoPath, resolvedCache)
+	// The timeout bounds the FETCH, not the session. Reading the snapshot is
+	// the only thing here that can hang; once it has landed the view is
+	// entirely local and should stay open for as long as it is wanted.
+	fetchCtx, cancelFetch := context.WithTimeout(context.Background(), metricsTimeout)
+	defer cancelFetch()
+	src, err := buildSource(fetchCtx, cfg, opts, repoPath, resolvedCache)
 	if err != nil {
 		return err
 	}
 
-	view, err := firstFreshView(ctx, lensFor(cfg, src).Views(ctx))
+	view, err := firstFreshView(fetchCtx, lensFor(cfg, src).Views(fetchCtx))
 	if err != nil {
 		return err
 	}
@@ -142,13 +145,28 @@ func runMetrics(args []string) error {
 		_, err = fmt.Fprint(os.Stdout, out)
 		return err
 	}
-	return tui.RunWeekly(ctx, view, *deploy)
+	// A context with no deadline: the interactive view was previously given
+	// the fetch context, so it was killed mid-read sixty seconds after
+	// launch with "context deadline exceeded".
+	renderCtx, cancelRender := metricsRenderContext()
+	defer cancelRender()
+	return tui.RunWeekly(renderCtx, view, *deploy)
 }
 
 // metricsPlainWidth is the width the non-interactive render uses. Fixed
 // rather than probed: piped output should be byte-identical run to run, and
 // there is no terminal to measure when the destination is a file.
 const metricsPlainWidth = 100
+
+// metricsRenderContext returns the context the interactive view runs under.
+//
+// Separate from the fetch context, and deliberately without a deadline. The
+// view holds a snapshot it has already read; nothing about sitting on screen
+// can time out, and inheriting the fetch deadline killed the program while
+// the user was reading it.
+func metricsRenderContext() (context.Context, context.CancelFunc) {
+	return context.WithCancel(context.Background())
+}
 
 // metricsTimeout bounds the one cold fetch this command makes. There is no
 // cache-warm path here: unlike the live TUI it never paints a stale view

@@ -942,3 +942,26 @@ func TestTruncationNotice(t *testing.T) {
 		}
 	}
 }
+
+// TestMetricsRenderContext_HasNoDeadline pins that the interactive view
+// outlives the fetch.
+//
+// It was given the fetch context, which carries a 60s timeout to bound a
+// hung network read. Sixty seconds after launch — while the user was reading
+// it — Bubble Tea's context was cancelled and the program died with
+// "error: program was killed: context deadline exceeded".
+//
+// Nothing about a view sitting on screen can time out: the snapshot is
+// already read and everything after that is local.
+func TestMetricsRenderContext_HasNoDeadline(t *testing.T) {
+	ctx, cancel := metricsRenderContext()
+	defer cancel()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		t.Errorf("the interactive view would be killed at %v; it must outlive "+
+			"the fetch it was built from", deadline)
+	}
+	if err := ctx.Err(); err != nil {
+		t.Errorf("context starts cancelled: %v", err)
+	}
+}

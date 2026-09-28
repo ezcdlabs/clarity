@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
@@ -92,7 +93,9 @@ func TestRenderWeekly_NeverExceedsTheWidth(t *testing.T) {
 		weekOf(2026, 38, 4, 0.5, 1, 1.5, 2),
 		weekOf(2026, 37, 0),
 	)
-	for _, width := range []int{120, 100, 80, 60, 48, 40} {
+	// Down to zero: the header is clipped to the requested width, so the rows
+	// have to be too, or the two disagree and every row wraps.
+	for _, width := range []int{120, 100, 80, 60, 48, 40, 30, 26, 20, 10, 1, 0} {
 		out := tui.RenderWeekly([]core.FlowView{f}, "deploy", width)
 		for _, line := range plainLines(out) {
 			if got := len([]rune(line)); got > width {
@@ -239,4 +242,237 @@ func keyPress(name string) tea.KeyPressMsg {
 	}
 	r := []rune(name)[0]
 	return tea.KeyPressMsg{Code: r, Text: string(r)}
+}
+
+// TestTruncateName_WideRunes covers a flow name whose runes are wider than
+// one column.
+//
+// The budget is a display width and the name was sliced by rune index, which
+// for wide runes differ by a factor of two. Slicing within capacity injected
+// NUL runes into the output; slicing past it panicked, taking down both this
+// view and the live TUI. Any repo with a CJK deploy target reached it.
+func TestTruncateName_WideRunes(t *testing.T) {
+	names := []string{
+		"デプロイ",
+		"配置到生产环境服务器集群",
+		"ios",
+		"a-very-long-ascii-flow-name-indeed",
+		"мобильное-приложение",
+		"",
+	}
+	for _, name := range names {
+		for max := 0; max <= 30; max++ {
+			got := tui.TruncateNameForTest(name, max)
+			if strings.ContainsRune(got, 0) {
+				t.Fatalf("truncateName(%q, %d) injected NUL runes: %q", name, max, got)
+			}
+			if w := lipgloss.Width(got); w > max {
+				t.Fatalf("truncateName(%q, %d) returned %q, %d columns wide", name, max, got, w)
+			}
+		}
+	}
+}
+
+// TestRenderWeekly_WideRuneFlowName drives the same case through the view, so
+// the strip's own budget arithmetic is exercised rather than the helper alone.
+func TestRenderWeekly_WideRuneFlowName(t *testing.T) {
+	wide := flowWith("配置到生产环境服务器集群", weekOf(2026, 39, 5, 1, 2, 3))
+	other := flowWith("ios", weekOf(2026, 39, 2, 40, 50))
+	for _, width := range []int{120, 100, 80, 60, 40} {
+		out := tui.RenderWeekly([]core.FlowView{wide, other}, "ios", width)
+		if strings.ContainsRune(out, 0) {
+			t.Errorf("width %d: NUL runes in output", width)
+		}
+	}
+}
+
+// TestRenderWeekly_ClampArrowKeepsTheMedian covers a week much slower than
+// the shared axis.
+//
+// The arrow was written to the last column unconditionally, after the box and
+// the median. When the median also scaled to that column it was destroyed and
+// the row became a lone arrow — strictly less information than a squashed
+// box, and it erased values that sit exactly ON the axis, which the code
+// deliberately shows rather than marks as excluded.
+func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
+	slow := core.FlowView{
+		Flow:     core.Flow{Name: "deploy"},
+		LeadAxis: core.LeadAxis{Max: dur(10), Clamped: true},
+		Weekly: []core.WeekStat{{
+			Year: 2026, Week: 39, Deploys: 6,
+			Leads: core.Quantiles([]time.Duration{
+				dur(10), dur(10), dur(10), dur(10), dur(10), dur(100),
+			}),
+		}},
+	}
+	row := ""
+	for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{slow}, "deploy", 100)) {
+		if strings.Contains(line, "W2026-39") {
+			row = line
+		}
+	}
+	if row == "" {
+		t.Fatal("no week row rendered")
+	}
+	if !strings.Contains(row, "→") {
+		t.Errorf("a lead beyond the axis should be marked: %q", row)
+	}
+	if !strings.ContainsAny(row, "█▓") {
+		t.Errorf("the arrow erased the distribution; five of six values sit on "+
+			"the axis and should still be drawn: %q", row)
+	}
+
+	// The scale has to admit it is incomplete too. The row arrow says this
+	// week ran off the end; the "+" says the axis does not cover everything.
+	// Without it a reader takes the final tick as the true maximum.
+	var axisLine string
+	for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{slow}, "deploy", 100)) {
+		if strings.Contains(line, "0─") {
+			axisLine = line
+		}
+	}
+	if !strings.Contains(axisLine, "+") {
+		t.Errorf("the axis excludes data but its final tick does not say so: %q", axisLine)
+	}
+}
+
+// TestRenderWeekly_HeaderAlignsWithTheRows pins that "deploys" sits over the
+// column it names. They were computed from two different totals, so the label
+// hung one column past the counts.
+func TestRenderWeekly_HeaderAlignsWithTheRows(t *testing.T) {
+	f := flowWith("deploy",
+		weekOf(2026, 39, 18, 1, 2, 3, 4, 5, 6),
+		weekOf(2026, 38, 7, 1, 2, 3, 4, 5, 6),
+	)
+	for _, width := range []int{100, 80, 60} {
+		lines := plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", width))
+		var header, row string
+		for _, l := range lines {
+			if strings.Contains(l, "deploys") {
+				header = l
+			}
+			if strings.Contains(l, "W2026-39") {
+				row = l
+			}
+		}
+		if header == "" || row == "" {
+			t.Fatalf("width %d: missing header or row", width)
+		}
+		if len([]rune(strings.TrimRight(header, " "))) > len([]rune(strings.TrimRight(row, " "))) {
+			t.Errorf("width %d: header (%d) extends past the row it labels (%d)",
+				width, len([]rune(strings.TrimRight(header, " "))),
+				len([]rune(strings.TrimRight(row, " "))))
+		}
+	}
+}
+
+// TestWeeklyModel_ScrollingStopsAtTheOldestWeek covers running off the end.
+//
+// The offset was unclamped, so holding a scroll key walked past the history
+// and left the view rendering "no deploys recorded yet" — telling the reader
+// a repo full of deploys has none — and needed as many presses to get back as
+// it took to leave.
+func TestWeeklyModel_ScrollingStopsAtTheOldestWeek(t *testing.T) {
+	// More weeks than fit, so there is genuinely something to scroll.
+	var weeks []core.WeekStat
+	for i := 0; i < 20; i++ {
+		weeks = append(weeks, weekOf(2026, 40-i, 5, 1, 2, 3, 4, 5, 6))
+	}
+	view := core.View{Flows: []core.FlowView{flowWith("deploy", weeks...)}}
+	m := tui.NewWeeklyModel(view, "", 100, 12)
+
+	for i := 0; i < 50; i++ {
+		next, _ := m.Update(keyPress("j"))
+		m = next.(tui.WeeklyModel)
+	}
+	body := stripANSI(m.View().Content)
+	if strings.Contains(body, "no deploys recorded yet") {
+		t.Fatalf("scrolled past the end into an empty view:\n%s", body)
+	}
+	if !strings.Contains(body, "W2026-21") {
+		t.Errorf("the oldest week should be on screen at the end of the scroll:\n%s", body)
+	}
+
+	// And one press back up must move, rather than spending the overshoot.
+	next, _ := m.Update(keyPress("k"))
+	m = next.(tui.WeeklyModel)
+	if got := stripANSI(m.View().Content); got == body {
+		t.Error("scrolling up after hitting the end did nothing; the offset " +
+			"kept growing past the history")
+	}
+}
+
+// TestWeeklyModel_FooterMentionsHowToGetBack verifies the reset key is
+// advertised wherever scrolling is.
+func TestWeeklyModel_FooterMentionsHowToGetBack(t *testing.T) {
+	var weeks []core.WeekStat
+	for i := 0; i < 30; i++ {
+		weeks = append(weeks, weekOf(2026, 39-i, 5, 1, 2, 3, 4, 5, 6))
+	}
+	view := core.View{Flows: []core.FlowView{flowWith("deploy", weeks...)}}
+	m := tui.NewWeeklyModel(view, "", 100, 12)
+
+	footer := stripANSI(m.View().Content)
+	if !strings.Contains(footer, "scroll") {
+		t.Fatalf("a history longer than the screen should advertise scrolling:\n%s", footer)
+	}
+	if !strings.Contains(footer, "g") {
+		t.Errorf("scrolling is advertised but the way back to the top is not:\n%s", footer)
+	}
+}
+
+// TestRenderWeekly_GoldenLayout pins the exact columns at a fixed width.
+//
+// Every other renderer test asserts that a glyph is *present*. None of them
+// asserts where it sits, which left every scaling and layout decision
+// unverified — the median could be drawn at p25, the bars could grow from the
+// left instead of sharing a right edge, the clamp arrow could vanish, and the
+// suite stayed green.
+//
+// A golden comparison is brittle by design: it fails whenever the layout
+// changes, which is the point. Regenerate it deliberately, and read the diff
+// as a description of what moved.
+func TestRenderWeekly_GoldenLayout(t *testing.T) {
+	want := []string{
+		"           lead time  ·  median, p25–p75                                                     deploys",
+		"  W2026-40     ├────▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓────────────────────────┤         █████████████████████  18",
+		"  W2026-39     ├─▓█▓▓─┤                                             ████████████████████████████  24",
+		"  W2026-38                   ▫        ▫        ▫                                            ████   3",
+		"  W2026-37 · no deploys                                                                            0",
+		"  W2026-36          ├────▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓───────────────┤                        ███████████   9",
+		"           0────────────3h────────────6h───────────9h──────────12h",
+		"",
+	}
+
+	got := plainLines(tui.RenderWeekly([]core.FlowView{goldenFlow()}, "deploy", 100))
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d:\n got %q\nwant %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestRenderWeekly_PlotsEverySample verifies a sparse week draws one mark per
+// deploy — not five marks interpolated from quantiles, which is the smear the
+// sample floor exists to avoid.
+func TestRenderWeekly_PlotsEverySample(t *testing.T) {
+	for _, n := range []int{1, 2, 3, 4} {
+		leads := make([]float64, n)
+		for i := range leads {
+			leads[i] = float64(2 + i*3) // well separated, so marks cannot overlap
+		}
+		f := flowWith("deploy", weekOf(2026, 39, n, leads...))
+		var row string
+		for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100)) {
+			if strings.Contains(line, "W2026-39") {
+				row = line
+			}
+		}
+		if got := strings.Count(row, "▫"); got != n {
+			t.Errorf("%d deploys drew %d marks: %q", n, got, row)
+		}
+	}
 }

@@ -75,7 +75,13 @@ func (m WeeklyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "down", "j":
-			m.offset++
+			// Clamped, so holding the key cannot walk off the end. Unbounded,
+			// it left the view rendering "no deploys recorded yet" over a repo
+			// full of them, and took as many presses to undo as it took to
+			// get there.
+			if m.offset < m.maxOffset() {
+				m.offset++
+			}
 			return m, nil
 		case "up", "k":
 			if m.offset > 0 {
@@ -107,6 +113,21 @@ func (m WeeklyModel) View() tea.View {
 	return v
 }
 
+// maxOffset is the furthest the history can scroll: far enough to bring the
+// oldest week into view, and no further.
+func (m WeeklyModel) maxOffset() int {
+	total := 0
+	for _, f := range m.view.Flows {
+		if f.Name == m.selected {
+			total = len(f.Weekly)
+		}
+	}
+	if n := total - m.visibleWeeks(); n > 0 {
+		return n
+	}
+	return 0
+}
+
 // visibleWeeks is how many week rows fit, leaving room for the strip, the
 // header, the axis and the footer.
 func (m WeeklyModel) visibleWeeks() int {
@@ -134,9 +155,14 @@ func (m WeeklyModel) render() string {
 	limit := m.visibleWeeks()
 	for i := range windowed {
 		weeks := windowed[i].Weekly
+		// Clamped here as well as on the key: switching to a flow with a
+		// shorter history would otherwise strand the offset past its end.
 		start := m.offset
-		if start > len(weeks) {
-			start = len(weeks)
+		if max := len(weeks) - limit; start > max {
+			start = max
+		}
+		if start < 0 {
+			start = 0
 		}
 		end := start + limit
 		if end > len(weeks) {
@@ -161,7 +187,9 @@ func (m WeeklyModel) footer() string {
 		}
 	}
 	if total > m.visibleWeeks() {
-		keys = append([]string{"↑↓ scroll"}, keys...)
+		// The way back is advertised alongside the way down. Scrolling a long
+		// history is easy; remembering an undocumented key to undo it is not.
+		keys = append([]string{"↑↓ scroll", "g top"}, keys...)
 	}
 	return dimStyle().Render("  "+strings.Join(keys, "   ")) + "\n"
 }

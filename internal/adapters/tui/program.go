@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/ezcdlabs/clarity/internal/core"
 )
 
@@ -514,17 +515,19 @@ func truncateName(name string, max int) string {
 	if lipgloss.Width(name) <= max {
 		return name
 	}
-	runes := []rune(name)
-	switch {
-	case max <= 0:
+	if max <= 0 {
 		// Nothing left for a name. The status glyph still renders, which is
 		// the higher-priority half of what a tab carries.
 		return ""
-	case max == 1:
-		return string(runes[:1])
-	default:
-		return string(runes[:max-1]) + "…"
 	}
+	// By display width, not by rune count. The budget is columns, and a wide
+	// rune occupies two of them — indexing a rune slice with a column budget
+	// silently injected NUL runes when it fit and panicked when it did not,
+	// which any repo with a CJK deploy target reached.
+	if max == 1 {
+		return ansi.Truncate(name, 1, "")
+	}
+	return ansi.Truncate(name, max, "…")
 }
 
 // renderFlowCell renders one flow. With chrome available the selected cell is

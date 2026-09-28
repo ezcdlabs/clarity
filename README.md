@@ -1053,10 +1053,13 @@ The generator is the only GitHub-specific piece of the migration; everything dow
 git clarity metrics                      # interactive, opens on the first flow
 git clarity metrics --deploy ios         # open on one deploy flow
 git clarity metrics --weeks 26           # a longer window
+git clarity metrics --limit 0            # read the whole history, not the default window
 git clarity metrics --plain              # print once and exit
 ```
 
-`tab` / `shift+tab` switch flow, `1`–`9` jump to one, `↑`/`↓` scroll a long history, `q` quits.
+`tab` / `shift+tab` switch flow, `1`–`9` jump to one, `↑`/`↓` scroll a long history, `g` returns to the newest week, `q` quits.
+
+`--weeks` bounds what is drawn; `--limit` bounds what is read. They are different windows, and the second can cut the first short — when it does, a footnote says so, because an aggregate that is a few deploys short is wrong in a way no reader can see.
 
 One row per ISO week, newest first: a box plot of that week's lead times on the left, a bar of that week's deploy count on the right.
 

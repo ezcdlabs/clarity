@@ -273,3 +273,131 @@ func TestDeriveView_PutsTheAxisOnEveryFlow(t *testing.T) {
 		}
 	}
 }
+
+// TestChooseAxisMax_WideLogSpreadDoesNotOverflow covers the case where the
+// fence is legitimately enormous.
+//
+// math.Exp returns a float64 that routinely exceeds int64. Converting an
+// out-of-range float to an integer is implementation-defined in Go and yields
+// MinInt64 on amd64, so a negative fence won every comparison and the axis
+// collapsed to its SMALLEST step. The perversity is that it broke hardest
+// exactly where the algorithm should be most permissive: a huge log-space
+// spread means "the fence is above everything, so show everything".
+//
+// Bimodal data reaches it without trying — seconds-scale CI lead times
+// alongside hours-scale deploys, which is what leadTime: pipeline produces.
+func TestChooseAxisMax_WideLogSpreadDoesNotOverflow(t *testing.T) {
+	tests := []struct {
+		name    string
+		leads   []time.Duration
+		atLeast time.Duration
+	}{
+		{
+			name: "seconds beside hours",
+			leads: []time.Duration{
+				time.Second, 2 * time.Second, 3 * time.Second, 4 * time.Second, 5 * time.Second,
+				hrs(8), hrs(10), hrs(12), hrs(14), hrs(16),
+			},
+			atLeast: hrs(16),
+		},
+		{
+			name: "seconds beside days",
+			leads: []time.Duration{
+				time.Second, 5 * time.Second, 10 * time.Second,
+				hrs(72), hrs(120), hrs(168),
+			},
+			atLeast: hrs(168),
+		},
+		{
+			name: "minutes beside a fortnight",
+			leads: []time.Duration{
+				time.Minute, 5 * time.Minute, 10 * time.Minute,
+				hrs(168), hrs(250), hrs(336),
+			},
+			atLeast: hrs(336),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := core.ChooseAxisMax(tc.leads)
+			if got <= 0 {
+				t.Fatalf("axis = %v", got)
+			}
+			if got < tc.atLeast {
+				t.Errorf("axis = %v, want at least %v — a fence above every value "+
+					"means nothing is an outlier, so nothing should be clipped",
+					got, tc.atLeast)
+			}
+		})
+	}
+}
+
+// TestChooseAxisMax_LogFenceToleratesOrdinarySkew is the test the log
+// transform exists to pass, and it has to be a fixture where a raw fence
+// actually behaves differently — an earlier version was not, because rounding
+// to coarse boundaries hides small differences in the fence and the test
+// passed with the log transform removed.
+//
+// These lead times are a smooth right-skewed tail, roughly a constant ratio
+// between neighbours, which is the ordinary shape for a team. None of them is
+// an outlier. A raw interquartile fence lands at 24h and clips the slowest
+// commit anyway; the log fence reaches 48h and shows it.
+func TestChooseAxisMax_LogFenceToleratesOrdinarySkew(t *testing.T) {
+	skewed := []time.Duration{
+		hrs(0.54), hrs(0.93), hrs(1.61), hrs(2.79),
+		hrs(4.83), hrs(8.36), hrs(14.49), hrs(25.1),
+	}
+	got := core.ChooseAxisMax(skewed)
+	if got < hrs(25.1) {
+		t.Errorf("axis = %v clips the slowest ordinary commit (%v); a raw "+
+			"interquartile fence does exactly this, which is why the fence is "+
+			"computed on log durations", got, hrs(25.1))
+	}
+}
+
+// TestChooseAxisMax_RoundsUpFromANonBoundaryValue keeps the rounding
+// assertion honest. An earlier version used data whose largest value was
+// already exactly a boundary, so the test passed with the rounding removed.
+func TestChooseAxisMax_RoundsUpFromANonBoundaryValue(t *testing.T) {
+	// Largest value is 5h17m — not a boundary, so the axis has to move to
+	// reach one.
+	leads := []time.Duration{
+		hrs(1), hrs(1.4), hrs(1.9), hrs(2.3), hrs(2.8), hrs(3.4), hrs(4.1),
+		5*time.Hour + 17*time.Minute,
+	}
+	got := core.ChooseAxisMax(leads)
+	if got != 6*time.Hour {
+		t.Errorf("axis = %v, want 6h — the next readable boundary above 5h17m", got)
+	}
+}
+
+// TestWeeklyReport_AxisWeightsWeeksByTheirDeploys pins that the axis is
+// chosen from raw lead times rather than from per-week quantiles.
+//
+// Summarising each week to five numbers first would give a two-deploy week
+// the same say as a forty-deploy one, so a pair of freak commits would drag
+// the scale for everybody.
+func TestWeeklyReport_AxisWeightsWeeksByTheirDeploys(t *testing.T) {
+	busy := utc(2026, 1, 8, 12)   // ISO week 2: forty ordinary deploys
+	freak := utc(2026, 1, 15, 12) // ISO week 3: two very slow ones
+
+	var commits []core.CommitView
+	for i := 0; i < 40; i++ {
+		lead := time.Duration(1+i%4) * time.Hour
+		commits = append(commits, commit("busy", busy.Add(-lead), busy))
+	}
+	commits = append(commits,
+		commit("freak", freak.Add(-hrs(30)), freak),
+		commit("freak2", freak.Add(-hrs(40)), freak),
+	)
+
+	rep := core.WeeklyReport(core.Snapshot{Commits: commits}, core.DefaultLeadTimeMode)
+	if !rep.Clamped {
+		t.Errorf("axis %v swallowed two freak commits among forty ordinary ones; "+
+			"weighting each week equally is what does that", rep.Max)
+	}
+	if rep.Max > hrs(24) {
+		t.Errorf("axis = %v; forty commits between 1h and 4h should not produce "+
+			"a scale that wide", rep.Max)
+	}
+}

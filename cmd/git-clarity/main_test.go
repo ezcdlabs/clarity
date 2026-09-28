@@ -835,3 +835,110 @@ func TestRenderMetricsOnce_DefaultsToTheFirstFlow(t *testing.T) {
 		t.Errorf("expected the week row:\n%s", out)
 	}
 }
+
+// TestRenderMetricsOnce_ResolvesTheFlowTheSameWayTheTUIDoes covers --deploy
+// on the piped path.
+//
+// MatchFlow is fold-insensitive and also matches a flow's targets, so it
+// accepts "ios" for a flow named "iOS". The validation used it and then
+// passed the user's raw string on, where selection is by exact name — so a
+// request that validated fine silently rendered a different flow's numbers.
+// A CI script asking for ios got web.
+func TestRenderMetricsOnce_ResolvesTheFlowTheSameWayTheTUIDoes(t *testing.T) {
+	view := core.View{Flows: []core.FlowView{
+		{Flow: core.Flow{Name: "Web App", Targets: []string{"web"}},
+			Weekly: []core.WeekStat{{Year: 2026, Week: 39, Deploys: 111}}},
+		{Flow: core.Flow{Name: "iOS", Targets: []string{"ios"}},
+			Weekly: []core.WeekStat{{Year: 2026, Week: 39, Deploys: 222}}},
+	}}
+
+	for _, query := range []string{"ios", "iOS", "IOS"} {
+		out, err := renderMetricsOnce(view, query, 100)
+		if err != nil {
+			t.Fatalf("--deploy %q: %v", query, err)
+		}
+		if !strings.Contains(out, "222") {
+			t.Errorf("--deploy %q rendered another flow's numbers:\n%s", query, out)
+		}
+		if strings.Contains(out, "111") {
+			t.Errorf("--deploy %q rendered the web flow:\n%s", query, out)
+		}
+	}
+}
+
+// TestTrimToWholeWeeks_DoesNotMutateTheCallersView pins that the function
+// reads as it behaves. It returns a View by value, which looks non-mutating,
+// but Flows is a slice and writing through it reaches the caller.
+func TestTrimToWholeWeeks_DoesNotMutateTheCallersView(t *testing.T) {
+	weeks := make([]core.WeekStat, 10)
+	for i := range weeks {
+		weeks[i] = core.WeekStat{Year: 2026, Week: 40 - i}
+	}
+	original := core.View{Flows: []core.FlowView{
+		{Flow: core.Flow{Name: "web"}, Weekly: weeks},
+	}}
+
+	_ = trimToWholeWeeks(original, 3)
+	if n := len(original.Flows[0].Weekly); n != 10 {
+		t.Errorf("the caller's view was trimmed to %d weeks behind its back", n)
+	}
+}
+
+// TestTrimToWholeWeeks_RecomputesTheAxis verifies the scale matches what is
+// on screen.
+//
+// The axis was derived from the whole read window and then the window was
+// trimmed, so a flow could advertise "+" on its final tick — meaning "some
+// lead time is beyond this scale" — while every remaining row fitted. The
+// scale described weeks nobody could see.
+func TestTrimToWholeWeeks_RecomputesTheAxis(t *testing.T) {
+	fast := core.Quantiles([]time.Duration{time.Hour, 2 * time.Hour, 3 * time.Hour})
+	slow := core.Quantiles([]time.Duration{300 * time.Hour, 320 * time.Hour, 340 * time.Hour})
+
+	view := core.View{Flows: []core.FlowView{{
+		Flow: core.Flow{Name: "web"},
+		Weekly: []core.WeekStat{
+			{Year: 2026, Week: 40, Deploys: 3, Leads: fast},
+			{Year: 2026, Week: 39, Deploys: 3, Leads: fast},
+			{Year: 2026, Week: 38, Deploys: 3, Leads: slow}, // dropped below
+		},
+		LeadAxis: core.LeadAxis{Max: 8 * time.Hour, Clamped: true},
+	}}}
+
+	got := trimToWholeWeeks(view, 2)
+	axis := got.Flows[0].LeadAxis
+	if axis.Clamped {
+		t.Errorf("axis still claims data is hidden, but the week it referred to "+
+			"was trimmed away; no visible row is beyond %v", axis.Max)
+	}
+	for _, w := range got.Flows[0].Weekly {
+		if w.Leads.Max > axis.Max {
+			t.Errorf("W%d-%02d has a lead of %v beyond the axis %v",
+				w.Year, w.Week, w.Leads.Max, axis.Max)
+		}
+	}
+}
+
+// TestTruncationNotice covers disclosing a window cut short by the commit cap.
+//
+// An aggregate that is short a few deploys is wrong in a way no reader can
+// see: nothing on screen distinguishes "this is the whole repository" from
+// "this is as far as the cap reached". The commit list already says which;
+// a trend view has more need of it, not less.
+func TestTruncationNotice(t *testing.T) {
+	full := core.View{Snapshot: core.Snapshot{Truncated: false, Limit: 2000}}
+	if got := truncationNotice(full, 100); got != "" {
+		t.Errorf("an untruncated window should say nothing, got %q", got)
+	}
+
+	cut := core.View{Snapshot: core.Snapshot{Truncated: true, Limit: 2000}}
+	got := truncationNotice(cut, 100)
+	if got == "" {
+		t.Fatal("a truncated window must disclose it")
+	}
+	for _, want := range []string{"2000", "--limit 0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("notice should mention %q, got %q", want, got)
+		}
+	}
+}

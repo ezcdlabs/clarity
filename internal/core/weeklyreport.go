@@ -128,11 +128,19 @@ func ChooseAxisMax(leads []time.Duration) time.Duration {
 
 	q1 := quantileFloat(positive, 0.25)
 	q3 := quantileFloat(positive, 0.75)
-	fence := time.Duration(math.Exp(q3 + 1.5*(q3-q1)))
 
+	// math.Exp returns a float64 that routinely exceeds int64 — a log-space
+	// spread wide enough to put the fence past ~292 years is reached by
+	// ordinary bimodal data, such as seconds-scale CI lead times beside
+	// hours-scale deploys. Converting an out-of-range float to an integer is
+	// implementation-defined in Go and yields MinInt64 on amd64, so an
+	// unchecked conversion turned "the fence is above everything" — the case
+	// where nothing should be clipped at all — into the smallest axis
+	// available.
 	limit := largest // everything fits unless the fence says otherwise
-	if fence < limit {
-		limit = fence
+	fence := math.Exp(q3 + 1.5*(q3-q1))
+	if fence > 0 && fence < float64(math.MaxInt64) && time.Duration(fence) < limit {
+		limit = time.Duration(fence)
 	}
 	return roundUpToAxisStep(limit)
 }
@@ -204,4 +212,51 @@ func newReport(weeks []WeekStat, pooled []time.Duration) Report {
 		}
 	}
 	return Report{Weeks: weeks, LeadAxis: LeadAxis{Max: axis, Clamped: clamped}}
+}
+
+// AxisForWeeks picks a shared axis for weeks already derived, for callers
+// that narrow a window after derivation — `--weeks` trimming a report down to
+// the newest few.
+//
+// It is an approximation, and deliberately so. The raw lead times live only
+// inside weeklyStats; keeping them on every WeekStat would grow without bound
+// with a busy week. What survives is each week's five-number summary, so this
+// reconstructs a stand-in distribution from those.
+//
+// The weighting is the part that matters. Pooling five numbers per week flat
+// would give a two-deploy week the same say as a forty-deploy one, which is
+// the bias the derivation path exists to avoid; each week's summary is
+// therefore repeated in proportion to how many deploys it actually had. Weeks
+// below SampleFloor contribute their real values instead.
+//
+// An approximate axis is acceptable where an approximate median would not be:
+// the axis is a choice about how to draw a scale, not a number anyone reads
+// off the screen.
+func AxisForWeeks(weeks []WeekStat) LeadAxis {
+	var pooled []time.Duration
+	for _, w := range weeks {
+		if w.Leads.N == 0 {
+			continue
+		}
+		if len(w.Leads.Samples) > 0 {
+			pooled = append(pooled, w.Leads.Samples...)
+			continue
+		}
+		summary := []time.Duration{w.Leads.Min, w.Leads.P25, w.Leads.P50, w.Leads.P75, w.Leads.Max}
+		repeat := w.Leads.N / len(summary)
+		if repeat < 1 {
+			repeat = 1
+		}
+		for i := 0; i < repeat; i++ {
+			pooled = append(pooled, summary...)
+		}
+	}
+
+	axis := ChooseAxisMax(pooled)
+	for _, w := range weeks {
+		if w.Leads.N > 0 && w.Leads.Max > axis {
+			return LeadAxis{Max: axis, Clamped: true}
+		}
+	}
+	return LeadAxis{Max: axis}
 }

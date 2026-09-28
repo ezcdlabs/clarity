@@ -89,7 +89,7 @@ func runMetrics(args []string) error {
 	fs.SetOutput(io.Discard)
 	deploy := fs.String("deploy", "", "open on one deploy flow by name")
 	weeks := fs.Int("weeks", 12, "how many whole weeks to show")
-	limit := fs.Int("limit", 0, "commits to read; 0 reads the default window")
+	limit := fs.Int("limit", metricsCommitWindow, "commits to read; 0 for unlimited")
 	cacheDir := fs.String("cache-dir", "", "override the cache directory")
 	plain := fs.Bool("plain", false, "print once instead of opening the interactive view")
 	if err := fs.Parse(args); err != nil {
@@ -117,13 +117,11 @@ func runMetrics(args []string) error {
 	})
 
 	// A trend view wants history, and without a poll loop it can afford it:
-	// the cost is paid once at startup rather than on every tick.
+	// the cost is paid once at startup rather than on every tick. 0 still
+	// means unlimited, as it does on every other command.
 	opts := rootOptions{limit: *limit, cacheDir: *cacheDir, deploy: *deploy}
-	if opts.limit == 0 {
-		opts.limit = metricsCommitWindow
-	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), metricsTimeout)
 	defer cancel()
 	src, err := buildSource(ctx, cfg, opts, repoPath, resolvedCache)
 	if err != nil {
@@ -152,9 +150,14 @@ func runMetrics(args []string) error {
 // there is no terminal to measure when the destination is a file.
 const metricsPlainWidth = 100
 
-// metricsCommitWindow is how far back the weekly view reads when no --limit
-// is given. Generous because twelve weeks of history is the point, and a
-// one-shot read can afford what a five-second poll cannot.
+// metricsTimeout bounds the one cold fetch this command makes. There is no
+// cache-warm path here: unlike the live TUI it never paints a stale view
+// first, so a hung fetch is visible as a wait rather than as stale numbers.
+const metricsTimeout = 60 * time.Second
+
+// metricsCommitWindow is the default commit window. Generous because twelve
+// weeks of history is the point, and a one-shot read can afford what a
+// five-second poll cannot.
 const metricsCommitWindow = 2000
 
 // firstFreshView takes the single snapshot the weekly view is built from.
@@ -165,15 +168,19 @@ func firstFreshView(ctx context.Context, views <-chan core.View) (core.View, err
 			if !ok {
 				return core.View{}, fmt.Errorf("source closed before emitting a view")
 			}
-			// The cached lens paints a stale view first so the live TUI has
-			// something immediate; a one-shot read should wait for the real
-			// one rather than report last week's numbers as this week's.
+			// Defensive rather than reachable today: this command builds a
+			// bare Lens, and only CachedLens ever sets Stale. If it is ever
+			// wrapped for a warm first paint, a one-shot read must still wait
+			// for the real snapshot rather than report last week's numbers as
+			// this week's.
 			if v.Stale {
 				continue
 			}
 			return v, nil
 		case <-ctx.Done():
-			return core.View{}, ctx.Err()
+			return core.View{}, fmt.Errorf(
+				"timed out after %s waiting for the first snapshot — "+
+					"check the remote is reachable: %w", metricsTimeout, ctx.Err())
 		}
 	}
 }
@@ -184,11 +191,22 @@ func firstFreshView(ctx context.Context, views <-chan core.View) (core.View, err
 // does not depend on how busy the repository was. Weeks the data window cut
 // through are already dropped upstream, in weeklyStats.
 func trimToWholeWeeks(view core.View, n int) core.View {
-	for i := range view.Flows {
-		if len(view.Flows[i].Weekly) > n {
-			view.Flows[i].Weekly = view.Flows[i].Weekly[:n]
+	// Flows is copied before anything is written through it. The function
+	// returns a View by value, which reads as non-mutating, but a slice field
+	// carries writes straight back to the caller.
+	flows := make([]core.FlowView, len(view.Flows))
+	copy(flows, view.Flows)
+
+	for i := range flows {
+		if len(flows[i].Weekly) > n {
+			flows[i].Weekly = flows[i].Weekly[:n]
 		}
+		// The axis was chosen from the whole read window, so after narrowing
+		// it could claim "+" — some lead time is beyond this scale — while
+		// every remaining row fitted, describing weeks nobody can see.
+		flows[i].LeadAxis = core.AxisForWeeks(flows[i].Weekly)
 	}
+	view.Flows = flows
 	return view
 }
 
@@ -200,11 +218,37 @@ func renderMetricsOnce(view core.View, deploy string, width int) (string, error)
 				deploy, strings.Join(core.FlowNames(view.Flows), ", "))
 		}
 	}
-	selected := deploy
-	if selected == "" && len(view.Flows) > 0 {
+	// Resolved through the index, the way the interactive path does it.
+	// MatchFlow is fold-insensitive and also matches a flow's targets, so the
+	// string the user typed is often not the flow's name — and RenderWeekly
+	// selects by exact name. Passing the raw query on meant a request that
+	// validated fine rendered a different flow's numbers, silently.
+	selected := ""
+	if len(view.Flows) > 0 {
 		selected = view.Flows[0].Name
 	}
-	return tui.RenderWeekly(view.Flows, selected, width), nil
+	if deploy != "" {
+		i, _ := core.MatchFlow(view.Flows, deploy)
+		selected = view.Flows[i].Name
+	}
+	return tui.RenderWeekly(view.Flows, selected, width) +
+		truncationNotice(view, width), nil
+}
+
+// truncationNotice says when the commit window, rather than the repository's
+// age, is what ended the history.
+//
+// The commit list already does this — "the bottom of a truncated scroll can't
+// be mistaken for the start of the repository" — and the reasoning applies
+// with more force here, because an aggregate that is short a few deploys is
+// wrong in a way no reader can see.
+func truncationNotice(view core.View, width int) string {
+	if !view.Snapshot.Truncated {
+		return ""
+	}
+	return tui.DimNotice(fmt.Sprintf(
+		"  history ends at the %d-commit window, not at the first commit — pass --limit 0 for all of it",
+		view.Snapshot.Limit), width) + "\n"
 }
 
 // runInit drives `git clarity init --github` — the interactive

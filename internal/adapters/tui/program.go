@@ -44,6 +44,12 @@ const lightElevationRatio = 0.6
 // space before its status icon, the icon, and a trailing space.
 const cellFixed = 4
 
+// cellFixedNoStatus is the same without the status icon and the space before
+// it: a leading and trailing pad around the name. The weekly view uses this
+// shape — a status frozen at launch answers the live view's question, not its
+// own, and would go quietly stale while it is read.
+const cellFixedNoStatus = 2
+
 // Model is the Bubble Tea state — the latest View (carrying the joined
 // snapshot, its derived shapes, and the Stale flag for the SWR
 // indicator), terminal dimensions, a flag for whether we've received
@@ -402,7 +408,7 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 			right = ""
 			budget = width - lipgloss.Width(left) - 2
 		}
-		deploy = renderStrip(view.Flows, selected, chrome, base, budget)
+		deploy = renderStrip(view.Flows, selected, chrome, base, budget, true)
 	}
 
 	line := left + "  " + deploy
@@ -438,7 +444,7 @@ func stripWidth(flows []core.FlowView) int {
 // renderStrip renders the deploy flows as selectable cells after a "deploy:"
 // group label. The selected cell is the only one rendered in full weight; the
 // rest stay dim, so the strip reads as one control with one active member.
-func renderStrip(flows []core.FlowView, selected string, chrome, base color.Color, budget int) string {
+func renderStrip(flows []core.FlowView, selected string, chrome, base color.Color, budget int, withStatus bool) string {
 	active := 0
 	for i, f := range flows {
 		if f.Name == selected {
@@ -451,7 +457,7 @@ func renderStrip(flows []core.FlowView, selected string, chrome, base color.Colo
 		labelStyle = labelStyle.Background(chrome)
 	}
 
-	perName, withLabel, withSep := stripLayout(flows, budget)
+	perName, withLabel, withSep := stripLayout(flows, budget, withStatus)
 
 	label := ""
 	if withLabel {
@@ -460,7 +466,7 @@ func renderStrip(flows []core.FlowView, selected string, chrome, base color.Colo
 
 	cells := make([]string, 0, len(flows))
 	for i, f := range flows {
-		cells = append(cells, renderFlowCell(f, i == active, chrome, base, perName))
+		cells = append(cells, renderFlowCell(f, i == active, chrome, base, perName, withStatus))
 	}
 
 	sep := ""
@@ -480,8 +486,16 @@ func renderStrip(flows []core.FlowView, selected string, chrome, base color.Colo
 // dropped — the stuck deploy is the one most worth seeing and would be exactly
 // the one to vanish — so at the extreme the strip becomes a row of bare status
 // glyphs, which is still the higher-priority half of what a tab carries.
-func stripLayout(flows []core.FlowView, budget int) (perName int, withLabel, withSep bool) {
+func stripLayout(flows []core.FlowView, budget int, withStatus bool) (perName int, withLabel, withSep bool) {
 	n := len(flows)
+	fixed := cellFixed
+	// Without a status glyph the name is all a cell has, so it can never be
+	// shed entirely — a cell with neither is not a tab.
+	minName := 0
+	if !withStatus {
+		fixed = cellFixedNoStatus
+		minName = 1
+	}
 	longest := 0
 	for _, f := range flows {
 		if w := lipgloss.Width(f.Name); w > longest {
@@ -490,9 +504,9 @@ func stripLayout(flows []core.FlowView, budget int) (perName int, withLabel, wit
 	}
 
 	width := func(name int, label, sep bool) int {
-		w := n * (cellFixed - 1) // pads and status icon
+		w := n * (fixed - 1) // pads, and the status icon when there is one
 		if name > 0 {
-			w += n * (name + 1) // the name and the space before the icon
+			w += n * (name + 1) // the name and the space that follows it
 		}
 		if label {
 			w += lipgloss.Width("deploy:")
@@ -504,7 +518,7 @@ func stripLayout(flows []core.FlowView, budget int) (perName int, withLabel, wit
 	}
 
 	for _, opt := range []struct{ label, sep bool }{{true, true}, {false, true}, {false, false}} {
-		for name := longest; name >= 0; name-- {
+		for name := longest; name >= minName; name-- {
 			if width(name, opt.label, opt.sep) <= budget {
 				return name, opt.label, opt.sep
 			}
@@ -512,7 +526,7 @@ func stripLayout(flows []core.FlowView, budget int) (perName int, withLabel, wit
 	}
 	// Nothing fits; render the most compact form and let it overflow rather
 	// than hide a flow.
-	return 0, false, false
+	return minName, false, false
 }
 
 // truncateName shortens a flow name to fit, keeping it identifiable. Never
@@ -542,7 +556,7 @@ func truncateName(name string, max int) string {
 // a colour with the content below — a tab connected to what it controls.
 // Without it, weight and an underline carry the selection instead; a colour
 // picked from the text palette would only ever look pasted on.
-func renderFlowCell(f core.FlowView, selected bool, chrome, base color.Color, nameWidth int) string {
+func renderFlowCell(f core.FlowView, selected bool, chrome, base color.Color, nameWidth int, withStatus bool) string {
 	nameStyle := lipgloss.NewStyle().Foreground(colorGray)
 	cellBg := chrome
 
@@ -562,6 +576,12 @@ func renderFlowCell(f core.FlowView, selected bool, chrome, base color.Color, na
 		pad = pad.Background(cellBg)
 	}
 	name := truncateName(f.Name, nameWidth)
+	if !withStatus {
+		if name == "" {
+			name = truncateName(f.Name, 1)
+		}
+		return pad.Render(" ") + nameStyle.Render(name) + pad.Render(" ")
+	}
 	if name == "" {
 		// cellFixed still holds: one pad short of a named cell, because the
 		// space that separated name from icon goes with the name.

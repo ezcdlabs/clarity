@@ -79,8 +79,20 @@ func TestRenderWeekly_ShowsAWeekPerRow(t *testing.T) {
 			t.Errorf("output is missing %q:\n%s", want, out)
 		}
 	}
-	if i, j := strings.Index(out, "W2026-39"), strings.Index(out, "W2026-38"); i > j {
-		t.Error("weeks should read newest first")
+	// Row order, not raw string order: the top bar names the period, so both
+	// week labels appear there first and searching the whole output would
+	// compare header text rather than rows.
+	var rows []string
+	for _, line := range plainLines(out) {
+		if strings.HasPrefix(strings.TrimSpace(line), "W2026-") {
+			rows = append(rows, strings.TrimSpace(line))
+		}
+	}
+	if len(rows) < 2 {
+		t.Fatalf("expected two week rows, got %d", len(rows))
+	}
+	if !strings.HasPrefix(rows[0], "W2026-39") || !strings.HasPrefix(rows[1], "W2026-38") {
+		t.Errorf("weeks should read newest first, got %q then %q", rows[0], rows[1])
 	}
 }
 
@@ -446,7 +458,7 @@ func TestWeeklyModel_FooterMentionsHowToGetBack(t *testing.T) {
 // as a description of what moved.
 func TestRenderWeekly_GoldenLayout(t *testing.T) {
 	want := []string{
-		"app  ·  ci: ✓  ·  deploy: ✓                                                                         ",
+		"app  ·  W2026-36 – W2026-40",
 		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
 		"  W2026-40     ├────▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓────────────────────────┤         █████████████████████  18",
@@ -484,7 +496,7 @@ func TestRenderWeekly_GoldenClampedRow(t *testing.T) {
 		}},
 	}
 	want := []string{
-		"app  ·  ci: ✓  ·  deploy: ✓                                                                         ",
+		"app  ·  W2026-39",
 		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
 		"  W2026-39              ├───────▓▓▓▓▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓───┤→  ████████████████████████████   6",
@@ -541,6 +553,14 @@ func TestRenderWeekly_AlwaysHasATopBar(t *testing.T) {
 	if !strings.Contains(first, "api") {
 		t.Errorf("a single-flow repo should still be named in the top bar: %q", first)
 	}
+	// What the reader needs is the span on screen, not a status that answers
+	// the live view's question with a value frozen at launch.
+	if !strings.Contains(first, "W2026-39") {
+		t.Errorf("the bar should name the period it is showing: %q", first)
+	}
+	if strings.Contains(first, "ci:") {
+		t.Errorf("the bar carries a stale live status: %q", first)
+	}
 
 	many := one
 	many.Flows = []core.FlowView{
@@ -566,5 +586,35 @@ func TestWeeklyModel_FooterOmitsTheQuitKey(t *testing.T) {
 	body := stripANSI(tui.NewWeeklyModel(view, "", 100, 30).View().Content)
 	if strings.Contains(body, "quit") {
 		t.Errorf("the footer still advertises quitting:\n%s", body)
+	}
+}
+
+// TestRenderWeekly_StripCarriesNoStatus verifies the deploy strip is a
+// selector here, not a status display.
+//
+// A glyph on a tab is frozen at launch like everything else in this view, but
+// unlike the weeks it *looks* current — and it answers the live view's
+// question rather than this one's. Removing the badges from the bar while
+// leaving them on the tabs would apply the reasoning half-way.
+func TestRenderWeekly_StripCarriesNoStatus(t *testing.T) {
+	broken := flowWith("ios", weekOf(2026, 39, 2, 40, 50))
+	broken.Deploy = "failed"
+	healthy := flowWith("web", weekOf(2026, 39, 5, 1, 2, 3, 4, 5, 6))
+	healthy.Deploy = "passed"
+
+	view := core.View{
+		Snapshot: core.Snapshot{RepoName: "api"},
+		Header:   core.HeaderStatus{CI: "failed", Deploy: "failed"},
+		Flows:    []core.FlowView{healthy, broken},
+	}
+	bar := plainLines(tui.RenderWeekly(view, "web", 100))[0]
+
+	for _, want := range []string{"web", "ios"} {
+		if !strings.Contains(bar, want) {
+			t.Errorf("the strip should still name %q: %q", want, bar)
+		}
+	}
+	if strings.ContainsAny(bar, "✓✗") {
+		t.Errorf("the strip is showing a status frozen at launch: %q", bar)
 	}
 }

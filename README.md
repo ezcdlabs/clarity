@@ -1059,7 +1059,11 @@ git clarity metrics --plain              # print once and exit
 
 `tab` / `shift+tab` switch flow, `1`–`9` jump to one, `↑`/`↓` scroll a long history, `g` returns to the newest week, `q` quits.
 
-The header is the live view's, so the two read as one tool: repo name and status, with the deploy strip in place of the status badge when there are targets to switch between. A repo with no targets still gets a bar — the strip is what varies with targets, the bar is not. The footer lists only keys that change what is on screen; every terminal program quits, and saying so spends the line on the one hint carrying no information.
+The top bar carries what the reader needs to know they are looking at: the repo, the span of weeks on screen, and which flow is selected. A repo with no targets still gets one — the strip is what varies with targets, the bar is not.
+
+It deliberately does **not** carry ci/deploy status, and the deploy strip here shows no status glyphs. Those answer *"is main green right now?"* — the live view's whole question — with a value frozen at launch that goes stale while this view is read. A badge that looks live and is not is worse than no badge, and leaving glyphs on the tabs while removing the badges would apply the reasoning half-way. The strip is a selector here, not a status display.
+
+The footer lists only keys that change what is on screen; every terminal program quits, and saying so spends the line on the one hint carrying no information.
 
 `--weeks` bounds what is drawn; `--limit` bounds what is read. They are different windows, and the second can cut the first short — when it does, a footnote says so, because an aggregate that is a few deploys short is wrong in a way no reader can see.
 

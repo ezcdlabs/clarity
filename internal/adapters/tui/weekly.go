@@ -53,15 +53,7 @@ func RenderWeekly(view core.View, selected string, width int) string {
 	}
 
 	var b strings.Builder
-	// The same header the live view uses, so the two read as one tool: repo
-	// name and status, with the deploy strip in place of the status when
-	// there are targets to switch between. A repo with no targets still gets
-	// a top bar, which it did not when the strip was the only thing here.
-	//
-	// chrome nil: no elevated background bar. This is a static page rather
-	// than a live header, so it sits on the terminal's own background. And no
-	// quit hint — the footer carries the keys that do something.
-	b.WriteString(ClipRight(renderHeader(view, flow.Name, width, nil, nil, ""), width))
+	b.WriteString(weeklyBar(view, flow, width))
 	b.WriteString("\n\n")
 
 	plotCols, barCols := weeklyLayout(width)
@@ -94,6 +86,55 @@ func RenderWeekly(view core.View, selected string, width int) string {
 	b.WriteString(weeklyAxis(axis, plotCols, width))
 	b.WriteString("\n")
 	return b.String()
+}
+
+// weeklyBar is the top bar: what repo, what period, and which flow is on
+// screen.
+//
+// Deliberately not the live view's header. That one carries ci and deploy
+// badges, which answer "is main green right now?" — the other view's whole
+// question, and a value frozen at launch that goes stale while this one is
+// read. A badge that looks live and is not is worse than no badge. The deploy
+// strip is here as a selector rather than a status display, for the same
+// reason: its glyphs would be just as frozen.
+//
+// What belongs here instead is what the reader needs to know they are looking
+// at: the repo, and the span of weeks on screen.
+func weeklyBar(view core.View, flow core.FlowView, width int) string {
+	name := view.Snapshot.RepoName
+	left := lipgloss.NewStyle().Bold(true).Render(name)
+
+	if period := weeklyPeriod(flow.Weekly); period != "" {
+		left += dimStyle().Render("  ·  " + period)
+	}
+
+	if len(view.Flows) > 1 {
+		// The strip takes what the name and period leave. Without status
+		// glyphs a cell is its name, so names shorten but a flow is never
+		// dropped — the one you cannot see is the one you cannot select.
+		budget := width - lipgloss.Width(left) - 2
+		strip := renderStrip(view.Flows, flow.Name, nil, nil, budget, false)
+		gap := width - lipgloss.Width(left) - lipgloss.Width(strip)
+		if gap < 2 {
+			gap = 2
+		}
+		left += strings.Repeat(" ", gap) + strip
+	}
+	return ClipRight(left, width)
+}
+
+// weeklyPeriod names the span on screen, oldest to newest. A single week is
+// named once rather than as a range from itself to itself.
+func weeklyPeriod(weeks []core.WeekStat) string {
+	if len(weeks) == 0 {
+		return ""
+	}
+	newest, oldest := weeks[0], weeks[len(weeks)-1]
+	label := func(w core.WeekStat) string { return fmt.Sprintf("W%d-%02d", w.Year, w.Week) }
+	if len(weeks) == 1 {
+		return label(newest)
+	}
+	return label(oldest) + " – " + label(newest)
 }
 
 // weeklyLayout splits the available width between the plot and the bars. The

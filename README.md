@@ -1059,6 +1059,8 @@ git clarity metrics --plain              # print once and exit
 
 `tab` / `shift+tab` switch flow, `1`–`9` jump to one, `↑`/`↓` scroll a long history, `g` returns to the newest week, `q` quits.
 
+The header is the live view's, so the two read as one tool: repo name and status, with the deploy strip in place of the status badge when there are targets to switch between. A repo with no targets still gets a bar — the strip is what varies with targets, the bar is not. The footer lists only keys that change what is on screen; every terminal program quits, and saying so spends the line on the one hint carrying no information.
+
 `--weeks` bounds what is drawn; `--limit` bounds what is read. They are different windows, and the second can cut the first short — when it does, a footnote says so, because an aggregate that is a few deploys short is wrong in a way no reader can see.
 
 One row per ISO week, newest first: a box plot of that week's lead times on the left, a bar of that week's deploy count on the right.

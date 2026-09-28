@@ -231,7 +231,7 @@ func renderMetricsOnce(view core.View, deploy string, width int) (string, error)
 		i, _ := core.MatchFlow(view.Flows, deploy)
 		selected = view.Flows[i].Name
 	}
-	return tui.RenderWeekly(view.Flows, selected, width) +
+	return tui.RenderWeekly(view, selected, width) +
 		truncationNotice(view, width), nil
 }
 

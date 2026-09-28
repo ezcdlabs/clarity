@@ -171,14 +171,16 @@ func (m WeeklyModel) render() string {
 		windowed[i].Weekly = weeks[start:end]
 	}
 
-	body := RenderWeekly(windowed, m.selected, m.width)
+	shown := m.view
+	shown.Flows = windowed
+	body := RenderWeekly(shown, m.selected, m.width)
 	return body + "\n" + m.footer()
 }
 
 func (m WeeklyModel) footer() string {
-	keys := []string{"q quit"}
+	var keys []string
 	if len(m.view.Flows) > 1 {
-		keys = append([]string{"tab switch deploy"}, keys...)
+		keys = append(keys, "tab switch deploy")
 	}
 	total := 0
 	for _, f := range m.view.Flows {

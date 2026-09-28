@@ -72,7 +72,7 @@ func TestRenderWeekly_ShowsAWeekPerRow(t *testing.T) {
 		weekOf(2026, 39, 18, 1, 2, 3, 4, 5, 6),
 		weekOf(2026, 38, 24, 1, 1.5, 2, 2.5, 3, 4),
 	)
-	out := tui.RenderWeekly([]core.FlowView{f}, "deploy", 100)
+	out := tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100)
 
 	for _, want := range []string{"W2026-39", "W2026-38", "18", "24"} {
 		if !strings.Contains(stripANSI(out), want) {
@@ -96,7 +96,7 @@ func TestRenderWeekly_NeverExceedsTheWidth(t *testing.T) {
 	// Down to zero: the header is clipped to the requested width, so the rows
 	// have to be too, or the two disagree and every row wraps.
 	for _, width := range []int{120, 100, 80, 60, 48, 40, 30, 26, 20, 10, 1, 0} {
-		out := tui.RenderWeekly([]core.FlowView{f}, "deploy", width)
+		out := tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", width)
 		for _, line := range plainLines(out) {
 			if got := len([]rune(line)); got > width {
 				t.Errorf("width %d: line of %d runes overflows:\n%q", width, got, line)
@@ -112,7 +112,7 @@ func TestRenderWeekly_EmptyWeekIsNotAZeroLengthPlot(t *testing.T) {
 		weekOf(2026, 39, 12, 1, 2, 3, 4, 5, 6),
 		weekOf(2026, 38, 0),
 	)
-	out := stripANSI(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100))
+	out := stripANSI(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100))
 
 	var emptyRow string
 	for _, line := range strings.Split(out, "\n") {
@@ -135,7 +135,7 @@ func TestRenderWeekly_TooFewDeploysPlotsPointsNotQuartiles(t *testing.T) {
 		weekOf(2026, 39, 12, 1, 2, 3, 4, 5, 6),
 		weekOf(2026, 38, 2, 3, 4),
 	)
-	out := stripANSI(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100))
+	out := stripANSI(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100))
 
 	for _, line := range strings.Split(out, "\n") {
 		if !strings.Contains(line, "W2026-38") {
@@ -156,7 +156,7 @@ func TestRenderWeekly_ShowsTheDeployStripForSeveralFlows(t *testing.T) {
 	web := flowWith("web", weekOf(2026, 39, 10, 1, 2, 3, 4))
 	ios := flowWith("ios", weekOf(2026, 39, 3, 40, 50, 60))
 
-	out := stripANSI(tui.RenderWeekly([]core.FlowView{web, ios}, "ios", 100))
+	out := stripANSI(tui.RenderWeekly(core.View{Flows: []core.FlowView{web, ios}}, "ios", 100))
 	if !strings.Contains(out, "web") || !strings.Contains(out, "ios") {
 		t.Errorf("both flows should appear in the strip:\n%s", out)
 	}
@@ -279,7 +279,7 @@ func TestRenderWeekly_WideRuneFlowName(t *testing.T) {
 	wide := flowWith("配置到生产环境服务器集群", weekOf(2026, 39, 5, 1, 2, 3))
 	other := flowWith("ios", weekOf(2026, 39, 2, 40, 50))
 	for _, width := range []int{120, 100, 80, 60, 40} {
-		out := tui.RenderWeekly([]core.FlowView{wide, other}, "ios", width)
+		out := tui.RenderWeekly(core.View{Flows: []core.FlowView{wide, other}}, "ios", width)
 		if strings.ContainsRune(out, 0) {
 			t.Errorf("width %d: NUL runes in output", width)
 		}
@@ -310,7 +310,7 @@ func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
 		}},
 	}
 	row := ""
-	for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{slow}, "deploy", 100)) {
+	for _, line := range plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{slow}}, "deploy", 100)) {
 		if strings.Contains(line, "W2026-39") {
 			row = line
 		}
@@ -338,7 +338,7 @@ func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
 	// week ran off the end; the "+" says the axis does not cover everything.
 	// Without it a reader takes the final tick as the true maximum.
 	var axisLine string
-	for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{slow}, "deploy", 100)) {
+	for _, line := range plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{slow}}, "deploy", 100)) {
 		if strings.Contains(line, "0─") {
 			axisLine = line
 		}
@@ -357,7 +357,7 @@ func TestRenderWeekly_HeaderAlignsWithTheRows(t *testing.T) {
 		weekOf(2026, 38, 7, 1, 2, 3, 4, 5, 6),
 	)
 	for _, width := range []int{100, 80, 60} {
-		lines := plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", width))
+		lines := plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", width))
 		var header, row string
 		for _, l := range lines {
 			if strings.Contains(l, "deploys") {
@@ -446,6 +446,8 @@ func TestWeeklyModel_FooterMentionsHowToGetBack(t *testing.T) {
 // as a description of what moved.
 func TestRenderWeekly_GoldenLayout(t *testing.T) {
 	want := []string{
+		"app  ·  ci: ✓  ·  deploy: ✓                                                                         ",
+		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
 		"  W2026-40     ├────▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓────────────────────────┤         █████████████████████  18",
 		"  W2026-39     ├─▓█▓▓─┤                                             ████████████████████████████  24",
@@ -456,7 +458,7 @@ func TestRenderWeekly_GoldenLayout(t *testing.T) {
 		"",
 	}
 
-	got := plainLines(tui.RenderWeekly([]core.FlowView{goldenFlow()}, "deploy", 100))
+	got := plainLines(tui.RenderWeekly(goldenView(), "deploy", 100))
 	if len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
 	}
@@ -482,12 +484,16 @@ func TestRenderWeekly_GoldenClampedRow(t *testing.T) {
 		}},
 	}
 	want := []string{
+		"app  ·  ci: ✓  ·  deploy: ✓                                                                         ",
+		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
 		"  W2026-39              ├───────▓▓▓▓▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓───┤→  ████████████████████████████   6",
 		"           0────────────2h────────────4h───────────6h──────────8h+",
 		"",
 	}
-	got := plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100))
+	view := goldenView()
+	view.Flows = []core.FlowView{f}
+	got := plainLines(tui.RenderWeekly(view, "deploy", 100))
 	if len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
 	}
@@ -509,7 +515,7 @@ func TestRenderWeekly_PlotsEverySample(t *testing.T) {
 		}
 		f := flowWith("deploy", weekOf(2026, 39, n, leads...))
 		var row string
-		for _, line := range plainLines(tui.RenderWeekly([]core.FlowView{f}, "deploy", 100)) {
+		for _, line := range plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100)) {
 			if strings.Contains(line, "W2026-39") {
 				row = line
 			}
@@ -517,5 +523,48 @@ func TestRenderWeekly_PlotsEverySample(t *testing.T) {
 		if got := strings.Count(row, "▫"); got != n {
 			t.Errorf("%d deploys drew %d marks: %q", n, got, row)
 		}
+	}
+}
+
+// TestRenderWeekly_AlwaysHasATopBar covers a repo with no deploy targets.
+//
+// The header used to be the deploy strip and nothing else, so a repo with one
+// flow — which is most repos — got no top bar at all and the view opened on a
+// bare column heading. The strip is what varies with targets; the bar is not.
+func TestRenderWeekly_AlwaysHasATopBar(t *testing.T) {
+	one := core.View{
+		Snapshot: core.Snapshot{RepoName: "api"},
+		Header:   core.HeaderStatus{CI: "passed", Deploy: "passed"},
+		Flows:    []core.FlowView{flowWith("deploy", weekOf(2026, 39, 5, 1, 2, 3, 4, 5, 6))},
+	}
+	first := plainLines(tui.RenderWeekly(one, "deploy", 100))[0]
+	if !strings.Contains(first, "api") {
+		t.Errorf("a single-flow repo should still be named in the top bar: %q", first)
+	}
+
+	many := one
+	many.Flows = []core.FlowView{
+		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3, 4, 5, 6)),
+		flowWith("ios", weekOf(2026, 39, 2, 40, 50)),
+	}
+	firstMany := plainLines(tui.RenderWeekly(many, "ios", 100))[0]
+	for _, want := range []string{"api", "web", "ios"} {
+		if !strings.Contains(firstMany, want) {
+			t.Errorf("the top bar should carry %q with targets present: %q", want, firstMany)
+		}
+	}
+}
+
+// TestWeeklyModel_FooterOmitsTheQuitKey verifies the footer lists only keys
+// that change what is on screen. Every terminal program quits; saying so
+// spends a line on the one hint carrying no information.
+func TestWeeklyModel_FooterOmitsTheQuitKey(t *testing.T) {
+	view := core.View{
+		Snapshot: core.Snapshot{RepoName: "api"},
+		Flows:    []core.FlowView{flowWith("deploy", weekOf(2026, 39, 5, 1, 2, 3, 4, 5, 6))},
+	}
+	body := stripANSI(tui.NewWeeklyModel(view, "", 100, 30).View().Content)
+	if strings.Contains(body, "quit") {
+		t.Errorf("the footer still advertises quitting:\n%s", body)
 	}
 }

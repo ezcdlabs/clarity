@@ -320,7 +320,7 @@ func (m Model) renderBody() string {
 
 func (m Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground()))
+	b.WriteString(renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), "press q to quit"))
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
 	v := tea.NewView(b.String())
@@ -337,7 +337,11 @@ func (m Model) View() tea.View {
 // the repo name flips bold red — a focused alarm in the top-left where
 // the eye naturally lands first, without recolouring the rest of the
 // header.
-func renderHeader(view core.View, selected string, width int, chrome, base color.Color) string {
+// rightHint is the text pinned to the right of the header. The live view
+// spends it on "press q to quit"; the weekly view passes "" — it is the first
+// thing to go when the strip needs room, so it has to be the caller's choice
+// rather than baked in.
+func renderHeader(view core.View, selected string, width int, chrome, base color.Color, rightHint string) string {
 	snap := view.Snapshot
 	ciStatus := view.Header.CI
 	deployStatus := view.Header.Deploy
@@ -375,7 +379,10 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 			on(lipgloss.NewStyle().Foreground(colorGray).Italic(true)).Render("refreshing…"), dot)
 	}
 	left := strings.Join(parts, "  ")
-	right := on(lipgloss.NewStyle().Foreground(colorGray)).Render("press q to quit")
+	right := ""
+	if rightHint != "" {
+		right = on(lipgloss.NewStyle().Foreground(colorGray)).Render(rightHint)
+	}
 
 	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + " " + statusIcon(deployStatus, bg)
 	if len(view.Flows) > 1 {

@@ -40,7 +40,8 @@ const (
 
 // RenderWeekly renders the weekly view for the selected flow, with the deploy
 // strip above it when there is more than one flow to choose between.
-func RenderWeekly(flows []core.FlowView, selected string, width int) string {
+func RenderWeekly(view core.View, selected string, width int) string {
+	flows := view.Flows
 	if len(flows) == 0 {
 		return "no deploy flows\n"
 	}
@@ -52,13 +53,16 @@ func RenderWeekly(flows []core.FlowView, selected string, width int) string {
 	}
 
 	var b strings.Builder
-	if len(flows) > 1 {
-		// chrome nil: no elevated background bar. This view is a static page
-		// rather than a live header, so the strip sits on the terminal's own
-		// background.
-		b.WriteString(renderStrip(flows, flow.Name, nil, nil, width))
-		b.WriteString("\n\n")
-	}
+	// The same header the live view uses, so the two read as one tool: repo
+	// name and status, with the deploy strip in place of the status when
+	// there are targets to switch between. A repo with no targets still gets
+	// a top bar, which it did not when the strip was the only thing here.
+	//
+	// chrome nil: no elevated background bar. This is a static page rather
+	// than a live header, so it sits on the terminal's own background. And no
+	// quit hint — the footer carries the keys that do something.
+	b.WriteString(ClipRight(renderHeader(view, flow.Name, width, nil, nil, ""), width))
+	b.WriteString("\n\n")
 
 	plotCols, barCols := weeklyLayout(width)
 	axis := flow.LeadAxis

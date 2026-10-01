@@ -1329,12 +1329,20 @@ This mirrors the pattern pushq uses with its `pushqrefs` package — the ref for
 
 ## What CI Covers, and Where
 
-Four stages in one workflow, ordered so each answers a question the one before it cannot.
+Five stages in one workflow, ordered so each answers a question the one before it cannot.
 
 - **Test / Integration (SSH)** — `go vet`, `go test`, and the SSH-backed suite. Linux only.
 - **Action** — the composite action on Linux, macOS and Windows, on every push and pull request.
-- **Release** — tag and publish, gated on all three.
+- **Android** — `gomobile bind`, then the app's unit tests and a debug build.
+- **Release** — tag and publish, gated on all of the above.
 - **Smoke** — install the version just published, on all three platforms.
+
+The Android job gates the release even though nothing it builds is released. A
+tag is a statement about a commit, and a commit where the bind no longer
+compiles is not one to make that statement about. It is also the only thing that
+proves clarity's dependency graph still crosses an FFI boundary: the bound
+archive is not committed, so a dependency that reaches for `os/exec`, cgo, or a
+syscall Android does not have fails here and nowhere else.
 
 ### Why the action is tested before the release and smoked after
 

@@ -21,18 +21,15 @@ if [ -z "${ANDROID_HOME:-}${ANDROID_NDK_HOME:-}" ]; then
   exit 1
 fi
 
-if ! command -v gomobile >/dev/null 2>&1; then
-  echo "error: gomobile not on PATH — go install golang.org/x/mobile/cmd/gomobile@latest" >&2
-  exit 1
-fi
-
 mkdir -p "$(dirname "$OUT")"
 
 # -javapkg puts the generated classes under the app's own namespace. Without
 # it they land in a top-level `core` package, which collides with anything else
 # bound into the same app and reads like a stray dependency.
+# `go tool`, not a gomobile on PATH: the version is then pinned in go.mod with
+# everything else, and CI and a laptop cannot be building with different ones.
 echo "binding mobile/core -> $OUT"
-exec gomobile bind \
+exec go tool gomobile bind \
   -target=android \
   -androidapi="$API" \
   -javapkg=dev.ezcd.clarity \

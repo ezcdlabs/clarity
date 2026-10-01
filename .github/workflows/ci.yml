@@ -103,7 +103,47 @@ jobs:
             *) echo "::error::pin ignored — expected 0.1.1, got: $got"; exit 1 ;;
           esac
 
-  # Auto-release: only after both test suites pass, and only for pushes to
+  # The Android app, built and unit-tested on every push.
+  #
+  # No path filter, for the same reason the action job carries none: the bind
+  # compiles mobile/core and everything it imports, which is most of the
+  # repository. A change under internal/ can break the app without touching a
+  # single file under mobile/.
+  #
+  # The bound archive is not committed, so this job is also the only thing that
+  # proves clarity's dependency graph still crosses an FFI boundary at all —
+  # a dependency that reaches for os/exec, cgo or a syscall Android does not
+  # have fails here and nowhere else.
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      # The runner ships an NDK but does not point ANDROID_NDK_HOME at it in a
+      # way gomobile finds, so say where it is explicitly rather than relying on
+      # whichever one the image happens to have symlinked.
+      - name: Point at the runner's NDK
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: Bind the Go core
+        run: ./scripts/bind-android.sh
+
+      - name: Test and build the app
+        working-directory: mobile/apps/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+  # Auto-release: only after every other job passes, and only for pushes to
   # main. A failing build therefore never produces a tag. When a release-worthy
   # commit (feat/fix/breaking, per Conventional Commits) lands green, the next
   # semantic version is derived from every commit since the last tag, the tag
@@ -115,7 +155,7 @@ jobs:
   # avoids needing a separate tag-driven workflow (and a PAT to drive it).
   release:
     name: Release
-    needs: [test, integration, action]
+    needs: [test, integration, action, android]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

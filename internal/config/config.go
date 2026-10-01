@@ -25,6 +25,11 @@ import (
 // watcher / refsource used before this loader existed.
 const DefaultBranch = "main"
 
+// FileName is the configuration file, at the root of the repository. Named
+// here so a client reading it out of a fetched tree asks for the same path a
+// working copy would.
+const FileName = ".ezcd.json"
+
 // Config is the parsed surface every caller in step 6+ cares about.
 // Pushq (step 6) is intentionally absent until a clarity-side consumer
 // exists; Clarity (step 7) is populated when .ezcd.json's `clarity`
@@ -57,7 +62,7 @@ func (c Config) LeadTimeMode() core.LeadTimeMode {
 // step-6 defaults. A malformed file is an error, with the filename
 // included so users know which file to fix.
 func Load(repoRoot string) (Config, error) {
-	path := filepath.Join(repoRoot, ".ezcd.json")
+	path := filepath.Join(repoRoot, FileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

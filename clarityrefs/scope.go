@@ -152,7 +152,23 @@ func ReadAllRef(repoPath string) (map[string][]Event, map[string][]Scope, error)
 	if err != nil {
 		return nil, nil, err
 	}
+	events, scope := ParseRefFiles(files)
+	return events, scope, nil
+}
 
+// ParseRefFiles turns the flattened contents of an events-ref tree into
+// events and candidacy records, each keyed by commit SHA.
+//
+// Separate from reading them, because where the bytes come from is not fixed.
+// A checkout supplies them through git; a client with no working copy reads
+// the same tree out of a commit it fetched. Keeping the parsing here is what
+// stops the two disagreeing about what an event file means — the ref format
+// is the contract, and it should have exactly one implementation.
+//
+// Unparseable files are skipped rather than fatal: one bad record must not
+// blank out a repo's whole view, and a build that predates a field should
+// ignore it rather than refuse to start.
+func ParseRefFiles(files map[string][]byte) (map[string][]Event, map[string][]Scope) {
 	events := map[string][]Event{}
 	scope := map[string][]Scope{}
 	for name, content := range files {
@@ -185,7 +201,7 @@ func ReadAllRef(repoPath string) (map[string][]Event, map[string][]Scope, error)
 
 	sortEventsByTime(events)
 	sortScopeByTime(scope)
-	return events, scope, nil
+	return events, scope
 }
 
 func shaFromPath(name, prefix string) (string, bool) {

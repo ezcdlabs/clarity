@@ -110,3 +110,17 @@ message Commit {
   // clock has not stopped, so a client may want to keep it ticking.
   bool lead_time_live = 12;
 }
+
+// RepoList is the menu of tracked repositories.
+message RepoList {
+  repeated RepoSummary repos = 1;
+}
+
+message RepoSummary {
+  // ID is derived from the URL, so the same repository is the same entry
+  // across launches and devices.
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  string branch = 4;
+}

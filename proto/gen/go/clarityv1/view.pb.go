@@ -525,6 +525,121 @@ func (x *Commit) GetLeadTimeLive() bool {
 	return false
 }
 
+// RepoList is the menu of tracked repositories.
+type RepoList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Repos         []*RepoSummary         `protobuf:"bytes,1,rep,name=repos,proto3" json:"repos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepoList) Reset() {
+	*x = RepoList{}
+	mi := &file_clarity_v1_view_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepoList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepoList) ProtoMessage() {}
+
+func (x *RepoList) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepoList.ProtoReflect.Descriptor instead.
+func (*RepoList) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RepoList) GetRepos() []*RepoSummary {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
+}
+
+type RepoSummary struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID is derived from the URL, so the same repository is the same entry
+	// across launches and devices.
+	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	Branch        string `protobuf:"bytes,4,opt,name=branch,proto3" json:"branch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepoSummary) Reset() {
+	*x = RepoSummary{}
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepoSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepoSummary) ProtoMessage() {}
+
+func (x *RepoSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepoSummary.ProtoReflect.Descriptor instead.
+func (*RepoSummary) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RepoSummary) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RepoSummary) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RepoSummary) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *RepoSummary) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
 
 const file_clarity_v1_view_proto_rawDesc = "" +
@@ -565,7 +680,14 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x11lead_time_seconds\x18\n" +
 	" \x01(\x03R\x0fleadTimeSeconds\x12\x1b\n" +
 	"\tlead_time\x18\v \x01(\tR\bleadTime\x12$\n" +
-	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive*\x7f\n" +
+	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\"9\n" +
+	"\bRepoList\x12-\n" +
+	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\"[\n" +
+	"\vRepoSummary\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12\x16\n" +
+	"\x06branch\x18\x04 \x01(\tR\x06branch*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -593,14 +715,16 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_clarity_v1_view_proto_goTypes = []any{
-	(Status)(0),    // 0: clarity.v1.Status
-	(GroupKind)(0), // 1: clarity.v1.GroupKind
-	(*View)(nil),   // 2: clarity.v1.View
-	(*Flow)(nil),   // 3: clarity.v1.Flow
-	(*Group)(nil),  // 4: clarity.v1.Group
-	(*Commit)(nil), // 5: clarity.v1.Commit
+	(Status)(0),         // 0: clarity.v1.Status
+	(GroupKind)(0),      // 1: clarity.v1.GroupKind
+	(*View)(nil),        // 2: clarity.v1.View
+	(*Flow)(nil),        // 3: clarity.v1.Flow
+	(*Group)(nil),       // 4: clarity.v1.Group
+	(*Commit)(nil),      // 5: clarity.v1.Commit
+	(*RepoList)(nil),    // 6: clarity.v1.RepoList
+	(*RepoSummary)(nil), // 7: clarity.v1.RepoSummary
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
@@ -613,11 +737,12 @@ var file_clarity_v1_view_proto_depIdxs = []int32{
 	5,  // 7: clarity.v1.Group.commits:type_name -> clarity.v1.Commit
 	0,  // 8: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
 	0,  // 9: clarity.v1.Commit.deploy:type_name -> clarity.v1.Status
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	7,  // 10: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -631,7 +756,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

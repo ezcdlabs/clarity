@@ -1,0 +1,205 @@
+// Package core is the FFI surface gomobile binds for the mobile apps.
+//
+// Everything exported here fits gomobile's supported subset: strings, bytes,
+// ints, bools, errors, and pointers to structs. Nothing richer crosses —
+// structured data goes over as encoded protobuf, which sidesteps the type
+// system entirely and keeps one schema generating all three sides rather than
+// a hand-written wrapper per platform that can drift.
+//
+// There is no logic here. Every method is a translation of an FFI-friendly
+// shape into a call on mobile/internal/*, which is where the behaviour lives
+// and where it can be tested without a device.
+package core
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"time"
+
+	"github.com/ezcdlabs/clarity/internal/core"
+	"github.com/ezcdlabs/clarity/mobile/internal/gitsource"
+	"github.com/ezcdlabs/clarity/mobile/internal/keys"
+	"github.com/ezcdlabs/clarity/mobile/internal/present"
+	"github.com/ezcdlabs/clarity/mobile/internal/registry"
+	v1 "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1"
+	"github.com/go-git/go-billy/v5/osfs"
+	"github.com/go-git/go-git/v5/plumbing/cache"
+	gogitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/go-git/go-git/v5/storage/filesystem"
+	"google.golang.org/protobuf/proto"
+)
+
+// Client is the whole surface an app talks to. One per process; the app
+// supplies the directory its platform gives it for private data.
+type Client struct {
+	dir      string
+	identity *keys.Identity
+	repos    *registry.Registry
+}
+
+// New prepares a client over a data directory. Nothing is read or generated
+// until it is needed, so this is safe to call during app startup.
+func New(dataDir string) (*Client, error) {
+	if dataDir == "" {
+		return nil, fmt.Errorf("a data directory is required")
+	}
+	return &Client{
+		dir:      dataDir,
+		identity: keys.Open(filepath.Join(dataDir, "identity")),
+		repos:    registry.Open(dataDir),
+	}, nil
+}
+
+// PublicKey returns the authorized_keys line for this device, generating the
+// keypair on first call. The user pastes it into whichever host they use —
+// there is no provider to connect to and no OAuth app to register.
+func (c *Client) PublicKey(comment string) (string, error) {
+	return c.identity.PublicKey(comment)
+}
+
+// HasKey reports whether an identity exists yet, without creating one.
+func (c *Client) HasKey() bool { return c.identity.Exists() }
+
+// AddRepo tracks a repository. The URL is the one you would clone.
+// Returns its id.
+func (c *Client) AddRepo(url, branch string) (string, error) {
+	e, err := c.repos.Add(url, branch)
+	if err != nil {
+		return "", err
+	}
+	return e.ID, nil
+}
+
+// RemoveRepo forgets a repository. Its object store is left on disk for the
+// caller to delete, because deleting user data is not something a bridge
+// method should do as a side effect.
+func (c *Client) RemoveRepo(repoID string) error { return c.repos.Remove(repoID) }
+
+// StorePath is where a repository's objects live, so an app that wants to
+// reclaim the space after RemoveRepo knows what to delete.
+func (c *Client) StorePath(repoID string) string { return c.repos.StorePath(repoID) }
+
+// ListRepos returns an encoded clarity.v1.RepoList.
+func (c *Client) ListRepos() ([]byte, error) {
+	entries, err := c.repos.List()
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.RepoList{}
+	for _, e := range entries {
+		out.Repos = append(out.Repos, &v1.RepoSummary{
+			Id: e.ID, Name: e.Name, Url: e.URL, Branch: e.Branch,
+		})
+	}
+	return proto.Marshal(out)
+}
+
+// Sync fetches a repository. Blocking: the caller runs it off the UI thread,
+// which every mobile platform requires of network work anyway.
+//
+// timeoutSeconds bounds the fetch rather than the session. Zero means a
+// default; the view that follows holds a snapshot and has nothing left to
+// time out.
+func (c *Client) Sync(repoID string, depth, timeoutSeconds int) error {
+	repo, entry, err := c.open(repoID)
+	if err != nil {
+		return err
+	}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 60
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	auth, err := c.auth(entry.URL)
+	if err != nil {
+		return err
+	}
+	return repo.Sync(ctx, gitsource.SyncOptions{Depth: depth, Auth: auth})
+}
+
+// View returns an encoded clarity.v1.View for a repository, read from what
+// the last Sync fetched. Never touches the network.
+func (c *Client) View(repoID string, limit int) ([]byte, error) {
+	repo, _, err := c.open(repoID)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := repo.Snapshot(limit)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	// The same derivation the CLI runs, from the same config — so a repo
+	// reads the same on a phone as it does in a terminal.
+	view := core.DeriveView(snap, cfg.LeadTimeMode(), cfg.Deploys())
+	return proto.Marshal(present.View(view, time.Now()))
+}
+
+// open prepares the git store for a tracked repository.
+func (c *Client) open(repoID string) (*gitsource.Repo, registry.Entry, error) {
+	entry, err := c.repos.Get(repoID)
+	if err != nil {
+		return nil, registry.Entry{}, err
+	}
+	fs := osfs.New(c.repos.StorePath(entry.ID))
+	st := filesystem.NewStorage(fs, cache.NewObjectLRUDefault())
+
+	repo, err := gitsource.Open(st, entry.URL, entry.Branch)
+	if err != nil {
+		return nil, registry.Entry{}, err
+	}
+	return repo, entry, nil
+}
+
+// auth supplies the device key for ssh remotes. An https remote gets none:
+// a public repository needs no credential, and clarity has nowhere to put a
+// password it has not been given.
+func (c *Client) auth(url string) (*gogitssh.PublicKeys, error) {
+	if !isSSH(url) {
+		return nil, nil
+	}
+	signer, err := c.identity.Ensure()
+	if err != nil {
+		return nil, err
+	}
+	user := sshUser(url)
+	return &gogitssh.PublicKeys{User: user, Signer: signer}, nil
+}
+
+func isSSH(url string) bool {
+	return hasPrefix(url, "ssh://") || (containsAt(url) && !hasPrefix(url, "http://") && !hasPrefix(url, "https://"))
+}
+
+func hasPrefix(s, p string) bool { return len(s) >= len(p) && s[:len(p)] == p }
+
+func containsAt(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '@' {
+			return true
+		}
+	}
+	return false
+}
+
+// sshUser is the user an ssh remote names, defaulting to git — which is what
+// every host clarity targets uses.
+func sshUser(url string) string {
+	s := url
+	if hasPrefix(s, "ssh://") {
+		s = s[len("ssh://"):]
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '@' {
+			if i > 0 {
+				return s[:i]
+			}
+			break
+		}
+	}
+	return "git"
+}

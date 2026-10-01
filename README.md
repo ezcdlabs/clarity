@@ -1165,6 +1165,116 @@ An earlier design fell back to text (`3h 18m (2h 08m–5h 55m)`) below a width t
 
 ---
 
+## Mobile: native apps over the same core
+
+The TUI and the phone apps answer the same question and share everything that
+decides the answer. What differs is only the drawing.
+
+### Why mobile needs its own source
+
+The CLI's rule is that **go-git is never used to read; git is** — git is the only
+thing that knows how a working copy was cloned, and a blobless partial clone, a
+shared object store and a shallow graft each break a naive reader in a different
+way (see "Clone shapes and the object store").
+
+A phone has no git binary and no working copy, so that rule cannot apply and does
+not need to: clarity did the cloning itself, so it already knows the shape.
+`mobile/internal/gitsource` is a go-git `core.Source` that fetches the events ref
+in full and the branch at a depth, and reads back what it fetched. It is the one
+place in the project go-git reads, and it is allowed to because nothing else
+produced the store it reads from.
+
+The shallow boundary is the subtlety. `Repository.Log()` walks straight past a
+graft and fails on the first missing parent, but `Storer.Shallow()` records where
+the boundary is — so the walk in `mobile/internal/gitsource/walk.go` stops there
+deliberately and reports the history as truncated, which is the same thing the
+TUI's commit limit does.
+
+### Where the proto boundary sits
+
+Between the core and the UI, not between the app and the network.
+
+`proto/clarity/v1/view.proto` carries a presentation model: groups already
+formed, statuses already resolved, lead times already computed and preformatted.
+The rule is **decisions in Go, geometry native**. Anything that decides what is
+true crosses the boundary settled; anything that decides how wide, what colour or
+which glyph is the platform's business.
+
+That split is not tidiness. Most of the terminal renderer's logic exists because
+a terminal quantises to character cells — reserving a column for a clamp arrow,
+guaranteeing a one-cell minimum bar, shedding tick labels that would collide.
+None of it has an analogue at pixel resolution, and none of it should cross.
+
+Protobuf also sidesteps gomobile's type system. Only strings, bytes, ints, bools,
+errors and struct pointers cross an FFI boundary it generates, so a rich view
+would otherwise need a hand-written wrapper per platform — three places for the
+same shape to drift. Encoded bytes need none, and one schema generates all three
+sides.
+
+### Structure
+
+```
+mobile/
+├── core/                 # the FFI surface gomobile binds. No logic.
+├── internal/
+│   ├── gitsource/        # go-git source: fetch, then read what was fetched
+│   ├── present/          # core.View -> clarity.v1.View
+│   ├── keys/             # the device's ed25519 identity
+│   └── registry/         # which repositories this device tracks
+└── apps/
+    ├── android/          # Gradle project, Kotlin + Compose
+    └── ios/              # Xcode project, Swift + SwiftUI
+```
+
+`mobile/core` is deliberately empty of decisions — every method translates an
+FFI-friendly shape into a call on `mobile/internal/*`, which is where behaviour
+lives and where it can be tested without a device. Generated protobuf is
+committed, in Go and in each app's own language, the same way `proto/gen/go` is.
+
+The bound archive is not committed. `scripts/bind-android.sh` produces a 33 MB
+`.aar` of per-ABI native code; checking it in would make every bind a binary
+diff.
+
+### A bridge interface, so the UI is testable without a device
+
+Each app talks to an interface — `ClarityBridge` on Android — not to the
+generated bindings. Behind it sits either the real bound core or a fake, and the
+screens cannot tell which.
+
+This is what makes the interesting behaviour testable on a laptop. The state
+machine in front of the bridge decides things that only show up on a bad day: a
+rejected URL keeps you on the add screen so a pasted clone URL is not lost; a
+failed refresh keeps the view it already had, because on a phone yesterday's
+pipeline beats an empty screen with an error on it; a first open of a
+never-fetched repository reports why the *fetch* failed, not the "reference not
+found" that reading an empty store always produces.
+
+The fake makes every one of those a unit test rather than something you find out
+about on a train.
+
+What the fake deliberately does *not* do is re-decide anything the core already
+decided. The registry validates URLs and writes the message explaining a
+rejection; the app surfaces that message verbatim. A second opinion in Kotlin
+could only disagree with it.
+
+### Authentication: a key per device
+
+The app generates an ed25519 keypair on first use and shows the
+`authorized_keys` line to paste into whichever host the user uses. There is no
+provider integration, no OAuth app and no server, because **clarity is not a
+GitHub tool** — a key the user installs themselves works on GitHub, GitLab and a
+box in a cupboard equally. The private half never leaves the device, and an
+https remote gets no credential at all.
+
+### iOS without a Mac in the loop
+
+Development happens on Linux, where there is no `swift` and no `xcodebuild`, so
+iOS source is written blind. The correctness gate is a macOS CI runner, added
+with the first iOS commit rather than after it — otherwise the first person to
+open the project on a Mac inherits every mistake at once.
+
+---
+
 ## Repository Structure
 
 ```
@@ -1176,6 +1286,8 @@ ezcdlabs/clarity/
 │   ├── report/           # the `report` subcommand logic
 │   ├── refs/             # fetch refspec configuration
 │   └── ci/               # opportunistic CI env var detection
+├── proto/                # the presentation model the mobile apps render
+├── mobile/               # go-git source, FFI surface, and the native apps
 └── go.mod
 ```
 

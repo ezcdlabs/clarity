@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only exists to stop a light flash before Compose draws: clarity is a
+         dark UI in a terminal and a dark UI on a phone. Every colour past this
+         point is decided in Compose, not here. -->
+    <style name="Theme.Clarity" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#101010</item>
+        <item name="android:statusBarColor">#101010</item>
+        <item name="android:navigationBarColor">#101010</item>
+    </style>
+</resources>

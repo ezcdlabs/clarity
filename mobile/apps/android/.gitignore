@@ -1,0 +1,9 @@
+# The Go archive is produced by scripts/bind-android.sh, not committed: it is
+# ~30 MB of per-ABI native code and would make every bind a binary diff.
+app/libs/*.aar
+app/libs/*-sources.jar
+
+.gradle/
+build/
+app/build/
+local.properties

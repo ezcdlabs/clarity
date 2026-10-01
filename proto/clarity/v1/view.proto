@@ -4,6 +4,12 @@ package clarity.v1;
 
 option go_package = "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1";
 
+// Generated into the app's own namespace rather than a top-level package, so
+// nothing collides with whatever else an app links.
+option java_package = "dev.ezcd.clarity.proto";
+option java_multiple_files = true;
+option java_outer_classname = "ClarityProto";
+
 // The presentation model the mobile apps render.
 //
 // The rule this boundary follows: decisions in Go, geometry native. Anything

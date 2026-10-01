@@ -700,7 +700,8 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x0fGROUP_KIND_HEAD\x10\x01\x12\x18\n" +
 	"\x14GROUP_KIND_CI_PASSED\x10\x02\x12\x18\n" +
 	"\x14GROUP_KIND_IN_FLIGHT\x10\x03\x12\x17\n" +
-	"\x13GROUP_KIND_DEPLOYED\x10\x04B>Z<github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1b\x06proto3"
+	"\x13GROUP_KIND_DEPLOYED\x10\x04Bf\n" +
+	"\x16dev.ezcd.clarity.protoB\fClarityProtoP\x01Z<github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1b\x06proto3"
 
 var (
 	file_clarity_v1_view_proto_rawDescOnce sync.Once

@@ -1231,6 +1231,17 @@ FFI-friendly shape into a call on `mobile/internal/*`, which is where behaviour
 lives and where it can be tested without a device. Generated protobuf is
 committed, in Go and in each app's own language, the same way `proto/gen/go` is.
 
+So are the app icons. The mark is a check — the TUI's ✓, the glyph the whole
+product exists to answer — drawn as code in `mobile/internal/icon` and written
+out at every size both platforms want by `go run ./mobile/tools/gen-icons`. It
+is generated rather than drawn in an editor so that one definition serves both
+platforms, a change to it is a readable diff rather than a binary one, and the
+rules that are easy to get wrong by hand are assertions instead: the adaptive
+foreground stays inside the 66% circle Android guarantees will survive a
+launcher's mask, the legacy icons are pre-masked because Android 7 does not mask
+them itself, and the iOS icon is fully opaque because iOS rejects one that is
+not.
+
 The bound archive is not committed. `scripts/bind-android.sh` produces a 33 MB
 `.aar` of per-ABI native code; checking it in would make every bind a binary
 diff.

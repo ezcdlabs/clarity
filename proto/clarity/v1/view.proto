@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package clarity.v1;
+
+option go_package = "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1";
+
+// The presentation model the mobile apps render.
+//
+// The rule this boundary follows: decisions in Go, geometry native. Anything
+// that decides what is true — grouping, status resolution, lead time, which
+// commits count — is settled before it crosses. Anything that decides how
+// wide, what colour, or which glyph is the platform's business.
+//
+// That is not merely tidiness. The terminal renderer quantises to character
+// cells, and most of its logic exists only because of that: reserving a cell
+// for a clamp arrow, a minimum one-cell bar, shedding tick labels that would
+// collide. None of it has an analogue at pixel resolution, and none of it
+// should cross.
+//
+// Durations appear twice: preformatted, so every client reads them the way
+// the TUI does, and in seconds, so a client that wants to localise or
+// re-render can. The preformatted form is authoritative for display.
+
+// Status is the resolved state of a stage. Semantic, not visual — the glyph
+// and the colour are the platform's choice, and the terminal's ✓/✗ were
+// picked for a greyscale-safe palette that means nothing on a phone.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_NONE = 1;     // nothing reported
+  STATUS_STARTED = 2;  // in flight
+  STATUS_PASSED = 3;
+  STATUS_FAILED = 4;
+  STATUS_SKIPPED = 5;
+}
+
+// GroupKind is a commit's position in the lifecycle.
+enum GroupKind {
+  GROUP_KIND_UNSPECIFIED = 0;
+  GROUP_KIND_HEAD = 1;       // landed, CI not green yet
+  GROUP_KIND_CI_PASSED = 2;  // green, waiting for a deploy
+  GROUP_KIND_IN_FLIGHT = 3;  // a deploy attempt that has not landed
+  GROUP_KIND_DEPLOYED = 4;   // one successful deploy, with what it shipped
+}
+
+message View {
+  string repo_name = 1;
+  Status ci = 2;
+  Status deploy = 3;
+
+  // Flows are the deploy targets, in display order. Always at least one: a
+  // repo with no targets has exactly one, which is how the single-flow case
+  // stays the same shape as the many-flow one.
+  repeated Flow flows = 4;
+
+  // Truncated reports that the window ended before the repository did, so an
+  // aggregate built from it is not the whole history. The limit is carried so
+  // a client can say which number ended it.
+  bool truncated = 5;
+  int32 limit = 6;
+}
+
+message Flow {
+  string name = 1;
+  Status deploy = 2;
+
+  // Undeclared marks a target seen in the events but absent from
+  // .ezcd.json — a typo, or something added without updating config.
+  // Surfaced rather than dropped: a silently discarded deploy is worse than
+  // an unexpected tab.
+  bool undeclared = 3;
+
+  repeated Group groups = 4;
+}
+
+message Group {
+  GroupKind kind = 1;
+
+  // Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
+  // than on the client so three UIs cannot disagree about what to call it.
+  string label = 2;
+
+  // Status and timing of the deploy this group represents. Only meaningful
+  // for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
+  Status status = 3;
+  int64 deployed_unix_seconds = 4;
+  string deployed_ago = 5;  // "4m 43s ago"
+
+  repeated Commit commits = 6;
+}
+
+message Commit {
+  string sha = 1;
+  string short_sha = 2;
+  string subject = 3;
+  string author = 4;
+
+  int64 authored_unix_seconds = 5;
+  string age = 6;  // "3m 29s"
+
+  Status ci = 7;
+  Status deploy = 8;
+
+  // Lead time is absent for a commit that has not shipped, and for one the
+  // configured mode excludes. Zero seconds with an empty string means absent;
+  // it is not the same as a lead time of zero.
+  bool has_lead_time = 9;
+  int64 lead_time_seconds = 10;
+  string lead_time = 11;
+  // Live marks a lead time still running — the commit is deployed but the
+  // clock has not stopped, so a client may want to keep it ticking.
+  bool lead_time_live = 12;
+}

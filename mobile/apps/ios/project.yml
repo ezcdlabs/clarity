@@ -1,0 +1,57 @@
+# XcodeGen input. The .xcodeproj is generated from this and not committed:
+# a pbxproj is a UUID soup that cannot be reviewed, and most of clarity is
+# written on a Linux box where it cannot be opened at all. `xcodegen generate`
+# in this directory produces the project.
+name: Clarity
+options:
+  bundleIdPrefix: dev.ezcd
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf
+    from: 1.28.2
+
+targets:
+  Clarity:
+    type: application
+    platform: iOS
+    sources:
+      - path: Clarity
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ezcd.clarity
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: clarity
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      # Produced by scripts/bind-ios.sh, not committed.
+      - framework: ClarityCore.xcframework
+        embed: true
+        codeSign: true
+      - package: SwiftProtobuf
+
+  ClarityTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ClarityTests
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - target: Clarity
+
+schemes:
+  Clarity:
+    build:
+      targets:
+        Clarity: all
+    test:
+      targets:
+        - ClarityTests

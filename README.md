@@ -1279,10 +1279,25 @@ https remote gets no credential at all.
 
 ### iOS without a Mac in the loop
 
-Development happens on Linux, where there is no `swift` and no `xcodebuild`, so
-iOS source is written blind. The correctness gate is a macOS CI runner, added
-with the first iOS commit rather than after it — otherwise the first person to
-open the project on a Mac inherits every mistake at once.
+Development happens on Linux, where there is no `swift`, no `xcodebuild` and no
+iOS SDK, so iOS source is written blind. The correctness gate is a macOS CI
+runner, added with the first iOS commit rather than after it — otherwise the
+first person to open the project on a Mac inherits every mistake at once.
+
+Two consequences follow from that, and both are deliberate:
+
+**The `.xcodeproj` is generated, not committed.** `project.yml` is the source of
+truth and XcodeGen produces the project from it. A `pbxproj` is a UUID soup that
+cannot be reviewed and cannot be opened at all on the machine it would be edited
+from.
+
+**The Swift protobuf is generated in the build, not committed.** This is the one
+place the "commit the generated output" rule does not hold, and the reason is
+the same one: `protoc-gen-swift` is itself a Swift binary, so it cannot run
+where the output would be committed from. Committing output nobody present can
+regenerate is worse than regenerating it, so `scripts/gen-ios-proto.sh` runs on
+the macOS runner before every iOS build — which also means the app is always
+compiled against the current schema rather than a stale copy of it.
 
 ---
 
@@ -1340,17 +1355,21 @@ This mirrors the pattern pushq uses with its `pushqrefs` package — the ref for
 
 ## What CI Covers, and Where
 
-Five stages in one workflow, ordered so each answers a question the one before it cannot.
+Six stages in one workflow, ordered so each answers a question the one before it cannot.
 
 - **Test / Integration (SSH)** — `go vet`, `go test`, and the SSH-backed suite. Linux only.
 - **Action** — the composite action on Linux, macOS and Windows, on every push and pull request.
 - **Android** — `gomobile bind`, then the app's unit tests and a debug build.
+- **iOS** — generate the Swift protobuf and the Xcode project, bind, and run the unit tests in a simulator. macOS only.
 - **Release** — tag and publish, gated on all of the above.
 - **Smoke** — install the version just published, on all three platforms.
 
-The Android job gates the release even though nothing it builds is released. A
+The mobile jobs gate the release even though nothing they build is released. A
 tag is a statement about a commit, and a commit where the bind no longer
-compiles is not one to make that statement about. It is also the only thing that
+compiles is not one to make that statement about. The iOS job gates it for a
+second reason: it is the only thing in the project that compiles the Swift at
+all, so an ungated version of it would be a check nobody has to look at — which
+is exactly how `aux.go` survived four months. It is also the only thing that
 proves clarity's dependency graph still crosses an FFI boundary: the bound
 archive is not committed, so a dependency that reaches for `os/exec`, cgo, or a
 syscall Android does not have fails here and nowhere else.

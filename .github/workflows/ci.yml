@@ -143,6 +143,48 @@ jobs:
         working-directory: mobile/apps/android
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
+  # The iOS app. The only job that cannot be run on the machine most of clarity
+  # is written on: there is no Swift, no Xcode and no iOS SDK on Linux, so this
+  # runner is the first thing that ever compiles the Swift — which is why it
+  # exists from the first iOS commit rather than after it.
+  #
+  # It generates the Swift protobuf rather than reading a committed copy, for
+  # the same reason: protoc-gen-swift needs a Swift toolchain, so the output
+  # cannot be regenerated where it would be committed from. Generating it here
+  # means the app is always built against the current schema.
+  ios:
+    name: iOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the toolchain
+        run: brew install xcodegen protobuf swift-protobuf
+
+      - name: Generate the Swift protobuf
+        run: ./scripts/gen-ios-proto.sh
+
+      - name: Bind the Go core
+        run: ./scripts/bind-ios.sh
+
+      - name: Generate the Xcode project
+        working-directory: mobile/apps/ios
+        run: xcodegen generate
+
+      - name: Test
+        working-directory: mobile/apps/ios
+        run: |
+          xcodebuild test \
+            -project Clarity.xcodeproj \
+            -scheme Clarity \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO
+
   # Auto-release: only after every other job passes, and only for pushes to
   # main. A failing build therefore never produces a tag. When a release-worthy
   # commit (feat/fix/breaking, per Conventional Commits) lands green, the next
@@ -155,7 +197,7 @@ jobs:
   # avoids needing a separate tag-driven workflow (and a PAT to drive it).
   release:
     name: Release
-    needs: [test, integration, action, android]
+    needs: [test, integration, action, android, ios]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

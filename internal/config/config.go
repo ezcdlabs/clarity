@@ -9,6 +9,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,15 +57,36 @@ func (c Config) LeadTimeMode() core.LeadTimeMode {
 // step-6 defaults. A malformed file is an error, with the filename
 // included so users know which file to fix.
 func Load(repoRoot string) (Config, error) {
-	cfg := Config{Branch: DefaultBranch}
-
 	path := filepath.Join(repoRoot, ".ezcd.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return cfg, nil
+			return Defaults(), nil
 		}
 		return Config{}, fmt.Errorf("read .ezcd.json: %w", err)
+	}
+	return Parse(data)
+}
+
+// Defaults is the configuration of a repo with no .ezcd.json at all, which is
+// the ordinary case and not an error.
+func Defaults() Config { return Config{Branch: DefaultBranch} }
+
+// Parse turns the bytes of a .ezcd.json into a Config.
+//
+// Separate from Load because where those bytes come from is not fixed. The
+// file lives in the repository, so anything holding the repository can supply
+// it — a working tree through Load, or a blob read straight out of a fetched
+// commit's tree, which is how a client with no checkout would get it. Same
+// contract either way, and the same reason the inbound Source is a port: what
+// clarity reads should not depend on how it got there.
+//
+// Empty input is the same as a missing file: a repo that has not configured
+// anything.
+func Parse(data []byte) (Config, error) {
+	cfg := Defaults()
+	if len(bytes.TrimSpace(data)) == 0 {
+		return cfg, nil
 	}
 
 	// json.Decode-style: we only pull out the fields this build knows

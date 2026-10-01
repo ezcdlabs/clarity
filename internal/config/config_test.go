@@ -161,3 +161,62 @@ func TestLoad_LeadTime_Invalid(t *testing.T) {
 		}
 	}
 }
+
+// TestParse_IsTheSameContractAsLoad covers reading the config from somewhere
+// other than a working tree.
+//
+// The file lives in the repository, so anything holding the repository can
+// supply its bytes — a checkout through Load, or a blob read out of a fetched
+// commit's tree by a client that has no working tree at all. A client that
+// could not read the config would lose declared flows and the lead time mode,
+// which is most of what makes a multi-target repo render correctly.
+func TestParse_IsTheSameContractAsLoad(t *testing.T) {
+	body := []byte(`{
+	  "branch": "trunk",
+	  "clarity": {
+	    "leadTime": "pipeline",
+	    "deploys": [{"name": "web", "targets": ["", "web"]}, "ios"]
+	  }
+	}`)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), body, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fromDisk, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	fromBytes, err := config.Parse(body)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	if fromBytes.Branch != fromDisk.Branch {
+		t.Errorf("branch: bytes gave %q, disk gave %q", fromBytes.Branch, fromDisk.Branch)
+	}
+	if fromBytes.LeadTimeMode() != fromDisk.LeadTimeMode() {
+		t.Errorf("lead time mode: bytes gave %q, disk gave %q",
+			fromBytes.LeadTimeMode(), fromDisk.LeadTimeMode())
+	}
+	gotFlows, wantFlows := fromBytes.Deploys(), fromDisk.Deploys()
+	if len(gotFlows) != len(wantFlows) {
+		t.Fatalf("flows: bytes gave %d, disk gave %d", len(gotFlows), len(wantFlows))
+	}
+	for i := range wantFlows {
+		if gotFlows[i].Name != wantFlows[i].Name {
+			t.Errorf("flow %d: bytes gave %q, disk gave %q", i, gotFlows[i].Name, wantFlows[i].Name)
+		}
+	}
+	// A repo that configured nothing is not an error, by either route.
+	if _, err := config.Parse(nil); err != nil {
+		t.Errorf("empty input should be the defaults, got: %v", err)
+	}
+	if cfg, _ := config.Parse(nil); cfg.Branch != config.Defaults().Branch {
+		t.Errorf("empty input did not give the defaults")
+	}
+	// And a malformed file still fails, whichever way it arrives.
+	if _, err := config.Parse([]byte("{nope")); err == nil {
+		t.Error("malformed input should be an error")
+	}
+}

@@ -15,6 +15,28 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // The bound core is ~9 MB per ABI, so an APK carrying all four is mostly
+        // native code for a device nobody is holding. -PclarityAbi=arm64-v8a
+        // builds one you can actually send someone.
+        (project.findProperty("clarityAbi") as String?)?.let { abi ->
+            ndk { abiFilters += abi.split(",") }
+        }
+    }
+
+    buildTypes {
+        // Debug is what you build while working; release is what you install on
+        // a real phone. Unshrunk, the app is 22 MB of Compose dex nobody calls.
+        //
+        // It signs with the debug key: there is no upload key, nothing is
+        // published, and the point of this build type is a side-loadable APK,
+        // not a shippable one.
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {

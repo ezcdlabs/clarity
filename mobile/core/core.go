@@ -19,6 +19,7 @@ import (
 
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/mobile/internal/gitsource"
+	"github.com/ezcdlabs/clarity/mobile/internal/hostkeys"
 	"github.com/ezcdlabs/clarity/mobile/internal/keys"
 	"github.com/ezcdlabs/clarity/mobile/internal/present"
 	"github.com/ezcdlabs/clarity/mobile/internal/registry"
@@ -36,6 +37,7 @@ type Client struct {
 	dir      string
 	identity *keys.Identity
 	repos    *registry.Registry
+	hosts    *hostkeys.Store
 }
 
 // New prepares a client over a data directory. Nothing is read or generated
@@ -48,6 +50,7 @@ func New(dataDir string) (*Client, error) {
 		dir:      dataDir,
 		identity: keys.Open(filepath.Join(dataDir, "identity")),
 		repos:    registry.Open(dataDir),
+		hosts:    hostkeys.Open(filepath.Join(dataDir, "known_hosts")),
 	}, nil
 }
 
@@ -167,8 +170,12 @@ func (c *Client) auth(url string) (*gogitssh.PublicKeys, error) {
 	if err != nil {
 		return nil, err
 	}
-	user := sshUser(url)
-	return &gogitssh.PublicKeys{User: user, Signer: signer}, nil
+	auth := &gogitssh.PublicKeys{User: sshUser(url), Signer: signer}
+	// Without this, go-git looks for ~/.ssh/known_hosts and fails before it
+	// reaches the network: a phone has no ssh client and no such file. The app
+	// keeps its own, and hostkeys explains what it does with it.
+	auth.HostKeyCallback = c.hosts.Callback()
+	return auth, nil
 }
 
 func isSSH(url string) bool {

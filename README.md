@@ -1277,6 +1277,19 @@ GitHub tool** — a key the user installs themselves works on GitHub, GitLab and
 box in a cupboard equally. The private half never leaves the device, and an
 https remote gets no credential at all.
 
+The host key is checked against a `known_hosts` the app keeps itself. go-git's
+default is to read `~/.ssh/known_hosts`, which on a phone does not exist, so
+every fetch fails before it reaches the network: *unable to find any valid
+known_hosts file*. The obvious shortcut is `ssh.InsecureIgnoreHostKey`, and it
+is the wrong one — a tool whose job is telling you the truth about your pipeline
+should not accept whatever answers on port 22.
+
+So the app does what an ssh client does on first contact: trust the key it is
+shown, write it down, and refuse anything different afterwards. That does not
+protect the very first fetch, which nothing short of a key the user types in
+ever could. It does mean a host whose key changes under you is reported rather
+than silently accepted, which is the case that actually happens.
+
 ### iOS without a Mac in the loop
 
 Development happens on Linux, where there is no `swift`, no `xcodebuild` and no

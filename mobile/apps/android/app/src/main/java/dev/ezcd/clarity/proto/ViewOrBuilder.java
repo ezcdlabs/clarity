@@ -90,4 +90,20 @@ public interface ViewOrBuilder extends
    * @return The limit.
    */
   int getLimit();
+
+  /**
+   * <pre>
+   * When this view was built. A mobile client holds the last good view across a
+   * failed refresh, so "as of when" is the difference between stale data and
+   * wrong data.
+   * It is also always set, which is load-bearing: gomobile cannot carry a
+   * zero-length byte slice — fromSlice turns one into a null array — and a
+   * message with no fields set encodes to zero bytes. One field that is never
+   * zero keeps every payload representable.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 7;</code>
+   * @return The generatedUnixSeconds.
+   */
+  long getGeneratedUnixSeconds();
 }

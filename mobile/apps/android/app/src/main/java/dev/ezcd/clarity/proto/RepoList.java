@@ -112,6 +112,47 @@ public  final class RepoList extends
     repos_.remove(index);
   }
 
+  public static final int GENERATED_UNIX_SECONDS_FIELD_NUMBER = 2;
+  private long generatedUnixSeconds_;
+  /**
+   * <pre>
+   * Always set, for the reason View.generated_unix_seconds explains: an empty
+   * list would otherwise encode to zero bytes and cross as null.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 2;</code>
+   * @return The generatedUnixSeconds.
+   */
+  @java.lang.Override
+  public long getGeneratedUnixSeconds() {
+    return generatedUnixSeconds_;
+  }
+  /**
+   * <pre>
+   * Always set, for the reason View.generated_unix_seconds explains: an empty
+   * list would otherwise encode to zero bytes and cross as null.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 2;</code>
+   * @param value The generatedUnixSeconds to set.
+   */
+  private void setGeneratedUnixSeconds(long value) {
+    
+    generatedUnixSeconds_ = value;
+  }
+  /**
+   * <pre>
+   * Always set, for the reason View.generated_unix_seconds explains: an empty
+   * list would otherwise encode to zero bytes and cross as null.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 2;</code>
+   */
+  private void clearGeneratedUnixSeconds() {
+    
+    generatedUnixSeconds_ = 0L;
+  }
+
   public static dev.ezcd.clarity.proto.RepoList parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -313,6 +354,49 @@ public  final class RepoList extends
       return this;
     }
 
+    /**
+     * <pre>
+     * Always set, for the reason View.generated_unix_seconds explains: an empty
+     * list would otherwise encode to zero bytes and cross as null.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 2;</code>
+     * @return The generatedUnixSeconds.
+     */
+    @java.lang.Override
+    public long getGeneratedUnixSeconds() {
+      return instance.getGeneratedUnixSeconds();
+    }
+    /**
+     * <pre>
+     * Always set, for the reason View.generated_unix_seconds explains: an empty
+     * list would otherwise encode to zero bytes and cross as null.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 2;</code>
+     * @param value The generatedUnixSeconds to set.
+     * @return This builder for chaining.
+     */
+    public Builder setGeneratedUnixSeconds(long value) {
+      copyOnWrite();
+      instance.setGeneratedUnixSeconds(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Always set, for the reason View.generated_unix_seconds explains: an empty
+     * list would otherwise encode to zero bytes and cross as null.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 2;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearGeneratedUnixSeconds() {
+      copyOnWrite();
+      instance.clearGeneratedUnixSeconds();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:clarity.v1.RepoList)
   }
   @java.lang.Override
@@ -331,9 +415,11 @@ public  final class RepoList extends
           java.lang.Object[] objects = new java.lang.Object[] {
             "repos_",
             dev.ezcd.clarity.proto.RepoSummary.class,
+            "generatedUnixSeconds_",
           };
           java.lang.String info =
-              "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0001\u0000\u0001\u001b";
+              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0001\u0000\u0001\u001b\u0002\u0002" +
+              "";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

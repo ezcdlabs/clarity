@@ -1290,6 +1290,20 @@ protect the very first fetch, which nothing short of a key the user types in
 ever could. It does mean a host whose key changes under you is reported rather
 than silently accepted, which is the case that actually happens.
 
+### Nothing that crosses the boundary may be empty
+
+gomobile cannot carry a zero-length byte slice. Its `fromSlice` turns one into a
+null `jbyteArray` on Android and a nil `NSData` on iOS, and a protobuf message
+with no fields set encodes to exactly zero bytes — so a perfectly legal payload
+arrives as null and the decoder throws. The first thing a new install asks for
+is the repository list, which is empty, so this is the common path rather than
+an edge of it.
+
+Both `View` and `RepoList` therefore carry `generated_unix_seconds`, always set.
+It is not only ballast: a mobile client holds the last good view across a failed
+refresh, so how old the thing on screen is happens to be exactly what the user
+needs to know at that moment.
+
 ### iOS without a Mac in the loop
 
 Development happens on Linux, where there is no `swift`, no `xcodebuild` and no

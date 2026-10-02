@@ -150,10 +150,19 @@ type View struct {
 	// Truncated reports that the window ended before the repository did, so an
 	// aggregate built from it is not the whole history. The limit is carried so
 	// a client can say which number ended it.
-	Truncated     bool  `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
-	Limit         int32 `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Truncated bool  `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Limit     int32 `protobuf:"varint,6,opt,name=limit,proto3" json:"limit,omitempty"`
+	// When this view was built. A mobile client holds the last good view across a
+	// failed refresh, so "as of when" is the difference between stale data and
+	// wrong data.
+	//
+	// It is also always set, which is load-bearing: gomobile cannot carry a
+	// zero-length byte slice — fromSlice turns one into a null array — and a
+	// message with no fields set encodes to zero bytes. One field that is never
+	// zero keeps every payload representable.
+	GeneratedUnixSeconds int64 `protobuf:"varint,7,opt,name=generated_unix_seconds,json=generatedUnixSeconds,proto3" json:"generated_unix_seconds,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *View) Reset() {
@@ -224,6 +233,13 @@ func (x *View) GetTruncated() bool {
 func (x *View) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *View) GetGeneratedUnixSeconds() int64 {
+	if x != nil {
+		return x.GeneratedUnixSeconds
 	}
 	return 0
 }
@@ -527,10 +543,13 @@ func (x *Commit) GetLeadTimeLive() bool {
 
 // RepoList is the menu of tracked repositories.
 type RepoList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Repos         []*RepoSummary         `protobuf:"bytes,1,rep,name=repos,proto3" json:"repos,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Repos []*RepoSummary         `protobuf:"bytes,1,rep,name=repos,proto3" json:"repos,omitempty"`
+	// Always set, for the reason View.generated_unix_seconds explains: an empty
+	// list would otherwise encode to zero bytes and cross as null.
+	GeneratedUnixSeconds int64 `protobuf:"varint,2,opt,name=generated_unix_seconds,json=generatedUnixSeconds,proto3" json:"generated_unix_seconds,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *RepoList) Reset() {
@@ -568,6 +587,13 @@ func (x *RepoList) GetRepos() []*RepoSummary {
 		return x.Repos
 	}
 	return nil
+}
+
+func (x *RepoList) GetGeneratedUnixSeconds() int64 {
+	if x != nil {
+		return x.GeneratedUnixSeconds
+	}
+	return 0
 }
 
 type RepoSummary struct {
@@ -645,14 +671,15 @@ var File_clarity_v1_view_proto protoreflect.FileDescriptor
 const file_clarity_v1_view_proto_rawDesc = "" +
 	"\n" +
 	"\x15clarity/v1/view.proto\x12\n" +
-	"clarity.v1\"\xcf\x01\n" +
+	"clarity.v1\"\x85\x02\n" +
 	"\x04View\x12\x1b\n" +
 	"\trepo_name\x18\x01 \x01(\tR\brepoName\x12\"\n" +
 	"\x02ci\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12*\n" +
 	"\x06deploy\x18\x03 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\x12&\n" +
 	"\x05flows\x18\x04 \x03(\v2\x10.clarity.v1.FlowR\x05flows\x12\x1c\n" +
 	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x14\n" +
-	"\x05limit\x18\x06 \x01(\x05R\x05limit\"\x91\x01\n" +
+	"\x05limit\x18\x06 \x01(\x05R\x05limit\x124\n" +
+	"\x16generated_unix_seconds\x18\a \x01(\x03R\x14generatedUnixSeconds\"\x91\x01\n" +
 	"\x04Flow\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x06deploy\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\x12\x1e\n" +
@@ -680,9 +707,10 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x11lead_time_seconds\x18\n" +
 	" \x01(\x03R\x0fleadTimeSeconds\x12\x1b\n" +
 	"\tlead_time\x18\v \x01(\tR\bleadTime\x12$\n" +
-	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\"9\n" +
+	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\"o\n" +
 	"\bRepoList\x12-\n" +
-	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\"[\n" +
+	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\x124\n" +
+	"\x16generated_unix_seconds\x18\x02 \x01(\x03R\x14generatedUnixSeconds\"[\n" +
 	"\vRepoSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +

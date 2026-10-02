@@ -169,3 +169,36 @@ func TestClient_ViewWithoutSyncIsEmptyNotAnError(t *testing.T) {
 		}
 	}
 }
+
+// TestClient_PayloadsAreNeverEmpty guards the one shape gomobile cannot carry.
+//
+// Its fromSlice turns any zero-length []byte into a null jbyteArray on Android
+// and a nil NSData on iOS. An empty protobuf encoding is zero bytes — which is
+// exactly what a message with no fields set produces — so a legal payload
+// arrives as null and the decoder throws. An empty repository list is the first
+// thing a new install asks for, so this is the common case, not an edge one.
+func TestClient_PayloadsAreNeverEmpty(t *testing.T) {
+	client, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded, err := client.ListRepos()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) == 0 {
+		t.Fatal("an empty repository list encodes to zero bytes, which arrives as null")
+	}
+
+	var list v1.RepoList
+	if err := proto.Unmarshal(encoded, &list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Repos) != 0 {
+		t.Errorf("expected no repositories, got %d", len(list.Repos))
+	}
+	if list.GeneratedUnixSeconds == 0 {
+		t.Error("nothing was set, so the payload is only non-empty by luck")
+	}
+}

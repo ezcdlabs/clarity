@@ -35,6 +35,10 @@ func View(view core.View, now time.Time) *v1.View {
 		Deploy:    status(view.Header.Deploy),
 		Truncated: view.Snapshot.Truncated,
 		Limit:     int32(view.Snapshot.Limit),
+		// Always set. A client holds this view across a failed refresh, so it
+		// needs to know how old it is — and a field that is never zero is what
+		// keeps an otherwise-empty view representable across the FFI boundary.
+		GeneratedUnixSeconds: now.Unix(),
 	}
 
 	index := indexBySHA(view.Snapshot.Commits)

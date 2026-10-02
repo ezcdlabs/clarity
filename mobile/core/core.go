@@ -89,7 +89,7 @@ func (c *Client) ListRepos() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &v1.RepoList{}
+	out := &v1.RepoList{GeneratedUnixSeconds: time.Now().Unix()}
 	for _, e := range entries {
 		out.Repos = append(out.Repos, &v1.RepoSummary{
 			Id: e.ID, Name: e.Name, Url: e.URL, Branch: e.Branch,

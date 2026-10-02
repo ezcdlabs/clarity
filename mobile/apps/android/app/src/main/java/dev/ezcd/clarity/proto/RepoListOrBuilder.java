@@ -20,4 +20,15 @@ public interface RepoListOrBuilder extends
    * <code>repeated .clarity.v1.RepoSummary repos = 1;</code>
    */
   int getReposCount();
+
+  /**
+   * <pre>
+   * Always set, for the reason View.generated_unix_seconds explains: an empty
+   * list would otherwise encode to zero bytes and cross as null.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 2;</code>
+   * @return The generatedUnixSeconds.
+   */
+  long getGeneratedUnixSeconds();
 }

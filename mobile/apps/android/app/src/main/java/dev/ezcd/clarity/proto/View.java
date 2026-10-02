@@ -376,6 +376,62 @@ public  final class View extends
     limit_ = 0;
   }
 
+  public static final int GENERATED_UNIX_SECONDS_FIELD_NUMBER = 7;
+  private long generatedUnixSeconds_;
+  /**
+   * <pre>
+   * When this view was built. A mobile client holds the last good view across a
+   * failed refresh, so "as of when" is the difference between stale data and
+   * wrong data.
+   * It is also always set, which is load-bearing: gomobile cannot carry a
+   * zero-length byte slice — fromSlice turns one into a null array — and a
+   * message with no fields set encodes to zero bytes. One field that is never
+   * zero keeps every payload representable.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 7;</code>
+   * @return The generatedUnixSeconds.
+   */
+  @java.lang.Override
+  public long getGeneratedUnixSeconds() {
+    return generatedUnixSeconds_;
+  }
+  /**
+   * <pre>
+   * When this view was built. A mobile client holds the last good view across a
+   * failed refresh, so "as of when" is the difference between stale data and
+   * wrong data.
+   * It is also always set, which is load-bearing: gomobile cannot carry a
+   * zero-length byte slice — fromSlice turns one into a null array — and a
+   * message with no fields set encodes to zero bytes. One field that is never
+   * zero keeps every payload representable.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 7;</code>
+   * @param value The generatedUnixSeconds to set.
+   */
+  private void setGeneratedUnixSeconds(long value) {
+    
+    generatedUnixSeconds_ = value;
+  }
+  /**
+   * <pre>
+   * When this view was built. A mobile client holds the last good view across a
+   * failed refresh, so "as of when" is the difference between stale data and
+   * wrong data.
+   * It is also always set, which is load-bearing: gomobile cannot carry a
+   * zero-length byte slice — fromSlice turns one into a null array — and a
+   * message with no fields set encodes to zero bytes. One field that is never
+   * zero keeps every payload representable.
+   * </pre>
+   *
+   * <code>int64 generated_unix_seconds = 7;</code>
+   */
+  private void clearGeneratedUnixSeconds() {
+    
+    generatedUnixSeconds_ = 0L;
+  }
+
   public static dev.ezcd.clarity.proto.View parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -860,6 +916,64 @@ public  final class View extends
       return this;
     }
 
+    /**
+     * <pre>
+     * When this view was built. A mobile client holds the last good view across a
+     * failed refresh, so "as of when" is the difference between stale data and
+     * wrong data.
+     * It is also always set, which is load-bearing: gomobile cannot carry a
+     * zero-length byte slice — fromSlice turns one into a null array — and a
+     * message with no fields set encodes to zero bytes. One field that is never
+     * zero keeps every payload representable.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 7;</code>
+     * @return The generatedUnixSeconds.
+     */
+    @java.lang.Override
+    public long getGeneratedUnixSeconds() {
+      return instance.getGeneratedUnixSeconds();
+    }
+    /**
+     * <pre>
+     * When this view was built. A mobile client holds the last good view across a
+     * failed refresh, so "as of when" is the difference between stale data and
+     * wrong data.
+     * It is also always set, which is load-bearing: gomobile cannot carry a
+     * zero-length byte slice — fromSlice turns one into a null array — and a
+     * message with no fields set encodes to zero bytes. One field that is never
+     * zero keeps every payload representable.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 7;</code>
+     * @param value The generatedUnixSeconds to set.
+     * @return This builder for chaining.
+     */
+    public Builder setGeneratedUnixSeconds(long value) {
+      copyOnWrite();
+      instance.setGeneratedUnixSeconds(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * When this view was built. A mobile client holds the last good view across a
+     * failed refresh, so "as of when" is the difference between stale data and
+     * wrong data.
+     * It is also always set, which is load-bearing: gomobile cannot carry a
+     * zero-length byte slice — fromSlice turns one into a null array — and a
+     * message with no fields set encodes to zero bytes. One field that is never
+     * zero keeps every payload representable.
+     * </pre>
+     *
+     * <code>int64 generated_unix_seconds = 7;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearGeneratedUnixSeconds() {
+      copyOnWrite();
+      instance.clearGeneratedUnixSeconds();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:clarity.v1.View)
   }
   @java.lang.Override
@@ -883,10 +997,11 @@ public  final class View extends
             dev.ezcd.clarity.proto.Flow.class,
             "truncated_",
             "limit_",
+            "generatedUnixSeconds_",
           };
           java.lang.String info =
-              "\u0000\u0006\u0000\u0000\u0001\u0006\u0006\u0000\u0001\u0000\u0001\u0208\u0002\f" +
-              "\u0003\f\u0004\u001b\u0005\u0007\u0006\u0004";
+              "\u0000\u0007\u0000\u0000\u0001\u0007\u0007\u0000\u0001\u0000\u0001\u0208\u0002\f" +
+              "\u0003\f\u0004\u001b\u0005\u0007\u0006\u0004\u0007\u0002";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

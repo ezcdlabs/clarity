@@ -230,3 +230,22 @@ func TestView_TruncationCrosses(t *testing.T) {
 		t.Errorf("truncated=%v limit=%d, want true/50", out.Truncated, out.Limit)
 	}
 }
+
+// TestView_IsStampedWithWhenItWasBuilt covers two things at once, which is why
+// it is one test and not two.
+//
+// A client holds the last good view across a failed refresh, so it needs to say
+// how old what it is showing is. And the stamp is never zero, which is what
+// keeps a view with nothing in it representable: gomobile's fromSlice turns a
+// zero-length []byte into a null array, and a message with no fields set
+// encodes to zero bytes.
+func TestView_IsStampedWithWhenItWasBuilt(t *testing.T) {
+	out := mapped(t, deployed(), at(90))
+
+	if out.GeneratedUnixSeconds != at(90).Unix() {
+		t.Errorf("stamped %d, want %d", out.GeneratedUnixSeconds, at(90).Unix())
+	}
+	if out.GeneratedUnixSeconds == 0 {
+		t.Error("an unstamped view encodes to zero bytes when it is otherwise empty")
+	}
+}

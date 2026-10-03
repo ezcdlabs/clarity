@@ -31,6 +31,24 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Elapsed formats a number of seconds the way every clarity UI formats a
+// duration.
+//
+// Exposed because a running timer has to be recomputed on the device every
+// second, and asking Go for the whole view that often would mean walking the
+// commit graph that often. The alternative was reimplementing the rule in
+// Kotlin and in Swift — two more places for "3m 29s" to drift into "3:29".
+//
+// Negative input reads as zero. A phone's clock and a CI host's clock
+// disagree, and a timer counting backwards from a deploy that has not happened
+// yet reads as a bug in clarity rather than a skew.
+func Elapsed(seconds int64) string {
+	if seconds < 0 {
+		seconds = 0
+	}
+	return core.FormatElapsed(time.Duration(seconds) * time.Second)
+}
+
 // Client is the whole surface an app talks to. One per process; the app
 // supplies the directory its platform gives it for private data.
 type Client struct {

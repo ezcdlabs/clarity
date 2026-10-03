@@ -13,7 +13,7 @@ struct AddRepoView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopBar(title: "Add a repository", onBack: { model.back() }) { EmptyView() }
+            TopBar(title: "Add a repository", leading: { BackArrow { model.closeOverlay() } }, trailing: { EmptyView() })
             ErrorBar(error: model.state.error) { model.dismissError() }
 
             VStack(alignment: .leading, spacing: 12) {

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -48,9 +50,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             ClarityTheme {
                 val state by viewModel.model.state.collectAsStateWithLifecycle()
-                // System back goes where the back arrow goes; only the menu lets
-                // it leave the app.
-                BackHandler(enabled = state.screen != Screen.Repos) { viewModel.model.back() }
+
+                // The clock and the automatic refresh follow the window, not
+                // the process: a backgrounded app that keeps fetching is
+                // spending someone's battery and data on a screen nobody is
+                // looking at.
+                LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.model.resume() }
+                LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.model.pause() }
+
+                // System back closes an overlay; from the repository itself it
+                // leaves the app, because the repository is the home screen.
+                BackHandler(enabled = state.overlay != null) { viewModel.model.closeOverlay() }
                 App(viewModel.model, Modifier.windowInsetsPadding(WindowInsets.systemBars))
             }
         }

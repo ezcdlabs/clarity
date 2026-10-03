@@ -27,12 +27,12 @@ import dev.ezcd.clarity.ClarityModel
  * Kotlin could only disagree with it.
  */
 @Composable
-fun AddRepoScreen(state: AppState, model: ClarityModel) {
+fun AddRepoScreen(state: AppState, model: ClarityModel, modifier: Modifier = Modifier) {
     var url by rememberSaveable { mutableStateOf("") }
     var branch by rememberSaveable { mutableStateOf("") }
 
-    Column(Modifier.fillMaxSize()) {
-        TopBar("Add a repository", onBack = { model.back() })
+    Column(modifier.fillMaxSize()) {
+        TopBar("Add a repository", leading = { BackArrow { model.closeOverlay() } })
         ErrorBar(state.error) { model.dismissError() }
 
         Column(Modifier.padding(16.dp)) {

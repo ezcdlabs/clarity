@@ -82,26 +82,39 @@ public interface CommitOrBuilder extends
       getAgeBytes();
 
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @return The enum numeric value on the wire for ci.
    */
   int getCiValue();
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @return The ci.
    */
   dev.ezcd.clarity.proto.Status getCi();
 
   /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @return The enum numeric value on the wire for deploy.
+   * <pre>
+   * Stale marks a CI result a newer commit has already superseded. The TUI
+   * mutes it rather than colouring it, because a build that failed three
+   * commits ago and has since gone green is history, not an alarm.
+   * </pre>
+   *
+   * <code>bool ci_stale = 8;</code>
+   * @return The ciStale.
    */
-  int getDeployValue();
-  /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @return The deploy.
-   */
-  dev.ezcd.clarity.proto.Status getDeploy();
+  boolean getCiStale();
 
   /**
    * <pre>
@@ -143,4 +156,15 @@ public interface CommitOrBuilder extends
    * @return The leadTimeLive.
    */
   boolean getLeadTimeLive();
+
+  /**
+   * <pre>
+   * Where a live lead time started counting, so a client can keep it accurate
+   * without asking for the view again. Only set when lead_time_live is.
+   * </pre>
+   *
+   * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+   * @return The leadTimeAnchorUnixSeconds.
+   */
+  long getLeadTimeAnchorUnixSeconds();
 }

@@ -82,59 +82,59 @@ func (Status) EnumDescriptor() ([]byte, []int) {
 	return file_clarity_v1_view_proto_rawDescGZIP(), []int{0}
 }
 
-// GroupKind is a commit's position in the lifecycle.
-type GroupKind int32
+// SectionKind is one of the three lifecycle sections. They are a structural
+// frame rather than a list of what happens to be active: all three are always
+// present and always in this order, so a repository with nothing deployed
+// still reads as "nothing has been deployed" rather than as a missing section.
+type SectionKind int32
 
 const (
-	GroupKind_GROUP_KIND_UNSPECIFIED GroupKind = 0
-	GroupKind_GROUP_KIND_HEAD        GroupKind = 1 // landed, CI not green yet
-	GroupKind_GROUP_KIND_CI_PASSED   GroupKind = 2 // green, waiting for a deploy
-	GroupKind_GROUP_KIND_IN_FLIGHT   GroupKind = 3 // a deploy attempt that has not landed
-	GroupKind_GROUP_KIND_DEPLOYED    GroupKind = 4 // one successful deploy, with what it shipped
+	SectionKind_SECTION_KIND_UNSPECIFIED SectionKind = 0
+	SectionKind_SECTION_KIND_HEAD        SectionKind = 1 // landed, CI not green yet
+	SectionKind_SECTION_KIND_CI_PASSED   SectionKind = 2 // green, waiting for a deploy
+	SectionKind_SECTION_KIND_DEPLOYED    SectionKind = 3 // shipped
 )
 
-// Enum value maps for GroupKind.
+// Enum value maps for SectionKind.
 var (
-	GroupKind_name = map[int32]string{
-		0: "GROUP_KIND_UNSPECIFIED",
-		1: "GROUP_KIND_HEAD",
-		2: "GROUP_KIND_CI_PASSED",
-		3: "GROUP_KIND_IN_FLIGHT",
-		4: "GROUP_KIND_DEPLOYED",
+	SectionKind_name = map[int32]string{
+		0: "SECTION_KIND_UNSPECIFIED",
+		1: "SECTION_KIND_HEAD",
+		2: "SECTION_KIND_CI_PASSED",
+		3: "SECTION_KIND_DEPLOYED",
 	}
-	GroupKind_value = map[string]int32{
-		"GROUP_KIND_UNSPECIFIED": 0,
-		"GROUP_KIND_HEAD":        1,
-		"GROUP_KIND_CI_PASSED":   2,
-		"GROUP_KIND_IN_FLIGHT":   3,
-		"GROUP_KIND_DEPLOYED":    4,
+	SectionKind_value = map[string]int32{
+		"SECTION_KIND_UNSPECIFIED": 0,
+		"SECTION_KIND_HEAD":        1,
+		"SECTION_KIND_CI_PASSED":   2,
+		"SECTION_KIND_DEPLOYED":    3,
 	}
 )
 
-func (x GroupKind) Enum() *GroupKind {
-	p := new(GroupKind)
+func (x SectionKind) Enum() *SectionKind {
+	p := new(SectionKind)
 	*p = x
 	return p
 }
 
-func (x GroupKind) String() string {
+func (x SectionKind) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (GroupKind) Descriptor() protoreflect.EnumDescriptor {
+func (SectionKind) Descriptor() protoreflect.EnumDescriptor {
 	return file_clarity_v1_view_proto_enumTypes[1].Descriptor()
 }
 
-func (GroupKind) Type() protoreflect.EnumType {
+func (SectionKind) Type() protoreflect.EnumType {
 	return &file_clarity_v1_view_proto_enumTypes[1]
 }
 
-func (x GroupKind) Number() protoreflect.EnumNumber {
+func (x SectionKind) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use GroupKind.Descriptor instead.
-func (GroupKind) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use SectionKind.Descriptor instead.
+func (SectionKind) EnumDescriptor() ([]byte, []int) {
 	return file_clarity_v1_view_proto_rawDescGZIP(), []int{1}
 }
 
@@ -252,8 +252,8 @@ type Flow struct {
 	// .ezcd.json — a typo, or something added without updating config.
 	// Surfaced rather than dropped: a silently discarded deploy is worse than
 	// an unexpected tab.
-	Undeclared    bool     `protobuf:"varint,3,opt,name=undeclared,proto3" json:"undeclared,omitempty"`
-	Groups        []*Group `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	Undeclared    bool       `protobuf:"varint,3,opt,name=undeclared,proto3" json:"undeclared,omitempty"`
+	Sections      []*Section `protobuf:"bytes,4,rep,name=sections,proto3" json:"sections,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -309,43 +309,44 @@ func (x *Flow) GetUndeclared() bool {
 	return false
 }
 
-func (x *Flow) GetGroups() []*Group {
+func (x *Flow) GetSections() []*Section {
 	if x != nil {
-		return x.Groups
+		return x.Sections
 	}
 	return nil
 }
 
-type Group struct {
+// Section is one of the three lifecycle bands.
+//
+// A section holds loose commits, batches, or both: HEAD is only loose commits,
+// Deployed is only batches, and CI Passed is the one that has both — commits
+// queued for the next deploy, then any attempt that has not landed yet.
+type Section struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Kind  GroupKind              `protobuf:"varint,1,opt,name=kind,proto3,enum=clarity.v1.GroupKind" json:"kind,omitempty"`
-	// Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-	// than on the client so three UIs cannot disagree about what to call it.
-	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
-	// Status and timing of the deploy this group represents. Only meaningful
-	// for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-	Status              Status    `protobuf:"varint,3,opt,name=status,proto3,enum=clarity.v1.Status" json:"status,omitempty"`
-	DeployedUnixSeconds int64     `protobuf:"varint,4,opt,name=deployed_unix_seconds,json=deployedUnixSeconds,proto3" json:"deployed_unix_seconds,omitempty"`
-	DeployedAgo         string    `protobuf:"bytes,5,opt,name=deployed_ago,json=deployedAgo,proto3" json:"deployed_ago,omitempty"` // "4m 43s ago"
-	Commits             []*Commit `protobuf:"bytes,6,rep,name=commits,proto3" json:"commits,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	Kind  SectionKind            `protobuf:"varint,1,opt,name=kind,proto3,enum=clarity.v1.SectionKind" json:"kind,omitempty"`
+	// Label names the band: "HEAD", "CI Passed", "Deployed". Here rather than on
+	// the client so three UIs cannot disagree about what to call it.
+	Label         string    `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	Commits       []*Commit `protobuf:"bytes,3,rep,name=commits,proto3" json:"commits,omitempty"`
+	Batches       []*Batch  `protobuf:"bytes,4,rep,name=batches,proto3" json:"batches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Group) Reset() {
-	*x = Group{}
+func (x *Section) Reset() {
+	*x = Section{}
 	mi := &file_clarity_v1_view_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Group) String() string {
+func (x *Section) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Group) ProtoMessage() {}
+func (*Section) ProtoMessage() {}
 
-func (x *Group) ProtoReflect() protoreflect.Message {
+func (x *Section) ProtoReflect() protoreflect.Message {
 	mi := &file_clarity_v1_view_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -357,47 +358,124 @@ func (x *Group) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Group.ProtoReflect.Descriptor instead.
-func (*Group) Descriptor() ([]byte, []int) {
+// Deprecated: Use Section.ProtoReflect.Descriptor instead.
+func (*Section) Descriptor() ([]byte, []int) {
 	return file_clarity_v1_view_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Group) GetKind() GroupKind {
+func (x *Section) GetKind() SectionKind {
 	if x != nil {
 		return x.Kind
 	}
-	return GroupKind_GROUP_KIND_UNSPECIFIED
+	return SectionKind_SECTION_KIND_UNSPECIFIED
 }
 
-func (x *Group) GetLabel() string {
+func (x *Section) GetLabel() string {
 	if x != nil {
 		return x.Label
 	}
 	return ""
 }
 
-func (x *Group) GetStatus() Status {
+func (x *Section) GetCommits() []*Commit {
+	if x != nil {
+		return x.Commits
+	}
+	return nil
+}
+
+func (x *Section) GetBatches() []*Batch {
+	if x != nil {
+		return x.Batches
+	}
+	return nil
+}
+
+// Batch is one deploy attempt and the commits it carried.
+type Batch struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Status Status                 `protobuf:"varint,1,opt,name=status,proto3,enum=clarity.v1.Status" json:"status,omitempty"`
+	// Label is the subheader the TUI writes above the batch: "deploying…",
+	// "deployed", "deploy failed", or "live on production · deployed". The time
+	// is not part of it — deployed_ago carries that separately so a client can
+	// place it apart and keep it ticking.
+	Label               string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	DeployedUnixSeconds int64  `protobuf:"varint,3,opt,name=deployed_unix_seconds,json=deployedUnixSeconds,proto3" json:"deployed_unix_seconds,omitempty"`
+	DeployedAgo         string `protobuf:"bytes,4,opt,name=deployed_ago,json=deployedAgo,proto3" json:"deployed_ago,omitempty"` // "4m 43s ago"
+	// Live marks the newest passing batch: what is running in production right
+	// now, as opposed to settled history. Exactly one batch in a flow has it.
+	Live          bool      `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	Commits       []*Commit `protobuf:"bytes,6,rep,name=commits,proto3" json:"commits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Batch) Reset() {
+	*x = Batch{}
+	mi := &file_clarity_v1_view_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Batch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Batch) ProtoMessage() {}
+
+func (x *Batch) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Batch.ProtoReflect.Descriptor instead.
+func (*Batch) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Batch) GetStatus() Status {
 	if x != nil {
 		return x.Status
 	}
 	return Status_STATUS_UNSPECIFIED
 }
 
-func (x *Group) GetDeployedUnixSeconds() int64 {
+func (x *Batch) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *Batch) GetDeployedUnixSeconds() int64 {
 	if x != nil {
 		return x.DeployedUnixSeconds
 	}
 	return 0
 }
 
-func (x *Group) GetDeployedAgo() string {
+func (x *Batch) GetDeployedAgo() string {
 	if x != nil {
 		return x.DeployedAgo
 	}
 	return ""
 }
 
-func (x *Group) GetCommits() []*Commit {
+func (x *Batch) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+func (x *Batch) GetCommits() []*Commit {
 	if x != nil {
 		return x.Commits
 	}
@@ -412,8 +490,14 @@ type Commit struct {
 	Author              string                 `protobuf:"bytes,4,opt,name=author,proto3" json:"author,omitempty"`
 	AuthoredUnixSeconds int64                  `protobuf:"varint,5,opt,name=authored_unix_seconds,json=authoredUnixSeconds,proto3" json:"authored_unix_seconds,omitempty"`
 	Age                 string                 `protobuf:"bytes,6,opt,name=age,proto3" json:"age,omitempty"` // "3m 29s"
-	Ci                  Status                 `protobuf:"varint,7,opt,name=ci,proto3,enum=clarity.v1.Status" json:"ci,omitempty"`
-	Deploy              Status                 `protobuf:"varint,8,opt,name=deploy,proto3,enum=clarity.v1.Status" json:"deploy,omitempty"`
+	// Only CI. There is deliberately no deploy status on a commit: whether it
+	// shipped is said by the section and the batch it sits in, and a second mark
+	// repeating that is the one the terminal renderer has never drawn.
+	Ci Status `protobuf:"varint,7,opt,name=ci,proto3,enum=clarity.v1.Status" json:"ci,omitempty"`
+	// Stale marks a CI result a newer commit has already superseded. The TUI
+	// mutes it rather than colouring it, because a build that failed three
+	// commits ago and has since gone green is history, not an alarm.
+	CiStale bool `protobuf:"varint,8,opt,name=ci_stale,json=ciStale,proto3" json:"ci_stale,omitempty"`
 	// Lead time is absent for a commit that has not shipped, and for one the
 	// configured mode excludes. Zero seconds with an empty string means absent;
 	// it is not the same as a lead time of zero.
@@ -422,14 +506,17 @@ type Commit struct {
 	LeadTime        string `protobuf:"bytes,11,opt,name=lead_time,json=leadTime,proto3" json:"lead_time,omitempty"`
 	// Live marks a lead time still running — the commit is deployed but the
 	// clock has not stopped, so a client may want to keep it ticking.
-	LeadTimeLive  bool `protobuf:"varint,12,opt,name=lead_time_live,json=leadTimeLive,proto3" json:"lead_time_live,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	LeadTimeLive bool `protobuf:"varint,12,opt,name=lead_time_live,json=leadTimeLive,proto3" json:"lead_time_live,omitempty"`
+	// Where a live lead time started counting, so a client can keep it accurate
+	// without asking for the view again. Only set when lead_time_live is.
+	LeadTimeAnchorUnixSeconds int64 `protobuf:"varint,13,opt,name=lead_time_anchor_unix_seconds,json=leadTimeAnchorUnixSeconds,proto3" json:"lead_time_anchor_unix_seconds,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *Commit) Reset() {
 	*x = Commit{}
-	mi := &file_clarity_v1_view_proto_msgTypes[3]
+	mi := &file_clarity_v1_view_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +528,7 @@ func (x *Commit) String() string {
 func (*Commit) ProtoMessage() {}
 
 func (x *Commit) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[3]
+	mi := &file_clarity_v1_view_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +541,7 @@ func (x *Commit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Commit.ProtoReflect.Descriptor instead.
 func (*Commit) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{3}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Commit) GetSha() string {
@@ -506,11 +593,11 @@ func (x *Commit) GetCi() Status {
 	return Status_STATUS_UNSPECIFIED
 }
 
-func (x *Commit) GetDeploy() Status {
+func (x *Commit) GetCiStale() bool {
 	if x != nil {
-		return x.Deploy
+		return x.CiStale
 	}
-	return Status_STATUS_UNSPECIFIED
+	return false
 }
 
 func (x *Commit) GetHasLeadTime() bool {
@@ -541,6 +628,13 @@ func (x *Commit) GetLeadTimeLive() bool {
 	return false
 }
 
+func (x *Commit) GetLeadTimeAnchorUnixSeconds() int64 {
+	if x != nil {
+		return x.LeadTimeAnchorUnixSeconds
+	}
+	return 0
+}
+
 // RepoList is the menu of tracked repositories.
 type RepoList struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -554,7 +648,7 @@ type RepoList struct {
 
 func (x *RepoList) Reset() {
 	*x = RepoList{}
-	mi := &file_clarity_v1_view_proto_msgTypes[4]
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +660,7 @@ func (x *RepoList) String() string {
 func (*RepoList) ProtoMessage() {}
 
 func (x *RepoList) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[4]
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +673,7 @@ func (x *RepoList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoList.ProtoReflect.Descriptor instead.
 func (*RepoList) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{4}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RepoList) GetRepos() []*RepoSummary {
@@ -610,7 +704,7 @@ type RepoSummary struct {
 
 func (x *RepoSummary) Reset() {
 	*x = RepoSummary{}
-	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	mi := &file_clarity_v1_view_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -622,7 +716,7 @@ func (x *RepoSummary) String() string {
 func (*RepoSummary) ProtoMessage() {}
 
 func (x *RepoSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	mi := &file_clarity_v1_view_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -635,7 +729,7 @@ func (x *RepoSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoSummary.ProtoReflect.Descriptor instead.
 func (*RepoSummary) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{5}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RepoSummary) GetId() string {
@@ -679,21 +773,26 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x05flows\x18\x04 \x03(\v2\x10.clarity.v1.FlowR\x05flows\x12\x1c\n" +
 	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\x124\n" +
-	"\x16generated_unix_seconds\x18\a \x01(\x03R\x14generatedUnixSeconds\"\x91\x01\n" +
+	"\x16generated_unix_seconds\x18\a \x01(\x03R\x14generatedUnixSeconds\"\x97\x01\n" +
 	"\x04Flow\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
 	"\x06deploy\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\x12\x1e\n" +
 	"\n" +
 	"undeclared\x18\x03 \x01(\bR\n" +
-	"undeclared\x12)\n" +
-	"\x06groups\x18\x04 \x03(\v2\x11.clarity.v1.GroupR\x06groups\"\xf9\x01\n" +
-	"\x05Group\x12)\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x15.clarity.v1.GroupKindR\x04kind\x12\x14\n" +
-	"\x05label\x18\x02 \x01(\tR\x05label\x12*\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x12.clarity.v1.StatusR\x06status\x122\n" +
-	"\x15deployed_unix_seconds\x18\x04 \x01(\x03R\x13deployedUnixSeconds\x12!\n" +
-	"\fdeployed_ago\x18\x05 \x01(\tR\vdeployedAgo\x12,\n" +
-	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\x92\x03\n" +
+	"undeclared\x12/\n" +
+	"\bsections\x18\x04 \x03(\v2\x13.clarity.v1.SectionR\bsections\"\xa7\x01\n" +
+	"\aSection\x12+\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x17.clarity.v1.SectionKindR\x04kind\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12,\n" +
+	"\acommits\x18\x03 \x03(\v2\x12.clarity.v1.CommitR\acommits\x12+\n" +
+	"\abatches\x18\x04 \x03(\v2\x11.clarity.v1.BatchR\abatches\"\xe2\x01\n" +
+	"\x05Batch\x12*\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x12.clarity.v1.StatusR\x06status\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x122\n" +
+	"\x15deployed_unix_seconds\x18\x03 \x01(\x03R\x13deployedUnixSeconds\x12!\n" +
+	"\fdeployed_ago\x18\x04 \x01(\tR\vdeployedAgo\x12\x12\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\x12,\n" +
+	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xc3\x03\n" +
 	"\x06Commit\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +
 	"\tshort_sha\x18\x02 \x01(\tR\bshortSha\x12\x18\n" +
@@ -701,13 +800,14 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x06author\x18\x04 \x01(\tR\x06author\x122\n" +
 	"\x15authored_unix_seconds\x18\x05 \x01(\x03R\x13authoredUnixSeconds\x12\x10\n" +
 	"\x03age\x18\x06 \x01(\tR\x03age\x12\"\n" +
-	"\x02ci\x18\a \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12*\n" +
-	"\x06deploy\x18\b \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\x12\"\n" +
+	"\x02ci\x18\a \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12\x19\n" +
+	"\bci_stale\x18\b \x01(\bR\aciStale\x12\"\n" +
 	"\rhas_lead_time\x18\t \x01(\bR\vhasLeadTime\x12*\n" +
 	"\x11lead_time_seconds\x18\n" +
 	" \x01(\x03R\x0fleadTimeSeconds\x12\x1b\n" +
 	"\tlead_time\x18\v \x01(\tR\bleadTime\x12$\n" +
-	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\"o\n" +
+	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\x12@\n" +
+	"\x1dlead_time_anchor_unix_seconds\x18\r \x01(\x03R\x19leadTimeAnchorUnixSeconds\"o\n" +
 	"\bRepoList\x12-\n" +
 	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\x124\n" +
 	"\x16generated_unix_seconds\x18\x02 \x01(\x03R\x14generatedUnixSeconds\"[\n" +
@@ -722,13 +822,12 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x0eSTATUS_STARTED\x10\x02\x12\x11\n" +
 	"\rSTATUS_PASSED\x10\x03\x12\x11\n" +
 	"\rSTATUS_FAILED\x10\x04\x12\x12\n" +
-	"\x0eSTATUS_SKIPPED\x10\x05*\x89\x01\n" +
-	"\tGroupKind\x12\x1a\n" +
-	"\x16GROUP_KIND_UNSPECIFIED\x10\x00\x12\x13\n" +
-	"\x0fGROUP_KIND_HEAD\x10\x01\x12\x18\n" +
-	"\x14GROUP_KIND_CI_PASSED\x10\x02\x12\x18\n" +
-	"\x14GROUP_KIND_IN_FLIGHT\x10\x03\x12\x17\n" +
-	"\x13GROUP_KIND_DEPLOYED\x10\x04Bf\n" +
+	"\x0eSTATUS_SKIPPED\x10\x05*y\n" +
+	"\vSectionKind\x12\x1c\n" +
+	"\x18SECTION_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11SECTION_KIND_HEAD\x10\x01\x12\x1a\n" +
+	"\x16SECTION_KIND_CI_PASSED\x10\x02\x12\x19\n" +
+	"\x15SECTION_KIND_DEPLOYED\x10\x03Bf\n" +
 	"\x16dev.ezcd.clarity.protoB\fClarityProtoP\x01Z<github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1b\x06proto3"
 
 var (
@@ -744,34 +843,36 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
-	(GroupKind)(0),      // 1: clarity.v1.GroupKind
+	(SectionKind)(0),    // 1: clarity.v1.SectionKind
 	(*View)(nil),        // 2: clarity.v1.View
 	(*Flow)(nil),        // 3: clarity.v1.Flow
-	(*Group)(nil),       // 4: clarity.v1.Group
-	(*Commit)(nil),      // 5: clarity.v1.Commit
-	(*RepoList)(nil),    // 6: clarity.v1.RepoList
-	(*RepoSummary)(nil), // 7: clarity.v1.RepoSummary
+	(*Section)(nil),     // 4: clarity.v1.Section
+	(*Batch)(nil),       // 5: clarity.v1.Batch
+	(*Commit)(nil),      // 6: clarity.v1.Commit
+	(*RepoList)(nil),    // 7: clarity.v1.RepoList
+	(*RepoSummary)(nil), // 8: clarity.v1.RepoSummary
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
 	0,  // 1: clarity.v1.View.deploy:type_name -> clarity.v1.Status
 	3,  // 2: clarity.v1.View.flows:type_name -> clarity.v1.Flow
 	0,  // 3: clarity.v1.Flow.deploy:type_name -> clarity.v1.Status
-	4,  // 4: clarity.v1.Flow.groups:type_name -> clarity.v1.Group
-	1,  // 5: clarity.v1.Group.kind:type_name -> clarity.v1.GroupKind
-	0,  // 6: clarity.v1.Group.status:type_name -> clarity.v1.Status
-	5,  // 7: clarity.v1.Group.commits:type_name -> clarity.v1.Commit
-	0,  // 8: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
-	0,  // 9: clarity.v1.Commit.deploy:type_name -> clarity.v1.Status
-	7,  // 10: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	4,  // 4: clarity.v1.Flow.sections:type_name -> clarity.v1.Section
+	1,  // 5: clarity.v1.Section.kind:type_name -> clarity.v1.SectionKind
+	6,  // 6: clarity.v1.Section.commits:type_name -> clarity.v1.Commit
+	5,  // 7: clarity.v1.Section.batches:type_name -> clarity.v1.Batch
+	0,  // 8: clarity.v1.Batch.status:type_name -> clarity.v1.Status
+	6,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
+	0,  // 10: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
+	8,  // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -785,7 +886,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

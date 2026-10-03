@@ -303,6 +303,12 @@ public  final class Commit extends
   public static final int CI_FIELD_NUMBER = 7;
   private int ci_;
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @return The enum numeric value on the wire for ci.
    */
@@ -311,6 +317,12 @@ public  final class Commit extends
     return ci_;
   }
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @return The ci.
    */
@@ -320,6 +332,12 @@ public  final class Commit extends
     return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
   }
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @param value The enum numeric value on the wire for ci to set.
    */
@@ -327,6 +345,12 @@ public  final class Commit extends
       ci_ = value;
   }
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    * @param value The ci to set.
    */
@@ -335,6 +359,12 @@ public  final class Commit extends
     
   }
   /**
+   * <pre>
+   * Only CI. There is deliberately no deploy status on a commit: whether it
+   * shipped is said by the section and the batch it sits in, and a second mark
+   * repeating that is the one the terminal renderer has never drawn.
+   * </pre>
+   *
    * <code>.clarity.v1.Status ci = 7;</code>
    */
   private void clearCi() {
@@ -342,46 +372,48 @@ public  final class Commit extends
     ci_ = 0;
   }
 
-  public static final int DEPLOY_FIELD_NUMBER = 8;
-  private int deploy_;
+  public static final int CI_STALE_FIELD_NUMBER = 8;
+  private boolean ciStale_;
   /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @return The enum numeric value on the wire for deploy.
+   * <pre>
+   * Stale marks a CI result a newer commit has already superseded. The TUI
+   * mutes it rather than colouring it, because a build that failed three
+   * commits ago and has since gone green is history, not an alarm.
+   * </pre>
+   *
+   * <code>bool ci_stale = 8;</code>
+   * @return The ciStale.
    */
   @java.lang.Override
-  public int getDeployValue() {
-    return deploy_;
+  public boolean getCiStale() {
+    return ciStale_;
   }
   /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @return The deploy.
+   * <pre>
+   * Stale marks a CI result a newer commit has already superseded. The TUI
+   * mutes it rather than colouring it, because a build that failed three
+   * commits ago and has since gone green is history, not an alarm.
+   * </pre>
+   *
+   * <code>bool ci_stale = 8;</code>
+   * @param value The ciStale to set.
    */
-  @java.lang.Override
-  public dev.ezcd.clarity.proto.Status getDeploy() {
-    dev.ezcd.clarity.proto.Status result = dev.ezcd.clarity.proto.Status.forNumber(deploy_);
-    return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
-  }
-  /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @param value The enum numeric value on the wire for deploy to set.
-   */
-  private void setDeployValue(int value) {
-      deploy_ = value;
-  }
-  /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
-   * @param value The deploy to set.
-   */
-  private void setDeploy(dev.ezcd.clarity.proto.Status value) {
-    deploy_ = value.getNumber();
+  private void setCiStale(boolean value) {
     
+    ciStale_ = value;
   }
   /**
-   * <code>.clarity.v1.Status deploy = 8;</code>
+   * <pre>
+   * Stale marks a CI result a newer commit has already superseded. The TUI
+   * mutes it rather than colouring it, because a build that failed three
+   * commits ago and has since gone green is history, not an alarm.
+   * </pre>
+   *
+   * <code>bool ci_stale = 8;</code>
    */
-  private void clearDeploy() {
+  private void clearCiStale() {
     
-    deploy_ = 0;
+    ciStale_ = false;
   }
 
   public static final int HAS_LEAD_TIME_FIELD_NUMBER = 9;
@@ -540,6 +572,47 @@ public  final class Commit extends
   private void clearLeadTimeLive() {
     
     leadTimeLive_ = false;
+  }
+
+  public static final int LEAD_TIME_ANCHOR_UNIX_SECONDS_FIELD_NUMBER = 13;
+  private long leadTimeAnchorUnixSeconds_;
+  /**
+   * <pre>
+   * Where a live lead time started counting, so a client can keep it accurate
+   * without asking for the view again. Only set when lead_time_live is.
+   * </pre>
+   *
+   * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+   * @return The leadTimeAnchorUnixSeconds.
+   */
+  @java.lang.Override
+  public long getLeadTimeAnchorUnixSeconds() {
+    return leadTimeAnchorUnixSeconds_;
+  }
+  /**
+   * <pre>
+   * Where a live lead time started counting, so a client can keep it accurate
+   * without asking for the view again. Only set when lead_time_live is.
+   * </pre>
+   *
+   * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+   * @param value The leadTimeAnchorUnixSeconds to set.
+   */
+  private void setLeadTimeAnchorUnixSeconds(long value) {
+    
+    leadTimeAnchorUnixSeconds_ = value;
+  }
+  /**
+   * <pre>
+   * Where a live lead time started counting, so a client can keep it accurate
+   * without asking for the view again. Only set when lead_time_live is.
+   * </pre>
+   *
+   * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+   */
+  private void clearLeadTimeAnchorUnixSeconds() {
+    
+    leadTimeAnchorUnixSeconds_ = 0L;
   }
 
   public static dev.ezcd.clarity.proto.Commit parseFrom(
@@ -931,6 +1004,12 @@ public  final class Commit extends
     }
 
     /**
+     * <pre>
+     * Only CI. There is deliberately no deploy status on a commit: whether it
+     * shipped is said by the section and the batch it sits in, and a second mark
+     * repeating that is the one the terminal renderer has never drawn.
+     * </pre>
+     *
      * <code>.clarity.v1.Status ci = 7;</code>
      * @return The enum numeric value on the wire for ci.
      */
@@ -939,6 +1018,12 @@ public  final class Commit extends
       return instance.getCiValue();
     }
     /**
+     * <pre>
+     * Only CI. There is deliberately no deploy status on a commit: whether it
+     * shipped is said by the section and the batch it sits in, and a second mark
+     * repeating that is the one the terminal renderer has never drawn.
+     * </pre>
+     *
      * <code>.clarity.v1.Status ci = 7;</code>
      * @param value The ci to set.
      * @return This builder for chaining.
@@ -949,6 +1034,12 @@ public  final class Commit extends
       return this;
     }
     /**
+     * <pre>
+     * Only CI. There is deliberately no deploy status on a commit: whether it
+     * shipped is said by the section and the batch it sits in, and a second mark
+     * repeating that is the one the terminal renderer has never drawn.
+     * </pre>
+     *
      * <code>.clarity.v1.Status ci = 7;</code>
      * @return The ci.
      */
@@ -957,6 +1048,12 @@ public  final class Commit extends
       return instance.getCi();
     }
     /**
+     * <pre>
+     * Only CI. There is deliberately no deploy status on a commit: whether it
+     * shipped is said by the section and the batch it sits in, and a second mark
+     * repeating that is the one the terminal renderer has never drawn.
+     * </pre>
+     *
      * <code>.clarity.v1.Status ci = 7;</code>
      * @param value The enum numeric value on the wire for ci to set.
      * @return This builder for chaining.
@@ -967,6 +1064,12 @@ public  final class Commit extends
       return this;
     }
     /**
+     * <pre>
+     * Only CI. There is deliberately no deploy status on a commit: whether it
+     * shipped is said by the section and the batch it sits in, and a second mark
+     * repeating that is the one the terminal renderer has never drawn.
+     * </pre>
+     *
      * <code>.clarity.v1.Status ci = 7;</code>
      * @return This builder for chaining.
      */
@@ -977,48 +1080,48 @@ public  final class Commit extends
     }
 
     /**
-     * <code>.clarity.v1.Status deploy = 8;</code>
-     * @return The enum numeric value on the wire for deploy.
+     * <pre>
+     * Stale marks a CI result a newer commit has already superseded. The TUI
+     * mutes it rather than colouring it, because a build that failed three
+     * commits ago and has since gone green is history, not an alarm.
+     * </pre>
+     *
+     * <code>bool ci_stale = 8;</code>
+     * @return The ciStale.
      */
     @java.lang.Override
-    public int getDeployValue() {
-      return instance.getDeployValue();
+    public boolean getCiStale() {
+      return instance.getCiStale();
     }
     /**
-     * <code>.clarity.v1.Status deploy = 8;</code>
-     * @param value The deploy to set.
+     * <pre>
+     * Stale marks a CI result a newer commit has already superseded. The TUI
+     * mutes it rather than colouring it, because a build that failed three
+     * commits ago and has since gone green is history, not an alarm.
+     * </pre>
+     *
+     * <code>bool ci_stale = 8;</code>
+     * @param value The ciStale to set.
      * @return This builder for chaining.
      */
-    public Builder setDeployValue(int value) {
+    public Builder setCiStale(boolean value) {
       copyOnWrite();
-      instance.setDeployValue(value);
+      instance.setCiStale(value);
       return this;
     }
     /**
-     * <code>.clarity.v1.Status deploy = 8;</code>
-     * @return The deploy.
-     */
-    @java.lang.Override
-    public dev.ezcd.clarity.proto.Status getDeploy() {
-      return instance.getDeploy();
-    }
-    /**
-     * <code>.clarity.v1.Status deploy = 8;</code>
-     * @param value The enum numeric value on the wire for deploy to set.
+     * <pre>
+     * Stale marks a CI result a newer commit has already superseded. The TUI
+     * mutes it rather than colouring it, because a build that failed three
+     * commits ago and has since gone green is history, not an alarm.
+     * </pre>
+     *
+     * <code>bool ci_stale = 8;</code>
      * @return This builder for chaining.
      */
-    public Builder setDeploy(dev.ezcd.clarity.proto.Status value) {
+    public Builder clearCiStale() {
       copyOnWrite();
-      instance.setDeploy(value);
-      return this;
-    }
-    /**
-     * <code>.clarity.v1.Status deploy = 8;</code>
-     * @return This builder for chaining.
-     */
-    public Builder clearDeploy() {
-      copyOnWrite();
-      instance.clearDeploy();
+      instance.clearCiStale();
       return this;
     }
 
@@ -1188,6 +1291,49 @@ public  final class Commit extends
       return this;
     }
 
+    /**
+     * <pre>
+     * Where a live lead time started counting, so a client can keep it accurate
+     * without asking for the view again. Only set when lead_time_live is.
+     * </pre>
+     *
+     * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+     * @return The leadTimeAnchorUnixSeconds.
+     */
+    @java.lang.Override
+    public long getLeadTimeAnchorUnixSeconds() {
+      return instance.getLeadTimeAnchorUnixSeconds();
+    }
+    /**
+     * <pre>
+     * Where a live lead time started counting, so a client can keep it accurate
+     * without asking for the view again. Only set when lead_time_live is.
+     * </pre>
+     *
+     * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+     * @param value The leadTimeAnchorUnixSeconds to set.
+     * @return This builder for chaining.
+     */
+    public Builder setLeadTimeAnchorUnixSeconds(long value) {
+      copyOnWrite();
+      instance.setLeadTimeAnchorUnixSeconds(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Where a live lead time started counting, so a client can keep it accurate
+     * without asking for the view again. Only set when lead_time_live is.
+     * </pre>
+     *
+     * <code>int64 lead_time_anchor_unix_seconds = 13;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearLeadTimeAnchorUnixSeconds() {
+      copyOnWrite();
+      instance.clearLeadTimeAnchorUnixSeconds();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:clarity.v1.Commit)
   }
   @java.lang.Override
@@ -1211,16 +1357,17 @@ public  final class Commit extends
             "authoredUnixSeconds_",
             "age_",
             "ci_",
-            "deploy_",
+            "ciStale_",
             "hasLeadTime_",
             "leadTimeSeconds_",
             "leadTime_",
             "leadTimeLive_",
+            "leadTimeAnchorUnixSeconds_",
           };
           java.lang.String info =
-              "\u0000\f\u0000\u0000\u0001\f\f\u0000\u0000\u0000\u0001\u0208\u0002\u0208\u0003\u0208" +
-              "\u0004\u0208\u0005\u0002\u0006\u0208\u0007\f\b\f\t\u0007\n\u0002\u000b\u0208\f\u0007" +
-              "";
+              "\u0000\r\u0000\u0000\u0001\r\r\u0000\u0000\u0000\u0001\u0208\u0002\u0208\u0003\u0208" +
+              "\u0004\u0208\u0005\u0002\u0006\u0208\u0007\f\b\u0007\t\u0007\n\u0002\u000b\u0208" +
+              "\f\u0007\r\u0002";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

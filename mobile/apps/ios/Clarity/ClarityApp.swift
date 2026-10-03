@@ -4,11 +4,18 @@ import SwiftUI
 @MainActor
 struct ClarityApp: App {
     @StateObject private var model = ClarityApp.makeModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
                 .task { await model.start() }
+        }
+        // The clock and the automatic refresh follow the window, not the
+        // process: a backgrounded app that keeps fetching is spending someone's
+        // battery and data on a screen nobody is looking at.
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { model.resume() } else { model.pause() }
         }
     }
 

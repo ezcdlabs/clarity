@@ -6,8 +6,12 @@ import SwiftUI
 /// ✓/✗ were chosen to survive a greyscale terminal. They survive here too, and
 /// keeping them means someone who uses both reads the same marks — but colour is
 /// never the only signal, which is the part that actually mattered.
+///
+/// `stale` mutes a result a newer commit has already superseded: a build that
+/// broke three commits ago and has since gone green is history, not an alarm.
 struct StatusGlyph: View {
     let status: Clarity_V1_Status
+    var stale = false
     var size: CGFloat = 13
 
     var body: some View {
@@ -30,8 +34,8 @@ struct StatusGlyph: View {
 
     private var colour: Color {
         switch status {
-        case .passed: return Ink.green
-        case .failed: return Ink.red
+        case .passed: return stale ? Ink.dim : Ink.green
+        case .failed: return stale ? Ink.dim : Ink.red
         case .started: return Ink.yellow
         case .skipped: return Ink.dim
         default: return Ink.line

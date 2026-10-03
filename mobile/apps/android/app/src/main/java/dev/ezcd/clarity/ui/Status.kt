@@ -13,10 +13,13 @@ import dev.ezcd.clarity.proto.Status
  * ✓/✗ were chosen to survive a greyscale terminal. They survive here too, and
  * keeping them means someone who uses both reads the same marks — but colour is
  * never the only signal, which is the part that actually mattered.
+ *
+ * [stale] mutes a result a newer commit has already superseded: a build that
+ * broke three commits ago and has since gone green is history, not an alarm.
  */
-private fun glyph(status: Status): Pair<String, Color> = when (status) {
-    Status.STATUS_PASSED -> "✓" to Ink.green
-    Status.STATUS_FAILED -> "✗" to Ink.red
+private fun glyph(status: Status, stale: Boolean): Pair<String, Color> = when (status) {
+    Status.STATUS_PASSED -> "✓" to if (stale) Ink.dim else Ink.green
+    Status.STATUS_FAILED -> "✗" to if (stale) Ink.dim else Ink.red
     Status.STATUS_STARTED -> "⋯" to Ink.yellow
     Status.STATUS_SKIPPED -> "–" to Ink.dim
     // Nothing reported is not a state to draw attention to: a commit nobody has
@@ -25,7 +28,7 @@ private fun glyph(status: Status): Pair<String, Color> = when (status) {
 }
 
 @Composable
-fun StatusGlyph(status: Status, modifier: Modifier = Modifier) {
-    val (mark, colour) = glyph(status)
+fun StatusGlyph(status: Status, stale: Boolean = false, modifier: Modifier = Modifier) {
+    val (mark, colour) = glyph(status, stale)
     Text(mark, style = Mono, color = colour, modifier = modifier)
 }

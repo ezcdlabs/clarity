@@ -58,9 +58,14 @@ func TestClient_AddSyncView(t *testing.T) {
 	}
 
 	var deployed *v1.Commit
-	for _, g := range view.Flows[0].Groups {
-		if g.Kind == v1.GroupKind_GROUP_KIND_DEPLOYED && len(g.Commits) > 0 {
-			deployed = g.Commits[0]
+	for _, sec := range view.Flows[0].Sections {
+		if sec.Kind != v1.SectionKind_SECTION_KIND_DEPLOYED {
+			continue
+		}
+		for _, b := range sec.Batches {
+			if len(b.Commits) > 0 {
+				deployed = b.Commits[0]
+			}
 		}
 	}
 	if deployed == nil {
@@ -162,8 +167,8 @@ func TestClient_ViewWithoutSyncIsEmptyNotAnError(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	for _, f := range view.Flows {
-		for _, g := range f.Groups {
-			if len(g.Commits) > 0 {
+		for _, sec := range f.Sections {
+			if len(sec.Commits) > 0 || len(sec.Batches) > 0 {
 				t.Error("commits appeared before anything was fetched")
 			}
 		}
@@ -200,5 +205,33 @@ func TestClient_PayloadsAreNeverEmpty(t *testing.T) {
 	}
 	if list.GeneratedUnixSeconds == 0 {
 		t.Error("nothing was set, so the payload is only non-empty by luck")
+	}
+}
+
+// TestElapsed covers the formatter the clients tick with.
+//
+// A running timer has to be recomputed on the device every second, and the
+// alternative to exposing this was reimplementing the rule in Kotlin and in
+// Swift — two more places for "3m 29s" to drift into "3:29".
+func TestElapsed(t *testing.T) {
+	tests := []struct {
+		name    string
+		seconds int64
+		want    string
+	}{
+		{"zero is still a duration", 0, "0s"},
+		{"seconds", 45, "45s"},
+		{"minutes and seconds", 209, "3m 29s"},
+		{"hours", 53101, "14h 45m 01s"},
+		// A phone's clock and a CI host's clock disagree. Counting backwards
+		// from a deploy that has not happened yet reads as a bug.
+		{"a clock skew reads as nothing elapsed", -30, "0s"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mobilecore.Elapsed(tc.seconds); got != tc.want {
+				t.Errorf("Elapsed(%d) = %q, want %q", tc.seconds, got, tc.want)
+			}
+		})
 	}
 }

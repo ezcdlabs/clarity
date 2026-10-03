@@ -11,7 +11,7 @@ struct KeyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopBar(title: "Device key", onBack: { model.back() }) { EmptyView() }
+            TopBar(title: "Device key", leading: { BackArrow { model.closeOverlay() } }, trailing: { EmptyView() })
             ErrorBar(error: model.state.error) { model.dismissError() }
 
             ScrollView {

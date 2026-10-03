@@ -50,6 +50,8 @@ struct GoBridge: ClarityBridge {
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View {
         try Clarity_V1_View(serializedBytes: client.view(repoID, limit: limit))
     }
+
+    func elapsed(seconds: Int64) -> String { ClarityCoreElapsed(seconds) }
 }
 
 enum BridgeError: Error {

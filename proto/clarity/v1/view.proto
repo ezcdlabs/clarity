@@ -39,13 +39,15 @@ enum Status {
   STATUS_SKIPPED = 5;
 }
 
-// GroupKind is a commit's position in the lifecycle.
-enum GroupKind {
-  GROUP_KIND_UNSPECIFIED = 0;
-  GROUP_KIND_HEAD = 1;       // landed, CI not green yet
-  GROUP_KIND_CI_PASSED = 2;  // green, waiting for a deploy
-  GROUP_KIND_IN_FLIGHT = 3;  // a deploy attempt that has not landed
-  GROUP_KIND_DEPLOYED = 4;   // one successful deploy, with what it shipped
+// SectionKind is one of the three lifecycle sections. They are a structural
+// frame rather than a list of what happens to be active: all three are always
+// present and always in this order, so a repository with nothing deployed
+// still reads as "nothing has been deployed" rather than as a missing section.
+enum SectionKind {
+  SECTION_KIND_UNSPECIFIED = 0;
+  SECTION_KIND_HEAD = 1;       // landed, CI not green yet
+  SECTION_KIND_CI_PASSED = 2;  // green, waiting for a deploy
+  SECTION_KIND_DEPLOYED = 3;   // shipped
 }
 
 message View {
@@ -85,21 +87,41 @@ message Flow {
   // an unexpected tab.
   bool undeclared = 3;
 
-  repeated Group groups = 4;
+  repeated Section sections = 4;
 }
 
-message Group {
-  GroupKind kind = 1;
+// Section is one of the three lifecycle bands.
+//
+// A section holds loose commits, batches, or both: HEAD is only loose commits,
+// Deployed is only batches, and CI Passed is the one that has both — commits
+// queued for the next deploy, then any attempt that has not landed yet.
+message Section {
+  SectionKind kind = 1;
 
-  // Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-  // than on the client so three UIs cannot disagree about what to call it.
+  // Label names the band: "HEAD", "CI Passed", "Deployed". Here rather than on
+  // the client so three UIs cannot disagree about what to call it.
   string label = 2;
 
-  // Status and timing of the deploy this group represents. Only meaningful
-  // for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-  Status status = 3;
-  int64 deployed_unix_seconds = 4;
-  string deployed_ago = 5;  // "4m 43s ago"
+  repeated Commit commits = 3;
+  repeated Batch batches = 4;
+}
+
+// Batch is one deploy attempt and the commits it carried.
+message Batch {
+  Status status = 1;
+
+  // Label is the subheader the TUI writes above the batch: "deploying…",
+  // "deployed", "deploy failed", or "live on production · deployed". The time
+  // is not part of it — deployed_ago carries that separately so a client can
+  // place it apart and keep it ticking.
+  string label = 2;
+
+  int64 deployed_unix_seconds = 3;
+  string deployed_ago = 4;  // "4m 43s ago"
+
+  // Live marks the newest passing batch: what is running in production right
+  // now, as opposed to settled history. Exactly one batch in a flow has it.
+  bool live = 5;
 
   repeated Commit commits = 6;
 }
@@ -113,8 +135,15 @@ message Commit {
   int64 authored_unix_seconds = 5;
   string age = 6;  // "3m 29s"
 
+  // Only CI. There is deliberately no deploy status on a commit: whether it
+  // shipped is said by the section and the batch it sits in, and a second mark
+  // repeating that is the one the terminal renderer has never drawn.
   Status ci = 7;
-  Status deploy = 8;
+
+  // Stale marks a CI result a newer commit has already superseded. The TUI
+  // mutes it rather than colouring it, because a build that failed three
+  // commits ago and has since gone green is history, not an alarm.
+  bool ci_stale = 8;
 
   // Lead time is absent for a commit that has not shipped, and for one the
   // configured mode excludes. Zero seconds with an empty string means absent;
@@ -125,6 +154,9 @@ message Commit {
   // Live marks a lead time still running — the commit is deployed but the
   // clock has not stopped, so a client may want to keep it ticking.
   bool lead_time_live = 12;
+  // Where a live lead time started counting, so a client can keep it accurate
+  // without asking for the view again. Only set when lead_time_live is.
+  int64 lead_time_anchor_unix_seconds = 13;
 }
 
 // RepoList is the menu of tracked repositories.

@@ -13,7 +13,7 @@ public  final class Flow extends
     FlowOrBuilder {
   private Flow() {
     name_ = "";
-    groups_ = emptyProtobufList();
+    sections_ = emptyProtobufList();
   }
   public static final int NAME_FIELD_NUMBER = 1;
   private java.lang.String name_;
@@ -151,98 +151,98 @@ public  final class Flow extends
     undeclared_ = false;
   }
 
-  public static final int GROUPS_FIELD_NUMBER = 4;
-  private com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.Group> groups_;
+  public static final int SECTIONS_FIELD_NUMBER = 4;
+  private com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.Section> sections_;
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
   @java.lang.Override
-  public java.util.List<dev.ezcd.clarity.proto.Group> getGroupsList() {
-    return groups_;
+  public java.util.List<dev.ezcd.clarity.proto.Section> getSectionsList() {
+    return sections_;
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  public java.util.List<? extends dev.ezcd.clarity.proto.GroupOrBuilder> 
-      getGroupsOrBuilderList() {
-    return groups_;
+  public java.util.List<? extends dev.ezcd.clarity.proto.SectionOrBuilder> 
+      getSectionsOrBuilderList() {
+    return sections_;
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
-   */
-  @java.lang.Override
-  public int getGroupsCount() {
-    return groups_.size();
-  }
-  /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
   @java.lang.Override
-  public dev.ezcd.clarity.proto.Group getGroups(int index) {
-    return groups_.get(index);
+  public int getSectionsCount() {
+    return sections_.size();
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  public dev.ezcd.clarity.proto.GroupOrBuilder getGroupsOrBuilder(
+  @java.lang.Override
+  public dev.ezcd.clarity.proto.Section getSections(int index) {
+    return sections_.get(index);
+  }
+  /**
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
+   */
+  public dev.ezcd.clarity.proto.SectionOrBuilder getSectionsOrBuilder(
       int index) {
-    return groups_.get(index);
+    return sections_.get(index);
   }
-  private void ensureGroupsIsMutable() {
-    com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.Group> tmp = groups_;
+  private void ensureSectionsIsMutable() {
+    com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.Section> tmp = sections_;
     if (!tmp.isModifiable()) {
-      groups_ =
+      sections_ =
           com.google.protobuf.GeneratedMessageLite.mutableCopy(tmp);
      }
   }
 
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void setGroups(
-      int index, dev.ezcd.clarity.proto.Group value) {
+  private void setSections(
+      int index, dev.ezcd.clarity.proto.Section value) {
     value.getClass();
-  ensureGroupsIsMutable();
-    groups_.set(index, value);
+  ensureSectionsIsMutable();
+    sections_.set(index, value);
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void addGroups(dev.ezcd.clarity.proto.Group value) {
+  private void addSections(dev.ezcd.clarity.proto.Section value) {
     value.getClass();
-  ensureGroupsIsMutable();
-    groups_.add(value);
+  ensureSectionsIsMutable();
+    sections_.add(value);
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void addGroups(
-      int index, dev.ezcd.clarity.proto.Group value) {
+  private void addSections(
+      int index, dev.ezcd.clarity.proto.Section value) {
     value.getClass();
-  ensureGroupsIsMutable();
-    groups_.add(index, value);
+  ensureSectionsIsMutable();
+    sections_.add(index, value);
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void addAllGroups(
-      java.lang.Iterable<? extends dev.ezcd.clarity.proto.Group> values) {
-    ensureGroupsIsMutable();
+  private void addAllSections(
+      java.lang.Iterable<? extends dev.ezcd.clarity.proto.Section> values) {
+    ensureSectionsIsMutable();
     com.google.protobuf.AbstractMessageLite.addAll(
-        values, groups_);
+        values, sections_);
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void clearGroups() {
-    groups_ = emptyProtobufList();
+  private void clearSections() {
+    sections_ = emptyProtobufList();
   }
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  private void removeGroups(int index) {
-    ensureGroupsIsMutable();
-    groups_.remove(index);
+  private void removeSections(int index) {
+    ensureSectionsIsMutable();
+    sections_.remove(index);
   }
 
   public static dev.ezcd.clarity.proto.Flow parseFrom(
@@ -485,104 +485,104 @@ public  final class Flow extends
     }
 
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
     @java.lang.Override
-    public java.util.List<dev.ezcd.clarity.proto.Group> getGroupsList() {
+    public java.util.List<dev.ezcd.clarity.proto.Section> getSectionsList() {
       return java.util.Collections.unmodifiableList(
-          instance.getGroupsList());
+          instance.getSectionsList());
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
     @java.lang.Override
-    public int getGroupsCount() {
-      return instance.getGroupsCount();
+    public int getSectionsCount() {
+      return instance.getSectionsCount();
     }/**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
     @java.lang.Override
-    public dev.ezcd.clarity.proto.Group getGroups(int index) {
-      return instance.getGroups(index);
+    public dev.ezcd.clarity.proto.Section getSections(int index) {
+      return instance.getSections(index);
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder setGroups(
-        int index, dev.ezcd.clarity.proto.Group value) {
+    public Builder setSections(
+        int index, dev.ezcd.clarity.proto.Section value) {
       copyOnWrite();
-      instance.setGroups(index, value);
+      instance.setSections(index, value);
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder setGroups(
-        int index, dev.ezcd.clarity.proto.Group.Builder builderForValue) {
+    public Builder setSections(
+        int index, dev.ezcd.clarity.proto.Section.Builder builderForValue) {
       copyOnWrite();
-      instance.setGroups(index,
+      instance.setSections(index,
           builderForValue.build());
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder addGroups(dev.ezcd.clarity.proto.Group value) {
+    public Builder addSections(dev.ezcd.clarity.proto.Section value) {
       copyOnWrite();
-      instance.addGroups(value);
+      instance.addSections(value);
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder addGroups(
-        int index, dev.ezcd.clarity.proto.Group value) {
+    public Builder addSections(
+        int index, dev.ezcd.clarity.proto.Section value) {
       copyOnWrite();
-      instance.addGroups(index, value);
+      instance.addSections(index, value);
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder addGroups(
-        dev.ezcd.clarity.proto.Group.Builder builderForValue) {
+    public Builder addSections(
+        dev.ezcd.clarity.proto.Section.Builder builderForValue) {
       copyOnWrite();
-      instance.addGroups(builderForValue.build());
+      instance.addSections(builderForValue.build());
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder addGroups(
-        int index, dev.ezcd.clarity.proto.Group.Builder builderForValue) {
+    public Builder addSections(
+        int index, dev.ezcd.clarity.proto.Section.Builder builderForValue) {
       copyOnWrite();
-      instance.addGroups(index,
+      instance.addSections(index,
           builderForValue.build());
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder addAllGroups(
-        java.lang.Iterable<? extends dev.ezcd.clarity.proto.Group> values) {
+    public Builder addAllSections(
+        java.lang.Iterable<? extends dev.ezcd.clarity.proto.Section> values) {
       copyOnWrite();
-      instance.addAllGroups(values);
+      instance.addAllSections(values);
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder clearGroups() {
+    public Builder clearSections() {
       copyOnWrite();
-      instance.clearGroups();
+      instance.clearSections();
       return this;
     }
     /**
-     * <code>repeated .clarity.v1.Group groups = 4;</code>
+     * <code>repeated .clarity.v1.Section sections = 4;</code>
      */
-    public Builder removeGroups(int index) {
+    public Builder removeSections(int index) {
       copyOnWrite();
-      instance.removeGroups(index);
+      instance.removeSections(index);
       return this;
     }
 
@@ -605,8 +605,8 @@ public  final class Flow extends
             "name_",
             "deploy_",
             "undeclared_",
-            "groups_",
-            dev.ezcd.clarity.proto.Group.class,
+            "sections_",
+            dev.ezcd.clarity.proto.Section.class,
           };
           java.lang.String info =
               "\u0000\u0004\u0000\u0000\u0001\u0004\u0004\u0000\u0001\u0000\u0001\u0208\u0002\f" +

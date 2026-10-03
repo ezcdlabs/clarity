@@ -39,6 +39,8 @@ class GoBridge(private val client: Client) : ClarityBridge {
     override fun view(repoId: String, limit: Int): View =
         View.parseFrom(client.view(repoId, limit.toLong()))
 
+    override fun elapsed(seconds: Long): String = Core.elapsed(seconds)
+
     companion object {
         /** Opens a bridge over the directory the platform gives us for private data. */
         fun open(dataDir: File): GoBridge = GoBridge(Core.new_(dataDir.absolutePath))

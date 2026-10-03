@@ -35,4 +35,13 @@ interface ClarityBridge {
 
     /** Reads what the last [sync] fetched. Never touches the network. */
     fun view(repoId: String, limit: Int): View
+
+    /**
+     * Formats a duration the way every clarity UI formats one.
+     *
+     * Here rather than in Kotlin because a running timer is recomputed every
+     * second on the device, and the alternative to asking Go was reimplementing
+     * the rule — one more place for "3m 29s" to drift into "3:29".
+     */
+    fun elapsed(seconds: Long): String
 }

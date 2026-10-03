@@ -1190,6 +1190,45 @@ the boundary is — so the walk in `mobile/internal/gitsource/walk.go` stops the
 deliberately and reports the history as truncated, which is the same thing the
 TUI's commit limit does.
 
+### Two pages, not a stack
+
+The repository is the app. The list of repositories is the page beside it, the
+way Slack puts its channel list beside the conversation: swipeable from anywhere
+on the screen in either direction, with a button for anyone who does not go
+looking for a gesture.
+
+Deliberately not a drawer, and not a navigation stack. A drawer opens from an
+edge and sits over what it covers; a stack makes the list a place you travel to
+and the repository a place you come back from. Here they are peers, and the
+selection is model state rather than navigation state — so sliding to the list
+and back puts you where you were, and the first launch, a tap, and the fallback
+after removing a repository all land you in a repository by the same route.
+
+### What ticks, and what refetches
+
+The TUI is live; the phone has to be too, without being a battery.
+
+Durations cross the boundary preformatted, which is right for the instant the
+view was built and wrong a second later. So the model advances a clock once a
+second and every timer on screen is drawn against it — one clock, so the whole
+screen stays consistent with itself. A live lead time carries the instant it
+started counting, which is what lets a client keep it honest without asking Go
+to walk the commit graph again every second.
+
+The formatting itself stays in Go, exposed as `Elapsed`. The alternative was
+reimplementing the rule in Kotlin and in Swift: two more places for "3m 29s" to
+drift into "3:29".
+
+The open repository refetches every thirty seconds. Both the clock and the
+refresh stop when the window stops being visible — a timer nobody can see only
+spends battery, and a fetch nobody asked for spends their data too.
+
+A *background* refresh that fails says nothing when there is already a view on
+screen. The alternative is an error bar reappearing every thirty seconds for as
+long as you are on a train, over a dashboard that reads perfectly well. The
+failure is reported when you asked for it, or when there is nothing behind it to
+read.
+
 ### Where the proto boundary sits
 
 Between the core and the UI, not between the app and the network.
@@ -1204,6 +1243,24 @@ That split is not tidiness. Most of the terminal renderer's logic exists because
 a terminal quantises to character cells — reserving a column for a clamp arrow,
 guaranteeing a one-cell minimum bar, shedding tick labels that would collide.
 None of it has an analogue at pixel resolution, and none of it should cross.
+
+What crosses is the terminal's own structure, not a flattening of it. Three
+lifecycle bands — HEAD, CI Passed, Deployed — always all three and always in
+that order, because they are the frame the view is read against: an empty
+Deployed says "nothing has shipped", which is an answer, and a client handed
+only the non-empty bands could not tell that from a band that went missing.
+Inside them, each deploy is its own batch with the subheader the TUI writes
+above it, and exactly one batch is marked live — what is running in production
+now, as against what merely happened.
+
+Getting that wrong is what the first mobile build shipped: five deploys became
+five sections all labelled "Deployed", so the phone repeated the word down the
+screen while the terminal says it once.
+
+A commit carries its CI status and no deploy status, which is not an omission.
+The terminal renderer has never drawn one: *"the deploy status is implied by the
+section the row sits in"*. Two marks per row say the same thing twice, so the
+field is absent rather than ignored.
 
 Protobuf also sidesteps gomobile's type system. Only strings, bytes, ints, bools,
 errors and struct pointers cross an FFI boundary it generates, so a rich view

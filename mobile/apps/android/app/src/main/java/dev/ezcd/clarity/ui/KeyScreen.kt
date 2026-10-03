@@ -26,11 +26,11 @@ import dev.ezcd.clarity.ClarityModel
  * a box in a cupboard equally.
  */
 @Composable
-fun KeyScreen(state: AppState, model: ClarityModel) {
+fun KeyScreen(state: AppState, model: ClarityModel, modifier: Modifier = Modifier) {
     val clipboard = LocalClipboardManager.current
 
-    Column(Modifier.fillMaxSize()) {
-        TopBar("Device key", onBack = { model.back() })
+    Column(modifier.fillMaxSize()) {
+        TopBar("Device key", leading = { BackArrow { model.closeOverlay() } })
         ErrorBar(state.error) { model.dismissError() }
 
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {

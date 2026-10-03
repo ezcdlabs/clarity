@@ -1,50 +1,85 @@
 import SwiftUI
 
-/// The whole app: one state value in, one screen out.
+/// The repository list and the repository, in that order.
+private let pageRepos = 0
+private let pageRepo = 1
+
+/// The whole app: two pages side by side, the way Slack puts its channel list
+/// beside the conversation.
 ///
-/// Routing is a `switch` over `Screen` rather than NavigationStack. There are
-/// four destinations and no deep links, and a navigation path here would be a
-/// second place for state to live.
+/// Not a drawer. A drawer opens from an edge and sits over what it covers; this
+/// swipes from anywhere and the two pages are peers, so going back to the list
+/// is the same gesture as going back to the repository. The burger button does
+/// the same thing for anyone who does not go looking for a gesture.
+///
+/// That the selection survives the trip is the model's doing, not the pager's —
+/// moving to the list is not leaving the repository.
 struct RootView: View {
     @ObservedObject var model: ClarityModel
+    @State private var page = pageRepo
 
     var body: some View {
         ZStack {
             Ink.bg.ignoresSafeArea()
-            switch model.state.screen {
-            case .repos:
-                ReposView(model: model)
+
+            switch model.state.overlay {
             case .addRepo:
                 AddRepoView(model: model)
             case .key:
                 KeyView(model: model)
-            case let .repo(id):
-                RepoView(repoID: id, model: model)
+            case .none:
+                TabView(selection: $page) {
+                    ReposPane(model: model).tag(pageRepos)
+                    RepoView(model: model, onOpenList: { page = pageRepos }).tag(pageRepo)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .preferredColorScheme(.dark)
+        // Picking a repository carries you to it. Here rather than in the tap
+        // handler so it also happens when the selection changes for another
+        // reason — the first launch, or the fallback after a removal.
+        .onChange(of: model.state.selected) { _ in
+            if model.state.selected != nil { withAnimation { page = pageRepo } }
+        }
+        .onAppear {
+            // A fresh install has nothing to show on the repository page, so it
+            // opens on the list, where the only useful thing to do is add one.
+            if model.state.selected == nil { page = pageRepos }
+        }
     }
 }
 
-/// A title row with an optional back arrow and trailing content.
-struct TopBar<Trailing: View>: View {
+/// A title row with a leading action and trailing content.
+struct TopBar<Leading: View, Trailing: View>: View {
     let title: String
-    var onBack: (() -> Void)?
+    @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 8) {
-            if let onBack {
-                Button(action: onBack) {
-                    Text("‹").font(.system(size: 26)).foregroundColor(Ink.dim)
-                }
-            }
+            leading
             Text(title).font(.system(size: 18)).foregroundColor(Ink.text)
             Spacer()
             trailing
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+extension TopBar where Leading == EmptyView {
+    init(title: String, @ViewBuilder trailing: () -> Trailing) {
+        self.init(title: title, leading: { EmptyView() }, trailing: trailing)
+    }
+}
+
+struct BackArrow: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text("‹").font(.system(size: 26)).foregroundColor(Ink.dim)
+        }
     }
 }
 

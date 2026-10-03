@@ -44,16 +44,16 @@ public interface FlowOrBuilder extends
   boolean getUndeclared();
 
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  java.util.List<dev.ezcd.clarity.proto.Group> 
-      getGroupsList();
+  java.util.List<dev.ezcd.clarity.proto.Section> 
+      getSectionsList();
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  dev.ezcd.clarity.proto.Group getGroups(int index);
+  dev.ezcd.clarity.proto.Section getSections(int index);
   /**
-   * <code>repeated .clarity.v1.Group groups = 4;</code>
+   * <code>repeated .clarity.v1.Section sections = 4;</code>
    */
-  int getGroupsCount();
+  int getSectionsCount();
 }

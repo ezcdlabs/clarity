@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// One repository's commits, in the same three-section shape the TUI shows:
-/// what has landed, what is green, and what has shipped.
+/// One repository, in the same three-band shape the TUI draws: what has landed,
+/// what is green, and what has shipped.
 ///
-/// Every grouping and status decision arrived settled in the view — this file
-/// only decides how wide things are, which is the half of the job the proto
-/// boundary leaves to the platform.
+/// Every grouping and status decision arrived settled in the view. What this
+/// file decides is how wide things are and which colour they take, which is the
+/// half of the job the proto boundary leaves to the platform.
 struct RepoView: View {
-    let repoID: String
     @ObservedObject var model: ClarityModel
+    let onOpenList: () -> Void
 
     @State private var tab = 0
 
@@ -19,13 +19,26 @@ struct RepoView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopBar(title: model.state.repo?.name ?? "", onBack: { model.back() }) {
-                Button(model.state.syncing ? "fetching…" : "refresh") {
-                    Task { await model.refresh() }
+            TopBar(
+                title: model.state.repo?.name ?? "clarity",
+                leading: {
+                    // The list is a swipe away; this is for anyone who does not
+                    // find a gesture that has no affordance.
+                    Button(action: onOpenList) {
+                        Text("≡").font(.system(size: 20, design: .monospaced)).foregroundColor(Ink.dim)
+                    }
+                },
+                trailing: {
+                    Button(model.state.syncing ? "fetching…" : "refresh") {
+                        Task { await model.refresh() }
+                    }
+                    .font(.system(size: 13))
+                    .foregroundColor(Ink.blue)
+                    .disabled(model.state.syncing)
                 }
-                .font(.system(size: 13))
-                .foregroundColor(Ink.blue)
-                .disabled(model.state.syncing)
+            )
+            if model.state.syncing {
+                ProgressView().progressViewStyle(.linear).tint(Ink.blue)
             }
             ErrorBar(error: model.state.error) { model.dismissError() }
 
@@ -52,18 +65,30 @@ struct RepoView: View {
 
             if model.state.view == nil {
                 Spacer()
-                Text(model.state.syncing ? "Fetching…" : "Nothing fetched yet.")
-                    .font(.system(size: 14)).foregroundColor(Ink.dim)
+                Text(emptyMessage).font(.system(size: 14)).foregroundColor(Ink.dim)
                 Spacer()
             } else {
                 List {
-                    ForEach(Array((flow?.groups ?? []).enumerated()), id: \.offset) { _, group in
+                    ForEach(Array((flow?.sections ?? []).enumerated()), id: \.offset) { _, section in
                         Section {
-                            ForEach(group.commits, id: \.sha) { commit in
-                                CommitRow(commit: commit).listRowBackground(Ink.bg)
+                            if section.commits.isEmpty && section.batches.isEmpty {
+                                Text(emptyLine(section.kind))
+                                    .font(.system(size: 13)).foregroundColor(Ink.line)
+                                    .listRowBackground(Ink.bg)
+                            }
+                            ForEach(section.commits, id: \.sha) { commit in
+                                CommitRow(commit: commit, model: model).listRowBackground(Ink.bg)
+                            }
+                            ForEach(Array(section.batches.enumerated()), id: \.offset) { _, batch in
+                                BatchHeader(batch: batch, model: model).listRowBackground(Ink.bg)
+                                ForEach(batch.commits, id: \.sha) { commit in
+                                    CommitRow(commit: commit, model: model).listRowBackground(Ink.bg)
+                                }
                             }
                         } header: {
-                            GroupHeader(group: group)
+                            Text(section.label)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(accent(section.kind))
                         }
                     }
                     if model.state.view?.truncated == true {
@@ -76,33 +101,74 @@ struct RepoView: View {
                 .scrollContentBackground(.hidden)
             }
         }
+        .background(Ink.bg)
+    }
+
+    private var emptyMessage: String {
+        if model.state.syncing { return "Fetching…" }
+        if model.state.repos.isEmpty { return "Add a repository to begin." }
+        return "Nothing fetched yet."
     }
 }
 
-private struct GroupHeader: View {
-    let group: Clarity_V1_Group
+/// What an empty band says, so the frame still reads as an answer.
+private func emptyLine(_ kind: Clarity_V1_SectionKind) -> String {
+    switch kind {
+    case .head: return "nothing waiting on CI"
+    case .ciPassed: return "nothing waiting to deploy"
+    case .deployed: return "nothing deployed yet"
+    default: return ""
+    }
+}
+
+/// The lifecycle accents the TUI uses: HEAD neutral, CI Passed yellow, Deployed
+/// blue. The colour marks the band, not a status — a yellow CI Passed header
+/// does not mean anything is wrong.
+private func accent(_ kind: Clarity_V1_SectionKind) -> Color {
+    switch kind {
+    case .ciPassed: return Ink.yellow
+    case .deployed: return Ink.blue
+    default: return Ink.text
+    }
+}
+
+private struct BatchHeader: View {
+    let batch: Clarity_V1_Batch
+    @ObservedObject var model: ClarityModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            StatusGlyph(status: group.status)
-            Text(group.label).font(.system(size: 13)).foregroundColor(Ink.text)
+        HStack {
+            Text(batch.label)
+                .font(.system(size: 12, weight: batch.live ? .bold : .regular))
+                .foregroundColor(colour)
             Spacer()
-            if !group.deployedAgo.isEmpty {
-                Text(group.deployedAgo).font(.system(size: 12)).foregroundColor(Ink.dim)
+            let ago = ticking(model, batch.deployedUnixSeconds, batch.deployedAgo) { "\($0) ago" }
+            if !ago.isEmpty {
+                Text(ago).font(.system(size: 12)).foregroundColor(Ink.dim)
             }
+        }
+    }
+
+    private var colour: Color {
+        switch batch.status {
+        case .failed: return Ink.red
+        case .started: return Ink.dim
+        default: return Ink.blue
         }
     }
 }
 
 private struct CommitRow: View {
     let commit: Clarity_V1_Commit
+    @ObservedObject var model: ClarityModel
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            HStack(spacing: 4) {
-                StatusGlyph(status: commit.ci)
-                StatusGlyph(status: commit.deploy)
-            }
+            // One mark, not two. Whether this commit shipped is said by the band
+            // and the batch it sits in, which is why the terminal has only ever
+            // drawn the CI result here.
+            StatusGlyph(status: commit.ci, stale: commit.ciStale)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(commit.subject)
                     .font(.system(size: 14)).foregroundColor(Ink.text)
@@ -110,20 +176,43 @@ private struct CommitRow: View {
                 HStack(spacing: 8) {
                     Text(commit.shortSha).font(.system(size: 11, design: .monospaced))
                     Text(commit.author).font(.system(size: 11)).lineLimit(1)
-                    Text(commit.age).font(.system(size: 11))
+                    Text(ticking(model, commit.authoredUnixSeconds, commit.age) { $0 })
+                        .font(.system(size: 11))
                 }
                 .foregroundColor(Ink.dim)
             }
             Spacer(minLength: 8)
+
             if commit.hasLeadTime_p {
-                // A live lead time is still counting, and saying so is the
-                // difference between "this took 3m" and "this has taken 3m so
-                // far".
-                Text(commit.leadTimeLive ? "\(commit.leadTime)…" : commit.leadTime)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(commit.leadTimeLive ? Ink.yellow : Ink.dim)
+                // Grey while it runs, blue once the deploy that stopped the
+                // clock landed — so a lead time blooms blue exactly when it
+                // freezes, matching the Deployed band it came to rest in.
+                Text(
+                    commit.leadTimeLive
+                        ? ticking(model, commit.leadTimeAnchorUnixSeconds, commit.leadTime) { $0 }
+                        : commit.leadTime
+                )
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(commit.leadTimeLive ? Ink.dim : Ink.blue)
             }
         }
         .padding(.vertical, 4)
     }
+}
+
+/// A duration that keeps counting between fetches.
+///
+/// The view arrives with every duration preformatted, which is right for the
+/// instant it was built and wrong a second later. Given an anchor, this
+/// recomputes against the model's clock; without one — or before the clock has
+/// started — it falls back to what the view said, which is never worse than
+/// what the last fetch showed.
+private func ticking(
+    _ model: ClarityModel,
+    _ anchorUnixSeconds: Int64,
+    _ fallback: String,
+    _ format: (String) -> String
+) -> String {
+    guard anchorUnixSeconds > 0, model.state.nowSeconds > 0 else { return fallback }
+    return format(model.elapsed(model.state.nowSeconds - anchorUnixSeconds))
 }

@@ -72,6 +72,10 @@ final class FakeBridge: ClarityBridge {
         if let failSync { throw FakeError(failSync) }
     }
 
+    // Not the real formatter — the model only passes through to it, so a test
+    // that asserted the wording would be testing Go through two layers.
+    func elapsed(seconds: Int64) -> String { "\(seconds)s" }
+
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View {
         calls.append("view")
         guard let view = views[repoID] else {
@@ -87,11 +91,13 @@ final class FakeBridge: ClarityBridge {
         var commit = Clarity_V1_Commit()
         commit.subject = subject
         commit.sha = "abcdef1234567890"
-        var group = Clarity_V1_Group()
-        group.commits = [commit]
+        var section = Clarity_V1_Section()
+        section.kind = .head
+        section.label = "HEAD"
+        section.commits = [commit]
         var flow = Clarity_V1_Flow()
         flow.name = "deploy"
-        flow.groups = [group]
+        flow.sections = [section]
         var view = Clarity_V1_View()
         view.flows = [flow]
         return view

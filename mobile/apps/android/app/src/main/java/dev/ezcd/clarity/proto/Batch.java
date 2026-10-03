@@ -4,66 +4,72 @@
 package dev.ezcd.clarity.proto;
 
 /**
- * Protobuf type {@code clarity.v1.Group}
+ * <pre>
+ * Batch is one deploy attempt and the commits it carried.
+ * </pre>
+ *
+ * Protobuf type {@code clarity.v1.Batch}
  */
-public  final class Group extends
+public  final class Batch extends
     com.google.protobuf.GeneratedMessageLite<
-        Group, Group.Builder> implements
-    // @@protoc_insertion_point(message_implements:clarity.v1.Group)
-    GroupOrBuilder {
-  private Group() {
+        Batch, Batch.Builder> implements
+    // @@protoc_insertion_point(message_implements:clarity.v1.Batch)
+    BatchOrBuilder {
+  private Batch() {
     label_ = "";
     deployedAgo_ = "";
     commits_ = emptyProtobufList();
   }
-  public static final int KIND_FIELD_NUMBER = 1;
-  private int kind_;
+  public static final int STATUS_FIELD_NUMBER = 1;
+  private int status_;
   /**
-   * <code>.clarity.v1.GroupKind kind = 1;</code>
-   * @return The enum numeric value on the wire for kind.
+   * <code>.clarity.v1.Status status = 1;</code>
+   * @return The enum numeric value on the wire for status.
    */
   @java.lang.Override
-  public int getKindValue() {
-    return kind_;
+  public int getStatusValue() {
+    return status_;
   }
   /**
-   * <code>.clarity.v1.GroupKind kind = 1;</code>
-   * @return The kind.
+   * <code>.clarity.v1.Status status = 1;</code>
+   * @return The status.
    */
   @java.lang.Override
-  public dev.ezcd.clarity.proto.GroupKind getKind() {
-    dev.ezcd.clarity.proto.GroupKind result = dev.ezcd.clarity.proto.GroupKind.forNumber(kind_);
-    return result == null ? dev.ezcd.clarity.proto.GroupKind.UNRECOGNIZED : result;
+  public dev.ezcd.clarity.proto.Status getStatus() {
+    dev.ezcd.clarity.proto.Status result = dev.ezcd.clarity.proto.Status.forNumber(status_);
+    return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
   }
   /**
-   * <code>.clarity.v1.GroupKind kind = 1;</code>
-   * @param value The enum numeric value on the wire for kind to set.
+   * <code>.clarity.v1.Status status = 1;</code>
+   * @param value The enum numeric value on the wire for status to set.
    */
-  private void setKindValue(int value) {
-      kind_ = value;
+  private void setStatusValue(int value) {
+      status_ = value;
   }
   /**
-   * <code>.clarity.v1.GroupKind kind = 1;</code>
-   * @param value The kind to set.
+   * <code>.clarity.v1.Status status = 1;</code>
+   * @param value The status to set.
    */
-  private void setKind(dev.ezcd.clarity.proto.GroupKind value) {
-    kind_ = value.getNumber();
+  private void setStatus(dev.ezcd.clarity.proto.Status value) {
+    status_ = value.getNumber();
     
   }
   /**
-   * <code>.clarity.v1.GroupKind kind = 1;</code>
+   * <code>.clarity.v1.Status status = 1;</code>
    */
-  private void clearKind() {
+  private void clearStatus() {
     
-    kind_ = 0;
+    status_ = 0;
   }
 
   public static final int LABEL_FIELD_NUMBER = 2;
   private java.lang.String label_;
   /**
    * <pre>
-   * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-   * than on the client so three UIs cannot disagree about what to call it.
+   * Label is the subheader the TUI writes above the batch: "deploying…",
+   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * is not part of it — deployed_ago carries that separately so a client can
+   * place it apart and keep it ticking.
    * </pre>
    *
    * <code>string label = 2;</code>
@@ -75,8 +81,10 @@ public  final class Group extends
   }
   /**
    * <pre>
-   * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-   * than on the client so three UIs cannot disagree about what to call it.
+   * Label is the subheader the TUI writes above the batch: "deploying…",
+   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * is not part of it — deployed_ago carries that separately so a client can
+   * place it apart and keep it ticking.
    * </pre>
    *
    * <code>string label = 2;</code>
@@ -89,8 +97,10 @@ public  final class Group extends
   }
   /**
    * <pre>
-   * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-   * than on the client so three UIs cannot disagree about what to call it.
+   * Label is the subheader the TUI writes above the batch: "deploying…",
+   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * is not part of it — deployed_ago carries that separately so a client can
+   * place it apart and keep it ticking.
    * </pre>
    *
    * <code>string label = 2;</code>
@@ -104,8 +114,10 @@ public  final class Group extends
   }
   /**
    * <pre>
-   * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-   * than on the client so three UIs cannot disagree about what to call it.
+   * Label is the subheader the TUI writes above the batch: "deploying…",
+   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * is not part of it — deployed_ago carries that separately so a client can
+   * place it apart and keep it ticking.
    * </pre>
    *
    * <code>string label = 2;</code>
@@ -116,8 +128,10 @@ public  final class Group extends
   }
   /**
    * <pre>
-   * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-   * than on the client so three UIs cannot disagree about what to call it.
+   * Label is the subheader the TUI writes above the batch: "deploying…",
+   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * is not part of it — deployed_ago carries that separately so a client can
+   * place it apart and keep it ticking.
    * </pre>
    *
    * <code>string label = 2;</code>
@@ -130,77 +144,10 @@ public  final class Group extends
     
   }
 
-  public static final int STATUS_FIELD_NUMBER = 3;
-  private int status_;
-  /**
-   * <pre>
-   * Status and timing of the deploy this group represents. Only meaningful
-   * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-   * </pre>
-   *
-   * <code>.clarity.v1.Status status = 3;</code>
-   * @return The enum numeric value on the wire for status.
-   */
-  @java.lang.Override
-  public int getStatusValue() {
-    return status_;
-  }
-  /**
-   * <pre>
-   * Status and timing of the deploy this group represents. Only meaningful
-   * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-   * </pre>
-   *
-   * <code>.clarity.v1.Status status = 3;</code>
-   * @return The status.
-   */
-  @java.lang.Override
-  public dev.ezcd.clarity.proto.Status getStatus() {
-    dev.ezcd.clarity.proto.Status result = dev.ezcd.clarity.proto.Status.forNumber(status_);
-    return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
-  }
-  /**
-   * <pre>
-   * Status and timing of the deploy this group represents. Only meaningful
-   * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-   * </pre>
-   *
-   * <code>.clarity.v1.Status status = 3;</code>
-   * @param value The enum numeric value on the wire for status to set.
-   */
-  private void setStatusValue(int value) {
-      status_ = value;
-  }
-  /**
-   * <pre>
-   * Status and timing of the deploy this group represents. Only meaningful
-   * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-   * </pre>
-   *
-   * <code>.clarity.v1.Status status = 3;</code>
-   * @param value The status to set.
-   */
-  private void setStatus(dev.ezcd.clarity.proto.Status value) {
-    status_ = value.getNumber();
-    
-  }
-  /**
-   * <pre>
-   * Status and timing of the deploy this group represents. Only meaningful
-   * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-   * </pre>
-   *
-   * <code>.clarity.v1.Status status = 3;</code>
-   */
-  private void clearStatus() {
-    
-    status_ = 0;
-  }
-
-  public static final int DEPLOYED_UNIX_SECONDS_FIELD_NUMBER = 4;
+  public static final int DEPLOYED_UNIX_SECONDS_FIELD_NUMBER = 3;
   private long deployedUnixSeconds_;
   /**
-   * <code>int64 deployed_unix_seconds = 4;</code>
+   * <code>int64 deployed_unix_seconds = 3;</code>
    * @return The deployedUnixSeconds.
    */
   @java.lang.Override
@@ -208,7 +155,7 @@ public  final class Group extends
     return deployedUnixSeconds_;
   }
   /**
-   * <code>int64 deployed_unix_seconds = 4;</code>
+   * <code>int64 deployed_unix_seconds = 3;</code>
    * @param value The deployedUnixSeconds to set.
    */
   private void setDeployedUnixSeconds(long value) {
@@ -216,21 +163,21 @@ public  final class Group extends
     deployedUnixSeconds_ = value;
   }
   /**
-   * <code>int64 deployed_unix_seconds = 4;</code>
+   * <code>int64 deployed_unix_seconds = 3;</code>
    */
   private void clearDeployedUnixSeconds() {
     
     deployedUnixSeconds_ = 0L;
   }
 
-  public static final int DEPLOYED_AGO_FIELD_NUMBER = 5;
+  public static final int DEPLOYED_AGO_FIELD_NUMBER = 4;
   private java.lang.String deployedAgo_;
   /**
    * <pre>
    * "4m 43s ago"
    * </pre>
    *
-   * <code>string deployed_ago = 5;</code>
+   * <code>string deployed_ago = 4;</code>
    * @return The deployedAgo.
    */
   @java.lang.Override
@@ -242,7 +189,7 @@ public  final class Group extends
    * "4m 43s ago"
    * </pre>
    *
-   * <code>string deployed_ago = 5;</code>
+   * <code>string deployed_ago = 4;</code>
    * @return The bytes for deployedAgo.
    */
   @java.lang.Override
@@ -255,7 +202,7 @@ public  final class Group extends
    * "4m 43s ago"
    * </pre>
    *
-   * <code>string deployed_ago = 5;</code>
+   * <code>string deployed_ago = 4;</code>
    * @param value The deployedAgo to set.
    */
   private void setDeployedAgo(
@@ -269,7 +216,7 @@ public  final class Group extends
    * "4m 43s ago"
    * </pre>
    *
-   * <code>string deployed_ago = 5;</code>
+   * <code>string deployed_ago = 4;</code>
    */
   private void clearDeployedAgo() {
     
@@ -280,7 +227,7 @@ public  final class Group extends
    * "4m 43s ago"
    * </pre>
    *
-   * <code>string deployed_ago = 5;</code>
+   * <code>string deployed_ago = 4;</code>
    * @param value The bytes for deployedAgo to set.
    */
   private void setDeployedAgoBytes(
@@ -288,6 +235,47 @@ public  final class Group extends
     checkByteStringIsUtf8(value);
     deployedAgo_ = value.toStringUtf8();
     
+  }
+
+  public static final int LIVE_FIELD_NUMBER = 5;
+  private boolean live_;
+  /**
+   * <pre>
+   * Live marks the newest passing batch: what is running in production right
+   * now, as opposed to settled history. Exactly one batch in a flow has it.
+   * </pre>
+   *
+   * <code>bool live = 5;</code>
+   * @return The live.
+   */
+  @java.lang.Override
+  public boolean getLive() {
+    return live_;
+  }
+  /**
+   * <pre>
+   * Live marks the newest passing batch: what is running in production right
+   * now, as opposed to settled history. Exactly one batch in a flow has it.
+   * </pre>
+   *
+   * <code>bool live = 5;</code>
+   * @param value The live to set.
+   */
+  private void setLive(boolean value) {
+    
+    live_ = value;
+  }
+  /**
+   * <pre>
+   * Live marks the newest passing batch: what is running in production right
+   * now, as opposed to settled history. Exactly one batch in a flow has it.
+   * </pre>
+   *
+   * <code>bool live = 5;</code>
+   */
+  private void clearLive() {
+    
+    live_ = false;
   }
 
   public static final int COMMITS_FIELD_NUMBER = 6;
@@ -384,73 +372,73 @@ public  final class Group extends
     commits_.remove(index);
   }
 
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       java.nio.ByteBuffer data,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data, extensionRegistry);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       com.google.protobuf.ByteString data)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       com.google.protobuf.ByteString data,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data, extensionRegistry);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(byte[] data)
+  public static dev.ezcd.clarity.proto.Batch parseFrom(byte[] data)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       byte[] data,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws com.google.protobuf.InvalidProtocolBufferException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, data, extensionRegistry);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(java.io.InputStream input)
+  public static dev.ezcd.clarity.proto.Batch parseFrom(java.io.InputStream input)
       throws java.io.IOException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, input);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       java.io.InputStream input,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws java.io.IOException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, input, extensionRegistry);
   }
-  public static dev.ezcd.clarity.proto.Group parseDelimitedFrom(java.io.InputStream input)
+  public static dev.ezcd.clarity.proto.Batch parseDelimitedFrom(java.io.InputStream input)
       throws java.io.IOException {
     return parseDelimitedFrom(DEFAULT_INSTANCE, input);
   }
-  public static dev.ezcd.clarity.proto.Group parseDelimitedFrom(
+  public static dev.ezcd.clarity.proto.Batch parseDelimitedFrom(
       java.io.InputStream input,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws java.io.IOException {
     return parseDelimitedFrom(DEFAULT_INSTANCE, input, extensionRegistry);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       com.google.protobuf.CodedInputStream input)
       throws java.io.IOException {
     return com.google.protobuf.GeneratedMessageLite.parseFrom(
         DEFAULT_INSTANCE, input);
   }
-  public static dev.ezcd.clarity.proto.Group parseFrom(
+  public static dev.ezcd.clarity.proto.Batch parseFrom(
       com.google.protobuf.CodedInputStream input,
       com.google.protobuf.ExtensionRegistryLite extensionRegistry)
       throws java.io.IOException {
@@ -461,74 +449,80 @@ public  final class Group extends
   public static Builder newBuilder() {
     return (Builder) DEFAULT_INSTANCE.createBuilder();
   }
-  public static Builder newBuilder(dev.ezcd.clarity.proto.Group prototype) {
+  public static Builder newBuilder(dev.ezcd.clarity.proto.Batch prototype) {
     return (Builder) DEFAULT_INSTANCE.createBuilder(prototype);
   }
 
   /**
-   * Protobuf type {@code clarity.v1.Group}
+   * <pre>
+   * Batch is one deploy attempt and the commits it carried.
+   * </pre>
+   *
+   * Protobuf type {@code clarity.v1.Batch}
    */
   public static final class Builder extends
       com.google.protobuf.GeneratedMessageLite.Builder<
-        dev.ezcd.clarity.proto.Group, Builder> implements
-      // @@protoc_insertion_point(builder_implements:clarity.v1.Group)
-      dev.ezcd.clarity.proto.GroupOrBuilder {
-    // Construct using dev.ezcd.clarity.proto.Group.newBuilder()
+        dev.ezcd.clarity.proto.Batch, Builder> implements
+      // @@protoc_insertion_point(builder_implements:clarity.v1.Batch)
+      dev.ezcd.clarity.proto.BatchOrBuilder {
+    // Construct using dev.ezcd.clarity.proto.Batch.newBuilder()
     private Builder() {
       super(DEFAULT_INSTANCE);
     }
 
 
     /**
-     * <code>.clarity.v1.GroupKind kind = 1;</code>
-     * @return The enum numeric value on the wire for kind.
+     * <code>.clarity.v1.Status status = 1;</code>
+     * @return The enum numeric value on the wire for status.
      */
     @java.lang.Override
-    public int getKindValue() {
-      return instance.getKindValue();
+    public int getStatusValue() {
+      return instance.getStatusValue();
     }
     /**
-     * <code>.clarity.v1.GroupKind kind = 1;</code>
-     * @param value The kind to set.
+     * <code>.clarity.v1.Status status = 1;</code>
+     * @param value The status to set.
      * @return This builder for chaining.
      */
-    public Builder setKindValue(int value) {
+    public Builder setStatusValue(int value) {
       copyOnWrite();
-      instance.setKindValue(value);
+      instance.setStatusValue(value);
       return this;
     }
     /**
-     * <code>.clarity.v1.GroupKind kind = 1;</code>
-     * @return The kind.
+     * <code>.clarity.v1.Status status = 1;</code>
+     * @return The status.
      */
     @java.lang.Override
-    public dev.ezcd.clarity.proto.GroupKind getKind() {
-      return instance.getKind();
+    public dev.ezcd.clarity.proto.Status getStatus() {
+      return instance.getStatus();
     }
     /**
-     * <code>.clarity.v1.GroupKind kind = 1;</code>
-     * @param value The enum numeric value on the wire for kind to set.
+     * <code>.clarity.v1.Status status = 1;</code>
+     * @param value The enum numeric value on the wire for status to set.
      * @return This builder for chaining.
      */
-    public Builder setKind(dev.ezcd.clarity.proto.GroupKind value) {
+    public Builder setStatus(dev.ezcd.clarity.proto.Status value) {
       copyOnWrite();
-      instance.setKind(value);
+      instance.setStatus(value);
       return this;
     }
     /**
-     * <code>.clarity.v1.GroupKind kind = 1;</code>
+     * <code>.clarity.v1.Status status = 1;</code>
      * @return This builder for chaining.
      */
-    public Builder clearKind() {
+    public Builder clearStatus() {
       copyOnWrite();
-      instance.clearKind();
+      instance.clearStatus();
       return this;
     }
 
     /**
      * <pre>
-     * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-     * than on the client so three UIs cannot disagree about what to call it.
+     * Label is the subheader the TUI writes above the batch: "deploying…",
+     * "deployed", "deploy failed", or "live on production · deployed". The time
+     * is not part of it — deployed_ago carries that separately so a client can
+     * place it apart and keep it ticking.
      * </pre>
      *
      * <code>string label = 2;</code>
@@ -540,8 +534,10 @@ public  final class Group extends
     }
     /**
      * <pre>
-     * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-     * than on the client so three UIs cannot disagree about what to call it.
+     * Label is the subheader the TUI writes above the batch: "deploying…",
+     * "deployed", "deploy failed", or "live on production · deployed". The time
+     * is not part of it — deployed_ago carries that separately so a client can
+     * place it apart and keep it ticking.
      * </pre>
      *
      * <code>string label = 2;</code>
@@ -554,8 +550,10 @@ public  final class Group extends
     }
     /**
      * <pre>
-     * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-     * than on the client so three UIs cannot disagree about what to call it.
+     * Label is the subheader the TUI writes above the batch: "deploying…",
+     * "deployed", "deploy failed", or "live on production · deployed". The time
+     * is not part of it — deployed_ago carries that separately so a client can
+     * place it apart and keep it ticking.
      * </pre>
      *
      * <code>string label = 2;</code>
@@ -570,8 +568,10 @@ public  final class Group extends
     }
     /**
      * <pre>
-     * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-     * than on the client so three UIs cannot disagree about what to call it.
+     * Label is the subheader the TUI writes above the batch: "deploying…",
+     * "deployed", "deploy failed", or "live on production · deployed". The time
+     * is not part of it — deployed_ago carries that separately so a client can
+     * place it apart and keep it ticking.
      * </pre>
      *
      * <code>string label = 2;</code>
@@ -584,8 +584,10 @@ public  final class Group extends
     }
     /**
      * <pre>
-     * Label names the section: "HEAD", "CI Passed", "Deployed". Here rather
-     * than on the client so three UIs cannot disagree about what to call it.
+     * Label is the subheader the TUI writes above the batch: "deploying…",
+     * "deployed", "deploy failed", or "live on production · deployed". The time
+     * is not part of it — deployed_ago carries that separately so a client can
+     * place it apart and keep it ticking.
      * </pre>
      *
      * <code>string label = 2;</code>
@@ -600,78 +602,7 @@ public  final class Group extends
     }
 
     /**
-     * <pre>
-     * Status and timing of the deploy this group represents. Only meaningful
-     * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-     * </pre>
-     *
-     * <code>.clarity.v1.Status status = 3;</code>
-     * @return The enum numeric value on the wire for status.
-     */
-    @java.lang.Override
-    public int getStatusValue() {
-      return instance.getStatusValue();
-    }
-    /**
-     * <pre>
-     * Status and timing of the deploy this group represents. Only meaningful
-     * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-     * </pre>
-     *
-     * <code>.clarity.v1.Status status = 3;</code>
-     * @param value The status to set.
-     * @return This builder for chaining.
-     */
-    public Builder setStatusValue(int value) {
-      copyOnWrite();
-      instance.setStatusValue(value);
-      return this;
-    }
-    /**
-     * <pre>
-     * Status and timing of the deploy this group represents. Only meaningful
-     * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-     * </pre>
-     *
-     * <code>.clarity.v1.Status status = 3;</code>
-     * @return The status.
-     */
-    @java.lang.Override
-    public dev.ezcd.clarity.proto.Status getStatus() {
-      return instance.getStatus();
-    }
-    /**
-     * <pre>
-     * Status and timing of the deploy this group represents. Only meaningful
-     * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-     * </pre>
-     *
-     * <code>.clarity.v1.Status status = 3;</code>
-     * @param value The enum numeric value on the wire for status to set.
-     * @return This builder for chaining.
-     */
-    public Builder setStatus(dev.ezcd.clarity.proto.Status value) {
-      copyOnWrite();
-      instance.setStatus(value);
-      return this;
-    }
-    /**
-     * <pre>
-     * Status and timing of the deploy this group represents. Only meaningful
-     * for IN_FLIGHT and DEPLOYED, where each group is one deploy attempt.
-     * </pre>
-     *
-     * <code>.clarity.v1.Status status = 3;</code>
-     * @return This builder for chaining.
-     */
-    public Builder clearStatus() {
-      copyOnWrite();
-      instance.clearStatus();
-      return this;
-    }
-
-    /**
-     * <code>int64 deployed_unix_seconds = 4;</code>
+     * <code>int64 deployed_unix_seconds = 3;</code>
      * @return The deployedUnixSeconds.
      */
     @java.lang.Override
@@ -679,7 +610,7 @@ public  final class Group extends
       return instance.getDeployedUnixSeconds();
     }
     /**
-     * <code>int64 deployed_unix_seconds = 4;</code>
+     * <code>int64 deployed_unix_seconds = 3;</code>
      * @param value The deployedUnixSeconds to set.
      * @return This builder for chaining.
      */
@@ -689,7 +620,7 @@ public  final class Group extends
       return this;
     }
     /**
-     * <code>int64 deployed_unix_seconds = 4;</code>
+     * <code>int64 deployed_unix_seconds = 3;</code>
      * @return This builder for chaining.
      */
     public Builder clearDeployedUnixSeconds() {
@@ -703,7 +634,7 @@ public  final class Group extends
      * "4m 43s ago"
      * </pre>
      *
-     * <code>string deployed_ago = 5;</code>
+     * <code>string deployed_ago = 4;</code>
      * @return The deployedAgo.
      */
     @java.lang.Override
@@ -715,7 +646,7 @@ public  final class Group extends
      * "4m 43s ago"
      * </pre>
      *
-     * <code>string deployed_ago = 5;</code>
+     * <code>string deployed_ago = 4;</code>
      * @return The bytes for deployedAgo.
      */
     @java.lang.Override
@@ -728,7 +659,7 @@ public  final class Group extends
      * "4m 43s ago"
      * </pre>
      *
-     * <code>string deployed_ago = 5;</code>
+     * <code>string deployed_ago = 4;</code>
      * @param value The deployedAgo to set.
      * @return This builder for chaining.
      */
@@ -743,7 +674,7 @@ public  final class Group extends
      * "4m 43s ago"
      * </pre>
      *
-     * <code>string deployed_ago = 5;</code>
+     * <code>string deployed_ago = 4;</code>
      * @return This builder for chaining.
      */
     public Builder clearDeployedAgo() {
@@ -756,7 +687,7 @@ public  final class Group extends
      * "4m 43s ago"
      * </pre>
      *
-     * <code>string deployed_ago = 5;</code>
+     * <code>string deployed_ago = 4;</code>
      * @param value The bytes for deployedAgo to set.
      * @return This builder for chaining.
      */
@@ -764,6 +695,49 @@ public  final class Group extends
         com.google.protobuf.ByteString value) {
       copyOnWrite();
       instance.setDeployedAgoBytes(value);
+      return this;
+    }
+
+    /**
+     * <pre>
+     * Live marks the newest passing batch: what is running in production right
+     * now, as opposed to settled history. Exactly one batch in a flow has it.
+     * </pre>
+     *
+     * <code>bool live = 5;</code>
+     * @return The live.
+     */
+    @java.lang.Override
+    public boolean getLive() {
+      return instance.getLive();
+    }
+    /**
+     * <pre>
+     * Live marks the newest passing batch: what is running in production right
+     * now, as opposed to settled history. Exactly one batch in a flow has it.
+     * </pre>
+     *
+     * <code>bool live = 5;</code>
+     * @param value The live to set.
+     * @return This builder for chaining.
+     */
+    public Builder setLive(boolean value) {
+      copyOnWrite();
+      instance.setLive(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Live marks the newest passing batch: what is running in production right
+     * now, as opposed to settled history. Exactly one batch in a flow has it.
+     * </pre>
+     *
+     * <code>bool live = 5;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearLive() {
+      copyOnWrite();
+      instance.clearLive();
       return this;
     }
 
@@ -869,7 +843,7 @@ public  final class Group extends
       return this;
     }
 
-    // @@protoc_insertion_point(builder_scope:clarity.v1.Group)
+    // @@protoc_insertion_point(builder_scope:clarity.v1.Batch)
   }
   @java.lang.Override
   @java.lang.SuppressWarnings({"unchecked", "fallthrough"})
@@ -878,24 +852,24 @@ public  final class Group extends
       java.lang.Object arg0, java.lang.Object arg1) {
     switch (method) {
       case NEW_MUTABLE_INSTANCE: {
-        return new dev.ezcd.clarity.proto.Group();
+        return new dev.ezcd.clarity.proto.Batch();
       }
       case NEW_BUILDER: {
         return new Builder();
       }
       case BUILD_MESSAGE_INFO: {
           java.lang.Object[] objects = new java.lang.Object[] {
-            "kind_",
-            "label_",
             "status_",
+            "label_",
             "deployedUnixSeconds_",
             "deployedAgo_",
+            "live_",
             "commits_",
             dev.ezcd.clarity.proto.Commit.class,
           };
           java.lang.String info =
               "\u0000\u0006\u0000\u0000\u0001\u0006\u0006\u0000\u0001\u0000\u0001\f\u0002\u0208" +
-              "\u0003\f\u0004\u0002\u0005\u0208\u0006\u001b";
+              "\u0003\u0002\u0004\u0208\u0005\u0007\u0006\u001b";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through
@@ -903,13 +877,13 @@ public  final class Group extends
         return DEFAULT_INSTANCE;
       }
       case GET_PARSER: {
-        com.google.protobuf.Parser<dev.ezcd.clarity.proto.Group> parser = PARSER;
+        com.google.protobuf.Parser<dev.ezcd.clarity.proto.Batch> parser = PARSER;
         if (parser == null) {
-          synchronized (dev.ezcd.clarity.proto.Group.class) {
+          synchronized (dev.ezcd.clarity.proto.Batch.class) {
             parser = PARSER;
             if (parser == null) {
               parser =
-                  new DefaultInstanceBasedParser<dev.ezcd.clarity.proto.Group>(
+                  new DefaultInstanceBasedParser<dev.ezcd.clarity.proto.Batch>(
                       DEFAULT_INSTANCE);
               PARSER = parser;
             }
@@ -928,24 +902,24 @@ public  final class Group extends
   }
 
 
-  // @@protoc_insertion_point(class_scope:clarity.v1.Group)
-  private static final dev.ezcd.clarity.proto.Group DEFAULT_INSTANCE;
+  // @@protoc_insertion_point(class_scope:clarity.v1.Batch)
+  private static final dev.ezcd.clarity.proto.Batch DEFAULT_INSTANCE;
   static {
-    Group defaultInstance = new Group();
+    Batch defaultInstance = new Batch();
     // New instances are implicitly immutable so no need to make
     // immutable.
     DEFAULT_INSTANCE = defaultInstance;
     com.google.protobuf.GeneratedMessageLite.registerDefaultInstance(
-      Group.class, defaultInstance);
+      Batch.class, defaultInstance);
   }
 
-  public static dev.ezcd.clarity.proto.Group getDefaultInstance() {
+  public static dev.ezcd.clarity.proto.Batch getDefaultInstance() {
     return DEFAULT_INSTANCE;
   }
 
-  private static volatile com.google.protobuf.Parser<Group> PARSER;
+  private static volatile com.google.protobuf.Parser<Batch> PARSER;
 
-  public static com.google.protobuf.Parser<Group> parser() {
+  public static com.google.protobuf.Parser<Batch> parser() {
     return DEFAULT_INSTANCE.getParserForType();
   }
 }

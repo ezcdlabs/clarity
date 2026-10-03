@@ -59,48 +59,79 @@ func indexBySHA(commits []core.CommitView) map[string]int {
 }
 
 func flow(f core.FlowView, index map[string]int, now time.Time) *v1.Flow {
-	out := &v1.Flow{
+	g := f.Groups
+
+	// All three sections, always, in lifecycle order. The terminal draws them
+	// whether or not they hold anything, because they are the frame the view is
+	// read against — an empty Deployed says "nothing has shipped", which is an
+	// answer. A client handed only the non-empty ones could not tell that from
+	// a view that forgot to include it.
+	head := &v1.Section{
+		Kind:    v1.SectionKind_SECTION_KIND_HEAD,
+		Label:   "HEAD",
+		Commits: commits(g.Head, &g, index, now),
+	}
+	// CI Passed is the one section with both: commits queued for the next
+	// deploy, then any attempt that has not landed. An unfinished deploy stays
+	// above the line, because a client that showed it under Deployed would be
+	// claiming it shipped.
+	green := &v1.Section{
+		Kind:    v1.SectionKind_SECTION_KIND_CI_PASSED,
+		Label:   "CI Passed",
+		Commits: commits(g.CIPassed, &g, index, now),
+	}
+	for _, b := range g.InFlight {
+		green.Batches = append(green.Batches, batch(b, false, &g, index, now))
+	}
+
+	shipped := &v1.Section{
+		Kind:  v1.SectionKind_SECTION_KIND_DEPLOYED,
+		Label: "Deployed",
+	}
+	live := true
+	for _, b := range g.Deployed {
+		// Exactly one batch is what is running now: the newest that passed.
+		// Everything below it is settled history, and saying so is the
+		// difference between "this is production" and "this happened".
+		isLive := live && b.Status == "passed"
+		if isLive {
+			live = false
+		}
+		shipped.Batches = append(shipped.Batches, batch(b, isLive, &g, index, now))
+	}
+
+	return &v1.Flow{
 		Name:       f.Name,
 		Deploy:     status(f.Deploy),
 		Undeclared: f.Undeclared,
+		Sections:   []*v1.Section{head, green, shipped},
 	}
-	g := f.Groups
-
-	if len(g.Head) > 0 {
-		out.Groups = append(out.Groups, &v1.Group{
-			Kind:    v1.GroupKind_GROUP_KIND_HEAD,
-			Label:   "HEAD",
-			Commits: commits(g.Head, &g, index, now),
-		})
-	}
-	if len(g.CIPassed) > 0 {
-		out.Groups = append(out.Groups, &v1.Group{
-			Kind:    v1.GroupKind_GROUP_KIND_CI_PASSED,
-			Label:   "CI Passed",
-			Commits: commits(g.CIPassed, &g, index, now),
-		})
-	}
-	// One group per deploy attempt, rather than one section holding all of
-	// them: each carries its own status and time, and a client showing them
-	// as one list would have nowhere to put either.
-	for _, b := range g.InFlight {
-		out.Groups = append(out.Groups, batch(b, v1.GroupKind_GROUP_KIND_IN_FLIGHT, &g, index, now))
-	}
-	for _, b := range g.Deployed {
-		out.Groups = append(out.Groups, batch(b, v1.GroupKind_GROUP_KIND_DEPLOYED, &g, index, now))
-	}
-	return out
 }
 
-func batch(b core.DeployBatch, kind v1.GroupKind, g *core.Groupings, index map[string]int, now time.Time) *v1.Group {
-	label := "Deployed"
-	if kind == v1.GroupKind_GROUP_KIND_IN_FLIGHT {
-		label = "Deploying"
+// batchLabel is the subheader the TUI writes above a deploy. The time is
+// deliberately not part of it: a client places that separately so it can keep
+// ticking, which a baked-in string cannot.
+func batchLabel(status string, live bool) string {
+	switch status {
+	case "started":
+		return "deploying…"
+	case "passed":
+		if live {
+			return "live on production · deployed"
+		}
+		return "deployed"
+	case "failed":
+		return "deploy failed"
+	default:
+		return ""
 	}
-	out := &v1.Group{
-		Kind:    kind,
-		Label:   label,
+}
+
+func batch(b core.DeployBatch, live bool, g *core.Groupings, index map[string]int, now time.Time) *v1.Batch {
+	out := &v1.Batch{
 		Status:  status(b.Status),
+		Label:   batchLabel(b.Status, live),
+		Live:    live,
 		Commits: commits(b.Commits, g, index, now),
 	}
 	if !b.Time.IsZero() {
@@ -127,9 +158,12 @@ func commit(c core.CommitView, g *core.Groupings, index map[string]int, now time
 		AuthoredUnixSeconds: c.Time.Unix(),
 		Age:                 core.FormatElapsed(now.Sub(c.Time)),
 		Ci:                  status(core.CIStatus(c.Events)),
-		Deploy:              status(core.OverallStatus(c.Events)),
 	}
+	// No deploy status: whether this commit shipped is said by the section and
+	// the batch it sits in, which is why the terminal has only ever drawn one
+	// icon per row.
 	if i, ok := index[c.SHA]; ok && g != nil {
+		out.CiStale = g.IsStaleStage(i, "ci")
 		if d, frozen, has := g.LeadTime(i, now); has {
 			out.HasLeadTime = true
 			out.LeadTimeSeconds = int64(d / time.Second)
@@ -137,6 +171,11 @@ func commit(c core.CommitView, g *core.Groupings, index map[string]int, now time
 			// Live is the inverse of frozen: the deploy that stops this
 			// commit's clock has not landed, so a client may keep it ticking.
 			out.LeadTimeLive = !frozen
+			if !frozen {
+				// Where the clock started, so a client can keep the timer
+				// honest without asking for the whole view again every second.
+				out.LeadTimeAnchorUnixSeconds = now.Add(-d).Unix()
+			}
 		}
 	}
 	return out

@@ -2,7 +2,8 @@ package dev.ezcd.clarity.bridge
 
 import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
-import dev.ezcd.clarity.proto.Group
+import dev.ezcd.clarity.proto.Section
+import dev.ezcd.clarity.proto.SectionKind
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.RepoSummary
 import dev.ezcd.clarity.proto.View
@@ -83,6 +84,10 @@ class FakeBridge : ClarityBridge {
         failSync?.let { throw RuntimeException(it) }
     }
 
+    // Not the real formatter — the model only passes through to it, so a test
+    // that asserted the wording would be testing Go through two layers.
+    override fun elapsed(seconds: Long): String = seconds.toString() + "s"
+
     override fun view(repoId: String, limit: Int): View {
         calls += "view"
         return views[repoId]
@@ -95,10 +100,13 @@ class FakeBridge : ClarityBridge {
         /** A one-commit view, enough to tell "we have data" from "we do not". */
         fun viewOf(subject: String): View = View.newBuilder()
             .addFlows(
-                Flow.newBuilder().setName("deploy").addGroups(
-                    Group.newBuilder().addCommits(
-                        Commit.newBuilder().setSubject(subject).setSha("abcdef12"),
-                    ),
+                Flow.newBuilder().setName("deploy").addSections(
+                    Section.newBuilder()
+                        .setKind(SectionKind.SECTION_KIND_HEAD)
+                        .setLabel("HEAD")
+                        .addCommits(
+                            Commit.newBuilder().setSubject(subject).setSha("abcdef12"),
+                        ),
                 ),
             )
             .build()

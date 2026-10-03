@@ -483,13 +483,15 @@ func (x *Batch) GetCommits() []*Commit {
 }
 
 type Commit struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Sha                 string                 `protobuf:"bytes,1,opt,name=sha,proto3" json:"sha,omitempty"`
-	ShortSha            string                 `protobuf:"bytes,2,opt,name=short_sha,json=shortSha,proto3" json:"short_sha,omitempty"`
-	Subject             string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
-	Author              string                 `protobuf:"bytes,4,opt,name=author,proto3" json:"author,omitempty"`
-	AuthoredUnixSeconds int64                  `protobuf:"varint,5,opt,name=authored_unix_seconds,json=authoredUnixSeconds,proto3" json:"authored_unix_seconds,omitempty"`
-	Age                 string                 `protobuf:"bytes,6,opt,name=age,proto3" json:"age,omitempty"` // "3m 29s"
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Sha      string                 `protobuf:"bytes,1,opt,name=sha,proto3" json:"sha,omitempty"`
+	ShortSha string                 `protobuf:"bytes,2,opt,name=short_sha,json=shortSha,proto3" json:"short_sha,omitempty"`
+	Subject  string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Author   string                 `protobuf:"bytes,4,opt,name=author,proto3" json:"author,omitempty"`
+	// When the commit was authored. There is no preformatted age to go with it:
+	// the terminal does not put one on a row — the only timer there is the lead
+	// time — and a formatted string nothing renders is a string free to drift.
+	AuthoredUnixSeconds int64 `protobuf:"varint,5,opt,name=authored_unix_seconds,json=authoredUnixSeconds,proto3" json:"authored_unix_seconds,omitempty"`
 	// Only CI. There is deliberately no deploy status on a commit: whether it
 	// shipped is said by the section and the batch it sits in, and a second mark
 	// repeating that is the one the terminal renderer has never drawn.
@@ -577,13 +579,6 @@ func (x *Commit) GetAuthoredUnixSeconds() int64 {
 		return x.AuthoredUnixSeconds
 	}
 	return 0
-}
-
-func (x *Commit) GetAge() string {
-	if x != nil {
-		return x.Age
-	}
-	return ""
 }
 
 func (x *Commit) GetCi() Status {
@@ -792,14 +787,13 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x15deployed_unix_seconds\x18\x03 \x01(\x03R\x13deployedUnixSeconds\x12!\n" +
 	"\fdeployed_ago\x18\x04 \x01(\tR\vdeployedAgo\x12\x12\n" +
 	"\x04live\x18\x05 \x01(\bR\x04live\x12,\n" +
-	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xc3\x03\n" +
+	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xb1\x03\n" +
 	"\x06Commit\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +
 	"\tshort_sha\x18\x02 \x01(\tR\bshortSha\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12\x16\n" +
 	"\x06author\x18\x04 \x01(\tR\x06author\x122\n" +
-	"\x15authored_unix_seconds\x18\x05 \x01(\x03R\x13authoredUnixSeconds\x12\x10\n" +
-	"\x03age\x18\x06 \x01(\tR\x03age\x12\"\n" +
+	"\x15authored_unix_seconds\x18\x05 \x01(\x03R\x13authoredUnixSeconds\x12\"\n" +
 	"\x02ci\x18\a \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12\x19\n" +
 	"\bci_stale\x18\b \x01(\bR\aciStale\x12\"\n" +
 	"\rhas_lead_time\x18\t \x01(\bR\vhasLeadTime\x12*\n" +

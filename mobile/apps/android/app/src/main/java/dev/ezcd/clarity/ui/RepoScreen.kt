@@ -2,6 +2,7 @@ package dev.ezcd.clarity.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -32,6 +35,15 @@ import dev.ezcd.clarity.proto.Batch
 import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Section
 import dev.ezcd.clarity.proto.SectionKind
+import dev.ezcd.clarity.proto.Status
+import dev.ezcd.clarity.proto.View
+
+/** The row grid, so section labels and author names share a left edge the way
+ *  the terminal's dividers do. */
+private val rowPadding = 16.dp
+private val iconWidth = 14.dp
+private val iconGap = 10.dp
+private val authorColumn = 88.dp
 
 /**
  * One repository, in the same three-band shape the TUI draws: what has landed,
@@ -51,9 +63,13 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Ink.bg)) {
         TopBar(
             title = state.repo?.name ?: view?.repoName ?: "clarity",
+            // The name goes red when something is broken, as it does in the
+            // terminal: the one place the repository is always named is the one
+            // place a verdict is always visible.
+            titleColor = if (broken(view)) Ink.red else Ink.text,
             leading = {
-                // The drawer opens by swipe; this is for anyone who does not
-                // find a gesture that has no affordance.
+                // The list is a swipe away; this is for anyone who does not find
+                // a gesture that has no affordance.
                 IconButton(onClick = onOpenList) {
                     Text("≡", style = Mono.copy(fontSize = 20.sp), color = Ink.dim)
                 }
@@ -63,34 +79,13 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
                 Text(if (state.syncing) "fetching…" else "refresh", color = Ink.blue, fontSize = 13.sp)
             }
         }
+        if (view != null) {
+            Header(view, tab) { tab = it }
+        }
         if (state.syncing) {
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = Ink.blue, trackColor = Ink.line)
         }
         ErrorBar(state.error) { model.dismissError() }
-
-        // A single-target repo has exactly one flow, and a tab bar over one tab
-        // is just a wasted row.
-        if (flows.size > 1) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                flows.forEachIndexed { i, f ->
-                    Row(
-                        Modifier.clickable { tab = i },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StatusGlyph(f.deploy)
-                        Text(
-                            if (f.undeclared) "${f.name} ?" else f.name,
-                            color = if (i == tab) Ink.text else Ink.dim,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(start = 6.dp),
-                        )
-                    }
-                }
-            }
-        }
 
         if (view == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -130,13 +125,85 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
                         "Showing the most recent ${view.limit} commits.",
                         color = Ink.dim,
                         fontSize = 12.sp,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(rowPadding),
                     )
                 }
             }
         }
     }
 }
+
+/**
+ * The header answers two questions with different scopes: CI is repo-wide,
+ * deploys are per-flow. Naming the group is what says so — `deploy:` labels the
+ * strip, so the flows read as sub-items of deploy rather than as peers of `ci`.
+ *
+ * One flow renders flat, with no bar, because a lone raised tab looks like a
+ * control and is not one.
+ */
+@Composable
+private fun Header(view: View, tab: Int, onPick: (Int) -> Unit) {
+    val flows = view.flowsList
+    if (flows.size <= 1) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Badge("ci:", view.ci)
+            Badge("deploy:", flows.firstOrNull()?.deploy ?: view.deploy)
+        }
+        return
+    }
+
+    // The selected flow is cut out of the chrome rather than raised above it:
+    // the bar is painted one step off the background and the selected tab in the
+    // background itself, so it is the only thing on the row sharing the body's
+    // colour. That reads as a tab continuous with what it controls.
+    Row(
+        Modifier.fillMaxWidth().background(Ink.surface).horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Badge("ci:", view.ci, Modifier.padding(start = rowPadding, end = 16.dp))
+        Text("deploy:", color = Ink.dim, fontSize = 13.sp)
+        flows.forEachIndexed { i, f ->
+            Row(
+                Modifier
+                    .background(if (i == tab) Ink.bg else Color.Transparent)
+                    .clickable { onPick(i) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Undeclared: seen in the events but absent from .ezcd.json.
+                Text(
+                    if (f.undeclared) "${f.name} ?" else f.name,
+                    color = if (i == tab) Ink.text else Ink.dim,
+                    fontSize = 13.sp,
+                )
+                // Status sits after the name, matching `ci: ✓`.
+                StatusGlyph(f.deploy, prominent = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Badge(label: String, status: Status, modifier: Modifier = Modifier) {
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Lowercase, as the header has always shipped.
+        Text(label, color = Ink.dim, fontSize = 13.sp)
+        StatusGlyph(status, prominent = true)
+    }
+}
+
+/** Whether anything in this repository is currently failing. */
+private fun broken(view: View?): Boolean =
+    view != null && (view.ci == Status.STATUS_FAILED || view.deploy == Status.STATUS_FAILED)
 
 /** What an empty band says, so the frame still reads as an answer. */
 private fun emptyLine(kind: SectionKind): String = when (kind) {
@@ -148,8 +215,8 @@ private fun emptyLine(kind: SectionKind): String = when (kind) {
 
 /**
  * The lifecycle accents the TUI uses: HEAD neutral, CI Passed yellow, Deployed
- * blue. The colour is a lifecycle marker, not a status — a yellow CI Passed
- * header does not mean anything is wrong.
+ * blue. The colour marks the band, not a status — a yellow CI Passed header
+ * does not mean anything is wrong.
  */
 private fun accent(kind: SectionKind): Color = when (kind) {
     SectionKind.SECTION_KIND_CI_PASSED -> Ink.yellow
@@ -165,21 +232,28 @@ private fun SectionHeader(section: Section) {
             color = accent(section.kind),
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            // Indented to the author column, so a label and the names beneath it
+            // share a left edge the way the terminal's dividers do.
+            modifier = Modifier.padding(start = rowPadding + iconWidth + iconGap, bottom = 4.dp),
         )
-        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).background(Ink.line).padding(top = 1.dp))
+        Box(Modifier.fillMaxWidth().padding(horizontal = rowPadding).background(Ink.line).padding(top = 1.dp))
     }
 }
 
 @Composable
 private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
-    val colour = when {
-        batch.status == dev.ezcd.clarity.proto.Status.STATUS_FAILED -> Ink.red
-        batch.status == dev.ezcd.clarity.proto.Status.STATUS_STARTED -> Ink.dim
+    val colour = when (batch.status) {
+        Status.STATUS_FAILED -> Ink.red
+        Status.STATUS_STARTED -> Ink.dim
         else -> Ink.blue
     }
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 2.dp),
+        Modifier.fillMaxWidth().padding(
+            start = rowPadding + iconWidth + iconGap,
+            end = rowPadding,
+            top = 12.dp,
+            bottom = 2.dp,
+        ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -198,35 +272,45 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
     }
 }
 
+/**
+ * One commit, laid out the way the terminal lays one out: a status icon, the
+ * author, the subject, and a right-aligned lead time. One line.
+ *
+ * No sha — the terminal does not print one, and nothing on a phone can be
+ * copied out of a list row anyway. No age either: the only timer on a row is the
+ * lead time, and a second one beside it invites the reader to work out which is
+ * which.
+ */
 @Composable
 private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // One mark, not two. Whether this commit shipped is said by the band
-        // and the batch it sits in, which is why the terminal has only ever
-        // drawn the CI result here.
-        StatusGlyph(commit.ci, stale = commit.ciStale)
+        // One mark, not two. Whether this commit shipped is said by the band and
+        // the batch it sits in, which is why the terminal has only ever drawn
+        // the CI result here.
+        StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
 
-        Column(Modifier.weight(1f)) {
-            Text(
-                commit.subject,
-                color = Ink.text,
-                fontSize = 14.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(commit.shortSha, style = Mono.copy(fontSize = 11.sp), color = Ink.dim)
-                Text(commit.author, color = Ink.dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    ticking(state, model, commit.authoredUnixSeconds, commit.age) { it },
-                    color = Ink.dim,
-                    fontSize = 11.sp,
-                )
-            }
-        }
+        Text(
+            commit.author,
+            color = Ink.dim,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // A fixed column, so subjects start at the same place down the list
+            // rather than stepping in and out with the length of a name.
+            modifier = Modifier.padding(start = iconGap).width(authorColumn),
+        )
+
+        Text(
+            commit.subject,
+            color = Ink.text,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+        )
 
         if (commit.hasLeadTime) {
             // Grey while it runs, blue once the deploy that stopped the clock
@@ -240,6 +324,8 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
                 },
                 style = Mono.copy(fontSize = 12.sp),
                 color = if (commit.leadTimeLive) Ink.dim else Ink.blue,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }
@@ -248,11 +334,11 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
 /**
  * A duration that keeps counting between fetches.
  *
- * The view arrives with every duration preformatted, which is right for the
+ * The view arrives with its durations preformatted, which is right for the
  * instant it was built and wrong a second later. Given an anchor, this
  * recomputes against the model's clock; without one — or before the clock has
  * started — it falls back to what the view said, which is never worse than what
- * the old build showed.
+ * the last fetch showed.
  */
 @Composable
 private fun ticking(

@@ -16,7 +16,6 @@ public  final class Commit extends
     shortSha_ = "";
     subject_ = "";
     author_ = "";
-    age_ = "";
     leadTime_ = "";
   }
   public static final int SHA_FIELD_NUMBER = 1;
@@ -210,6 +209,12 @@ public  final class Commit extends
   public static final int AUTHORED_UNIX_SECONDS_FIELD_NUMBER = 5;
   private long authoredUnixSeconds_;
   /**
+   * <pre>
+   * When the commit was authored. There is no preformatted age to go with it:
+   * the terminal does not put one on a row — the only timer there is the lead
+   * time — and a formatted string nothing renders is a string free to drift.
+   * </pre>
+   *
    * <code>int64 authored_unix_seconds = 5;</code>
    * @return The authoredUnixSeconds.
    */
@@ -218,6 +223,12 @@ public  final class Commit extends
     return authoredUnixSeconds_;
   }
   /**
+   * <pre>
+   * When the commit was authored. There is no preformatted age to go with it:
+   * the terminal does not put one on a row — the only timer there is the lead
+   * time — and a formatted string nothing renders is a string free to drift.
+   * </pre>
+   *
    * <code>int64 authored_unix_seconds = 5;</code>
    * @param value The authoredUnixSeconds to set.
    */
@@ -226,78 +237,17 @@ public  final class Commit extends
     authoredUnixSeconds_ = value;
   }
   /**
+   * <pre>
+   * When the commit was authored. There is no preformatted age to go with it:
+   * the terminal does not put one on a row — the only timer there is the lead
+   * time — and a formatted string nothing renders is a string free to drift.
+   * </pre>
+   *
    * <code>int64 authored_unix_seconds = 5;</code>
    */
   private void clearAuthoredUnixSeconds() {
     
     authoredUnixSeconds_ = 0L;
-  }
-
-  public static final int AGE_FIELD_NUMBER = 6;
-  private java.lang.String age_;
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @return The age.
-   */
-  @java.lang.Override
-  public java.lang.String getAge() {
-    return age_;
-  }
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @return The bytes for age.
-   */
-  @java.lang.Override
-  public com.google.protobuf.ByteString
-      getAgeBytes() {
-    return com.google.protobuf.ByteString.copyFromUtf8(age_);
-  }
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @param value The age to set.
-   */
-  private void setAge(
-      java.lang.String value) {
-    java.lang.Class<?> valueClass = value.getClass();
-  
-    age_ = value;
-  }
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   */
-  private void clearAge() {
-    
-    age_ = getDefaultInstance().getAge();
-  }
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @param value The bytes for age to set.
-   */
-  private void setAgeBytes(
-      com.google.protobuf.ByteString value) {
-    checkByteStringIsUtf8(value);
-    age_ = value.toStringUtf8();
-    
   }
 
   public static final int CI_FIELD_NUMBER = 7;
@@ -907,6 +857,12 @@ public  final class Commit extends
     }
 
     /**
+     * <pre>
+     * When the commit was authored. There is no preformatted age to go with it:
+     * the terminal does not put one on a row — the only timer there is the lead
+     * time — and a formatted string nothing renders is a string free to drift.
+     * </pre>
+     *
      * <code>int64 authored_unix_seconds = 5;</code>
      * @return The authoredUnixSeconds.
      */
@@ -915,6 +871,12 @@ public  final class Commit extends
       return instance.getAuthoredUnixSeconds();
     }
     /**
+     * <pre>
+     * When the commit was authored. There is no preformatted age to go with it:
+     * the terminal does not put one on a row — the only timer there is the lead
+     * time — and a formatted string nothing renders is a string free to drift.
+     * </pre>
+     *
      * <code>int64 authored_unix_seconds = 5;</code>
      * @param value The authoredUnixSeconds to set.
      * @return This builder for chaining.
@@ -925,81 +887,18 @@ public  final class Commit extends
       return this;
     }
     /**
+     * <pre>
+     * When the commit was authored. There is no preformatted age to go with it:
+     * the terminal does not put one on a row — the only timer there is the lead
+     * time — and a formatted string nothing renders is a string free to drift.
+     * </pre>
+     *
      * <code>int64 authored_unix_seconds = 5;</code>
      * @return This builder for chaining.
      */
     public Builder clearAuthoredUnixSeconds() {
       copyOnWrite();
       instance.clearAuthoredUnixSeconds();
-      return this;
-    }
-
-    /**
-     * <pre>
-     * "3m 29s"
-     * </pre>
-     *
-     * <code>string age = 6;</code>
-     * @return The age.
-     */
-    @java.lang.Override
-    public java.lang.String getAge() {
-      return instance.getAge();
-    }
-    /**
-     * <pre>
-     * "3m 29s"
-     * </pre>
-     *
-     * <code>string age = 6;</code>
-     * @return The bytes for age.
-     */
-    @java.lang.Override
-    public com.google.protobuf.ByteString
-        getAgeBytes() {
-      return instance.getAgeBytes();
-    }
-    /**
-     * <pre>
-     * "3m 29s"
-     * </pre>
-     *
-     * <code>string age = 6;</code>
-     * @param value The age to set.
-     * @return This builder for chaining.
-     */
-    public Builder setAge(
-        java.lang.String value) {
-      copyOnWrite();
-      instance.setAge(value);
-      return this;
-    }
-    /**
-     * <pre>
-     * "3m 29s"
-     * </pre>
-     *
-     * <code>string age = 6;</code>
-     * @return This builder for chaining.
-     */
-    public Builder clearAge() {
-      copyOnWrite();
-      instance.clearAge();
-      return this;
-    }
-    /**
-     * <pre>
-     * "3m 29s"
-     * </pre>
-     *
-     * <code>string age = 6;</code>
-     * @param value The bytes for age to set.
-     * @return This builder for chaining.
-     */
-    public Builder setAgeBytes(
-        com.google.protobuf.ByteString value) {
-      copyOnWrite();
-      instance.setAgeBytes(value);
       return this;
     }
 
@@ -1355,7 +1254,6 @@ public  final class Commit extends
             "subject_",
             "author_",
             "authoredUnixSeconds_",
-            "age_",
             "ci_",
             "ciStale_",
             "hasLeadTime_",
@@ -1365,9 +1263,9 @@ public  final class Commit extends
             "leadTimeAnchorUnixSeconds_",
           };
           java.lang.String info =
-              "\u0000\r\u0000\u0000\u0001\r\r\u0000\u0000\u0000\u0001\u0208\u0002\u0208\u0003\u0208" +
-              "\u0004\u0208\u0005\u0002\u0006\u0208\u0007\f\b\u0007\t\u0007\n\u0002\u000b\u0208" +
-              "\f\u0007\r\u0002";
+              "\u0000\f\u0000\u0000\u0001\r\f\u0000\u0000\u0000\u0001\u0208\u0002\u0208\u0003\u0208" +
+              "\u0004\u0208\u0005\u0002\u0007\f\b\u0007\t\u0007\n\u0002\u000b\u0208\f\u0007\r\u0002" +
+              "";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

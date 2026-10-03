@@ -156,7 +156,6 @@ func commit(c core.CommitView, g *core.Groupings, index map[string]int, now time
 		Subject:             c.Subject,
 		Author:              c.Author,
 		AuthoredUnixSeconds: c.Time.Unix(),
-		Age:                 core.FormatElapsed(now.Sub(c.Time)),
 		Ci:                  status(core.CIStatus(c.Events)),
 	}
 	// No deploy status: whether this commit shipped is said by the section and

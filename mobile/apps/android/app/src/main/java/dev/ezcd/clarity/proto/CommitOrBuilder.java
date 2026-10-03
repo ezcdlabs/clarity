@@ -56,30 +56,16 @@ public interface CommitOrBuilder extends
       getAuthorBytes();
 
   /**
+   * <pre>
+   * When the commit was authored. There is no preformatted age to go with it:
+   * the terminal does not put one on a row — the only timer there is the lead
+   * time — and a formatted string nothing renders is a string free to drift.
+   * </pre>
+   *
    * <code>int64 authored_unix_seconds = 5;</code>
    * @return The authoredUnixSeconds.
    */
   long getAuthoredUnixSeconds();
-
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @return The age.
-   */
-  java.lang.String getAge();
-  /**
-   * <pre>
-   * "3m 29s"
-   * </pre>
-   *
-   * <code>string age = 6;</code>
-   * @return The bytes for age.
-   */
-  com.google.protobuf.ByteString
-      getAgeBytes();
 
   /**
    * <pre>

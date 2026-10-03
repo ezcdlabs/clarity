@@ -53,13 +53,14 @@ struct RootView: View {
 /// A title row with a leading action and trailing content.
 struct TopBar<Leading: View, Trailing: View>: View {
     let title: String
+    var titleColor: Color = Ink.text
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 8) {
             leading
-            Text(title).font(.system(size: 18)).foregroundColor(Ink.text)
+            Text(title).font(.system(size: 18)).foregroundColor(titleColor)
             Spacer()
             trailing
         }
@@ -70,7 +71,7 @@ struct TopBar<Leading: View, Trailing: View>: View {
 
 extension TopBar where Leading == EmptyView {
     init(title: String, @ViewBuilder trailing: () -> Trailing) {
-        self.init(title: title, leading: { EmptyView() }, trailing: trailing)
+        self.init(title: title, titleColor: Ink.text, leading: { EmptyView() }, trailing: trailing)
     }
 }
 

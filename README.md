@@ -1190,6 +1190,30 @@ the boundary is — so the walk in `mobile/internal/gitsource/walk.go` stops the
 deliberately and reports the history as truncated, which is the same thing the
 TUI's commit limit does.
 
+### The phone follows the terminal's two colour tables
+
+Not one table. The header is the summary and earns the colour the per-row icons
+deliberately forgo, which is why `ci: ✓` is green and a tick in a commit row is
+grey. Red is spent only on a failure that is still breaking something: once a
+newer commit has gone green the older failure is history, and goes grey with
+everything else. A started stage shows as unresolved in the header rather than
+as progress — the header is a verdict, and "something is happening" is not one.
+
+A screen of green ticks would spend the one colour that means "look at this" on
+the state needing no attention at all, and the first mobile build did exactly
+that.
+
+A commit row is laid out as the terminal lays one out: icon, author, subject,
+and a right-aligned lead time, on one line, with the author in a fixed column so
+subjects share a left edge instead of stepping in and out with the length of a
+name. Section labels indent to that same column, as the terminal's dividers do.
+
+No sha — the terminal does not print one, and nothing on a phone can be copied
+out of a list row anyway. No commit age either: the only timer on a row is the
+lead time, and a second one beside it invites the reader to work out which is
+which. `Commit.age` was removed rather than left unrendered, because a
+preformatted string nothing draws is a string free to drift.
+
 ### Two pages, not a stack
 
 The repository is the app. The list of repositories is the page beside it, the

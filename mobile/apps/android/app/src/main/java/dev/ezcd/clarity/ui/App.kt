@@ -92,6 +92,7 @@ fun App(model: ClarityModel, modifier: Modifier = Modifier) {
 @Composable
 fun TopBar(
     title: String,
+    titleColor: Color = Ink.text,
     leading: @Composable () -> Unit = {},
     trailing: @Composable () -> Unit = {},
 ) {
@@ -102,7 +103,7 @@ fun TopBar(
         leading()
         Text(
             title,
-            color = Ink.text,
+            color = titleColor,
             fontSize = 18.sp,
             modifier = Modifier.weight(1f).padding(start = 8.dp),
         )

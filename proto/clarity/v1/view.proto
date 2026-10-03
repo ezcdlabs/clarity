@@ -132,8 +132,10 @@ message Commit {
   string subject = 3;
   string author = 4;
 
+  // When the commit was authored. There is no preformatted age to go with it:
+  // the terminal does not put one on a row — the only timer there is the lead
+  // time — and a formatted string nothing renders is a string free to drift.
   int64 authored_unix_seconds = 5;
-  string age = 6;  // "3m 29s"
 
   // Only CI. There is deliberately no deploy status on a commit: whether it
   // shipped is said by the section and the batch it sits in, and a second mark

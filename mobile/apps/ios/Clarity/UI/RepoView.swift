@@ -21,6 +21,10 @@ struct RepoView: View {
         VStack(spacing: 0) {
             TopBar(
                 title: model.state.repo?.name ?? "clarity",
+                // The name goes red when something is broken, as it does in the
+                // terminal: the one place the repository is always named is the
+                // one place a verdict is always visible.
+                titleColor: broken ? Ink.red : Ink.text,
                 leading: {
                     // The list is a swipe away; this is for anyone who does not
                     // find a gesture that has no affordance.
@@ -37,31 +41,13 @@ struct RepoView: View {
                     .disabled(model.state.syncing)
                 }
             )
+            if let view = model.state.view {
+                header(view)
+            }
             if model.state.syncing {
                 ProgressView().progressViewStyle(.linear).tint(Ink.blue)
             }
             ErrorBar(error: model.state.error) { model.dismissError() }
-
-            // A single-target repo has exactly one flow, and a tab bar over one
-            // tab is just a wasted row.
-            if flows.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 20) {
-                        ForEach(Array(flows.enumerated()), id: \.offset) { index, f in
-                            Button { tab = index } label: {
-                                HStack(spacing: 6) {
-                                    StatusGlyph(status: f.deploy)
-                                    Text(f.undeclared ? "\(f.name) ?" : f.name)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(index == tab ? Ink.text : Ink.dim)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                }
-            }
 
             if model.state.view == nil {
                 Spacer()
@@ -102,6 +88,69 @@ struct RepoView: View {
             }
         }
         .background(Ink.bg)
+    }
+
+    /// Whether anything in this repository is currently failing.
+    private var broken: Bool {
+        guard let view = model.state.view else { return false }
+        return view.ci == .failed || view.deploy == .failed
+    }
+
+    /// The header answers two questions with different scopes: CI is repo-wide,
+    /// deploys are per-flow. Naming the group is what says so — `deploy:` labels
+    /// the strip, so the flows read as sub-items of deploy rather than as peers
+    /// of `ci`.
+    ///
+    /// One flow renders flat, with no bar, because a lone raised tab looks like
+    /// a control and is not one.
+    @ViewBuilder
+    private func header(_ view: Clarity_V1_View) -> some View {
+        if view.flows.count <= 1 {
+            HStack(spacing: 16) {
+                badge("ci:", view.ci)
+                badge("deploy:", view.flows.first?.deploy ?? view.deploy)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+        } else {
+            // The selected flow is cut out of the chrome rather than raised
+            // above it: the bar is painted one step off the background and the
+            // selected tab in the background itself, so it is the only thing on
+            // the row sharing the body's colour. That reads as a tab continuous
+            // with what it controls.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    badge("ci:", view.ci).padding(.leading, 16).padding(.trailing, 16)
+                    Text("deploy:").font(.system(size: 13)).foregroundColor(Ink.dim)
+                    ForEach(Array(view.flows.enumerated()), id: \.offset) { index, f in
+                        Button { tab = index } label: {
+                            HStack(spacing: 6) {
+                                // Undeclared: seen in the events but absent
+                                // from .ezcd.json.
+                                Text(f.undeclared ? "\(f.name) ?" : f.name)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(index == tab ? Ink.text : Ink.dim)
+                                // Status sits after the name, matching `ci: ✓`.
+                                StatusGlyph(status: f.deploy, prominent: true)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(index == tab ? Ink.bg : Color.clear)
+                        }
+                    }
+                }
+            }
+            .background(Ink.surface)
+        }
+    }
+
+    private func badge(_ label: String, _ status: Clarity_V1_Status) -> some View {
+        HStack(spacing: 6) {
+            // Lowercase, as the header has always shipped.
+            Text(label).font(.system(size: 13)).foregroundColor(Ink.dim)
+            StatusGlyph(status: status, prominent: true)
+        }
     }
 
     private var emptyMessage: String {
@@ -158,30 +207,41 @@ private struct BatchHeader: View {
     }
 }
 
+/// One commit, laid out the way the terminal lays one out: a status icon, the
+/// author, the subject, and a right-aligned lead time. One line.
+///
+/// No sha — the terminal does not print one, and nothing on a phone can be
+/// copied out of a list row anyway. No age either: the only timer on a row is
+/// the lead time, and a second one beside it invites the reader to work out
+/// which is which.
 private struct CommitRow: View {
     let commit: Clarity_V1_Commit
     @ObservedObject var model: ClarityModel
 
+    /// A fixed column, so subjects start at the same place down the list rather
+    /// than stepping in and out with the length of a name.
+    private let authorColumn: CGFloat = 88
+
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(spacing: 10) {
             // One mark, not two. Whether this commit shipped is said by the band
             // and the batch it sits in, which is why the terminal has only ever
             // drawn the CI result here.
             StatusGlyph(status: commit.ci, stale: commit.ciStale)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(commit.subject)
-                    .font(.system(size: 14)).foregroundColor(Ink.text)
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    Text(commit.shortSha).font(.system(size: 11, design: .monospaced))
-                    Text(commit.author).font(.system(size: 11)).lineLimit(1)
-                    Text(ticking(model, commit.authoredUnixSeconds, commit.age) { $0 })
-                        .font(.system(size: 11))
-                }
+            Text(commit.author)
+                .font(.system(size: 13))
                 .foregroundColor(Ink.dim)
-            }
-            Spacer(minLength: 8)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: authorColumn, alignment: .leading)
+
+            Text(commit.subject)
+                .font(.system(size: 13))
+                .foregroundColor(Ink.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if commit.hasLeadTime_p {
                 // Grey while it runs, blue once the deploy that stopped the
@@ -194,9 +254,10 @@ private struct CommitRow: View {
                 )
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(commit.leadTimeLive ? Ink.dim : Ink.blue)
+                .lineLimit(1)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
     }
 }
 

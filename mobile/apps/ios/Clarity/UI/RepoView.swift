@@ -66,15 +66,30 @@ struct RepoView: View {
                                 CommitRow(commit: commit, model: model).listRowBackground(Ink.bg)
                             }
                             ForEach(Array(section.batches.enumerated()), id: \.offset) { _, batch in
+                                if !batch.weekLabel.isEmpty {
+                                    WeekDivider(label: batch.weekLabel).listRowBackground(Ink.bg)
+                                }
                                 BatchHeader(batch: batch, model: model).listRowBackground(Ink.bg)
                                 ForEach(batch.commits, id: \.sha) { commit in
                                     CommitRow(commit: commit, model: model).listRowBackground(Ink.bg)
                                 }
                             }
                         } header: {
-                            Text(section.label)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(accent(section.kind))
+                            HStack(alignment: .bottom) {
+                                Text(section.label)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(accent(section.kind))
+                                Spacer()
+                                // This week's throughput rides on the Deployed
+                                // rule rather than taking a row of its own, as
+                                // it does in the terminal — this week is the one
+                                // a reader is asking about.
+                                if !section.summary.isEmpty {
+                                    Text(section.summary)
+                                        .font(.system(size: 11).italic())
+                                        .foregroundColor(Ink.dim)
+                                }
+                            }
                         }
                     }
                     if model.state.view?.truncated == true {
@@ -181,21 +196,39 @@ private func accent(_ kind: Clarity_V1_SectionKind) -> Color {
     }
 }
 
+/// A week other than the current one, named above its first batch.
+///
+/// The less-prominent sibling of the section rule, and right-aligned like it is
+/// in the terminal: peripheral context about the rows below, not a row itself.
+private struct WeekDivider: View {
+    let label: String
+
+    var body: some View {
+        HStack {
+            Spacer()
+            Text(label).font(.system(size: 11).italic()).foregroundColor(Ink.dim)
+        }
+        .padding(.top, 10)
+    }
+}
+
 private struct BatchHeader: View {
     let batch: Clarity_V1_Batch
     @ObservedObject var model: ClarityModel
 
     var body: some View {
-        HStack {
-            Text(batch.label)
-                .font(.system(size: 12, weight: batch.live ? .bold : .regular))
-                .foregroundColor(colour)
-            Spacer()
-            let ago = ticking(model, batch.deployedUnixSeconds, batch.deployedAgo) { "\($0) ago" }
-            if !ago.isEmpty {
-                Text(ago).font(.system(size: 12)).foregroundColor(Ink.dim)
-            }
-        }
+        // One line, with the time inline, exactly as the terminal writes it:
+        // "live on production · deployed 4m 43s ago". Pushing the time to the
+        // right edge made it look like a column of its own and broke the
+        // sentence.
+        let ago = ticking(model, batch.deployedUnixSeconds, batch.deployedAgo) { "\($0) ago" }
+        Text(ago.isEmpty ? batch.label : "\(batch.label) \(ago)")
+            .font(.system(size: 12, weight: batch.live ? .bold : .regular))
+            .italic(!batch.live)
+            .foregroundColor(colour)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
     }
 
     private var colour: Color {
@@ -207,8 +240,12 @@ private struct BatchHeader: View {
     }
 }
 
-/// One commit, laid out the way the terminal lays one out: a status icon, the
-/// author, the subject, and a right-aligned lead time. One line.
+/// One commit, on two lines.
+///
+/// A phone is too narrow for the terminal's single row: at this width the
+/// subject is the first thing to be clipped, and it is the thing you are reading
+/// the list for. So the identity and the lead time share the top line, and the
+/// subject gets the full width below, indented to line up under the author.
 ///
 /// No sha — the terminal does not print one, and nothing on a phone can be
 /// copied out of a list row anyway. No age either: the only timer on a row is
@@ -218,46 +255,45 @@ private struct CommitRow: View {
     let commit: Clarity_V1_Commit
     @ObservedObject var model: ClarityModel
 
-    /// A fixed column, so subjects start at the same place down the list rather
-    /// than stepping in and out with the length of a name.
-    private let authorColumn: CGFloat = 88
+    /// Where everything that is not the status icon begins.
+    private let subjectIndent: CGFloat = 24
 
     var body: some View {
-        HStack(spacing: 10) {
-            // One mark, not two. Whether this commit shipped is said by the band
-            // and the batch it sits in, which is why the terminal has only ever
-            // drawn the CI result here.
-            StatusGlyph(status: commit.ci, stale: commit.ciStale)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 10) {
+                // One mark, not two. Whether this commit shipped is said by the
+                // band and the batch it sits in, which is why the terminal has
+                // only ever drawn the CI result here.
+                StatusGlyph(status: commit.ci, stale: commit.ciStale)
 
-            Text(commit.author)
-                .font(.system(size: 13))
-                .foregroundColor(Ink.dim)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(width: authorColumn, alignment: .leading)
+                Text(commit.author)
+                    .font(.system(size: 12))
+                    .foregroundColor(Ink.dim)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+
+                if commit.hasLeadTime_p {
+                    // Grey while it runs, blue once the deploy that stopped the
+                    // clock landed — so a lead time blooms blue exactly when it
+                    // freezes, matching the Deployed band it came to rest in.
+                    Text(
+                        commit.leadTimeLive
+                            ? ticking(model, commit.leadTimeAnchorUnixSeconds, commit.leadTime) { $0 }
+                            : commit.leadTime
+                    )
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(commit.leadTimeLive ? Ink.dim : Ink.blue)
+                    .lineLimit(1)
+                }
+            }
 
             Text(commit.subject)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundColor(Ink.text)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if commit.hasLeadTime_p {
-                // Grey while it runs, blue once the deploy that stopped the
-                // clock landed — so a lead time blooms blue exactly when it
-                // freezes, matching the Deployed band it came to rest in.
-                Text(
-                    commit.leadTimeLive
-                        ? ticking(model, commit.leadTimeAnchorUnixSeconds, commit.leadTime) { $0 }
-                        : commit.leadTime
-                )
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(commit.leadTimeLive ? Ink.dim : Ink.blue)
-                .lineLimit(1)
-            }
+                .lineLimit(2)
+                .padding(.leading, subjectIndent)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 2)
     }
 }
 

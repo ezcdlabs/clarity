@@ -67,4 +67,32 @@ public interface SectionOrBuilder extends
    * <code>repeated .clarity.v1.Batch batches = 4;</code>
    */
   int getBatchesCount();
+
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @return The summary.
+   */
+  java.lang.String getSummary();
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @return The bytes for summary.
+   */
+  com.google.protobuf.ByteString
+      getSummaryBytes();
 }

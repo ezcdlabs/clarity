@@ -1203,16 +1203,38 @@ A screen of green ticks would spend the one colour that means "look at this" on
 the state needing no attention at all, and the first mobile build did exactly
 that.
 
-A commit row is laid out as the terminal lays one out: icon, author, subject,
-and a right-aligned lead time, on one line, with the author in a fixed column so
-subjects share a left edge instead of stepping in and out with the length of a
-name. Section labels indent to that same column, as the terminal's dividers do.
+A commit row carries what the terminal's does — status icon, author, subject,
+lead time — over two lines rather than one. This is the one place the phone
+departs from the row and it is the screen's fault, not a preference: at this
+width a single row clips the subject, which is the thing the list is being read
+for. So identity and lead time share the top line and the subject gets the full
+width below, indented to line up under the author. Section labels, batch
+subheaders and week dividers all indent to that same column, as the terminal's
+dividers do.
 
 No sha — the terminal does not print one, and nothing on a phone can be copied
 out of a list row anyway. No commit age either: the only timer on a row is the
 lead time, and a second one beside it invites the reader to work out which is
 which. `Commit.age` was removed rather than left unrendered, because a
 preformatted string nothing draws is a string free to drift.
+
+A deploy subheader keeps its time inline — "live on production · deployed 4m 43s
+ago" is a sentence, and pushing the time to the right edge turned it into a
+column and broke it.
+
+### Weeks are divided where the terminal divides them
+
+The Deployed section carries this week's throughput on its own rule — "W2026-40
+ 3 deploys  2h 14m avg" — and every other week is named above its first batch.
+Both strings come from `core.WeekDividerLabel`, the same function the TUI and
+the plain renderer use, so the format cannot drift between them.
+
+Which batch carries a divider is a decision rather than a position: batches are
+ordered by commit and not by deploy time, so a redeploy of an older commit puts
+a week out of sequence, and a client tracking only "did the week change" would
+name the same week twice. The summary is empty when the window was truncated
+through this week's bucket — the count is then unknown rather than zero, and
+"0 deploys" printed above the very deploys it denies is worse than nothing.
 
 ### Two pages, not a stack
 

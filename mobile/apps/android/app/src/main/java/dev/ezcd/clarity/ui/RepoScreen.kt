@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,7 +44,7 @@ import dev.ezcd.clarity.proto.View
 private val rowPadding = 16.dp
 private val iconWidth = 14.dp
 private val iconGap = 10.dp
-private val authorColumn = 88.dp
+private val subjectColumn = rowPadding + iconWidth + iconGap
 
 /**
  * One repository, in the same three-band shape the TUI draws: what has landed,
@@ -113,6 +114,9 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
                     CommitRow(section.getCommits(i), state, model)
                 }
                 section.batchesList.forEachIndexed { b, batch ->
+                    if (batch.weekLabel.isNotEmpty()) {
+                        item(key = "w-${section.kind}-$b") { WeekDivider(batch.weekLabel) }
+                    }
                     item(key = "b-${section.kind}-$b") { BatchHeader(batch, state, model) }
                     items(batch.commitsCount, key = { i -> batch.getCommits(i).sha }) { i ->
                         CommitRow(batch.getCommits(i), state, model)
@@ -226,17 +230,42 @@ private fun accent(kind: SectionKind): Color = when (kind) {
 
 @Composable
 private fun SectionHeader(section: Section) {
-    Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
-        Text(
-            section.label,
-            color = accent(section.kind),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            // Indented to the author column, so a label and the names beneath it
-            // share a left edge the way the terminal's dividers do.
-            modifier = Modifier.padding(start = rowPadding + iconWidth + iconGap, bottom = 4.dp),
-        )
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = subjectColumn, end = rowPadding, bottom = 3.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Text(
+                section.label,
+                color = accent(section.kind),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            // This week's throughput rides on the Deployed rule rather than
+            // taking a row of its own, as it does in the terminal — this week
+            // is the one a reader is asking about.
+            if (section.summary.isNotEmpty()) {
+                Text(section.summary, color = Ink.dim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+            }
+        }
         Box(Modifier.fillMaxWidth().padding(horizontal = rowPadding).background(Ink.line).padding(top = 1.dp))
+    }
+}
+
+/**
+ * A week other than the current one, named above its first batch.
+ *
+ * The less-prominent sibling of the section rule, and right-aligned like it is
+ * in the terminal: peripheral context about the rows below, not a row itself.
+ */
+@Composable
+private fun WeekDivider(label: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = subjectColumn, end = rowPadding, top = 16.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Text(label, color = Ink.dim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
     }
 }
 
@@ -247,34 +276,36 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
         Status.STATUS_STARTED -> Ink.dim
         else -> Ink.blue
     }
-    Row(
-        Modifier.fillMaxWidth().padding(
-            start = rowPadding + iconWidth + iconGap,
+    // One line, with the time inline, exactly as the terminal writes it:
+    // "live on production · deployed 4m 43s ago". Pushing the time to the right
+    // edge made it look like a column of its own and broke the sentence.
+    val ago = ticking(state, model, batch.deployedUnixSeconds, batch.deployedAgo) { "$it ago" }
+    Text(
+        if (ago.isEmpty()) batch.label else "${batch.label} $ago",
+        color = colour,
+        fontSize = 12.sp,
+        // The live batch is the present state rather than a past event, so it is
+        // the one carrying weight.
+        fontWeight = if (batch.live) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (batch.live) FontStyle.Normal else FontStyle.Italic,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(
+            start = subjectColumn,
             end = rowPadding,
-            top = 12.dp,
+            top = 10.dp,
             bottom = 2.dp,
         ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            batch.label,
-            color = colour,
-            fontSize = 12.sp,
-            // The live batch is the present state rather than a past event, so
-            // it is the one that is not italic.
-            fontWeight = if (batch.live) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.weight(1f),
-        )
-        val ago = ticking(state, model, batch.deployedUnixSeconds, batch.deployedAgo) { "$it ago" }
-        if (ago.isNotEmpty()) {
-            Text(ago, color = Ink.dim, fontSize = 12.sp)
-        }
-    }
+    )
 }
 
 /**
- * One commit, laid out the way the terminal lays one out: a status icon, the
- * author, the subject, and a right-aligned lead time. One line.
+ * One commit, on two lines.
+ *
+ * A phone is too narrow for the terminal's single row: at this width the
+ * subject is the first thing to be clipped, and it is the thing you are reading
+ * the list for. So the identity and the lead time share the top line, and the
+ * subject gets the full width below, indented to line up under the author.
  *
  * No sha — the terminal does not print one, and nothing on a phone can be
  * copied out of a list row anyway. No age either: the only timer on a row is the
@@ -283,51 +314,48 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
  */
 @Composable
 private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // One mark, not two. Whether this commit shipped is said by the band and
-        // the batch it sits in, which is why the terminal has only ever drawn
-        // the CI result here.
-        StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
+    Column(Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // One mark, not two. Whether this commit shipped is said by the band
+            // and the batch it sits in, which is why the terminal has only ever
+            // drawn the CI result here.
+            StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
 
-        Text(
-            commit.author,
-            color = Ink.dim,
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // A fixed column, so subjects start at the same place down the list
-            // rather than stepping in and out with the length of a name.
-            modifier = Modifier.padding(start = iconGap).width(authorColumn),
-        )
+            Text(
+                commit.author,
+                color = Ink.dim,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = iconGap),
+            )
+
+            if (commit.hasLeadTime) {
+                // Grey while it runs, blue once the deploy that stopped the
+                // clock landed — so a lead time blooms blue exactly when it
+                // freezes, matching the Deployed band it came to rest in.
+                Text(
+                    if (commit.leadTimeLive) {
+                        ticking(state, model, commit.leadTimeAnchorUnixSeconds, commit.leadTime) { it }
+                    } else {
+                        commit.leadTime
+                    },
+                    style = Mono.copy(fontSize = 12.sp),
+                    color = if (commit.leadTimeLive) Ink.dim else Ink.blue,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
 
         Text(
             commit.subject,
             color = Ink.text,
-            fontSize = 13.sp,
-            maxLines = 1,
+            fontSize = 14.sp,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 8.dp),
+            modifier = Modifier.padding(start = iconWidth + iconGap, top = 1.dp),
         )
-
-        if (commit.hasLeadTime) {
-            // Grey while it runs, blue once the deploy that stopped the clock
-            // landed — so a lead time blooms blue exactly when it freezes,
-            // matching the Deployed band it came to rest in.
-            Text(
-                if (commit.leadTimeLive) {
-                    ticking(state, model, commit.leadTimeAnchorUnixSeconds, commit.leadTime) { it }
-                } else {
-                    commit.leadTime
-                },
-                style = Mono.copy(fontSize = 12.sp),
-                color = if (commit.leadTimeLive) Ink.dim else Ink.blue,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
     }
 }
 

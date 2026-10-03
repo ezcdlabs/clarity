@@ -22,6 +22,7 @@ public  final class Section extends
     label_ = "";
     commits_ = emptyProtobufList();
     batches_ = emptyProtobufList();
+    summary_ = "";
   }
   public static final int KIND_FIELD_NUMBER = 1;
   private int kind_;
@@ -323,6 +324,93 @@ public  final class Section extends
   private void removeBatches(int index) {
     ensureBatchesIsMutable();
     batches_.remove(index);
+  }
+
+  public static final int SUMMARY_FIELD_NUMBER = 5;
+  private java.lang.String summary_;
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @return The summary.
+   */
+  @java.lang.Override
+  public java.lang.String getSummary() {
+    return summary_;
+  }
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @return The bytes for summary.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getSummaryBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(summary_);
+  }
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @param value The summary to set.
+   */
+  private void setSummary(
+      java.lang.String value) {
+    java.lang.Class<?> valueClass = value.getClass();
+  
+    summary_ = value;
+  }
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   */
+  private void clearSummary() {
+    
+    summary_ = getDefaultInstance().getSummary();
+  }
+  /**
+   * <pre>
+   * Only on Deployed: this week's throughput, as the terminal puts it on the
+   * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+   * Empty when the window was truncated through this week's bucket, where the
+   * count is unknown rather than zero: printing "0 deploys" above the very
+   * deploys it denies is worse than printing nothing.
+   * </pre>
+   *
+   * <code>string summary = 5;</code>
+   * @param value The bytes for summary to set.
+   */
+  private void setSummaryBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    summary_ = value.toStringUtf8();
+    
   }
 
   public static dev.ezcd.clarity.proto.Section parseFrom(
@@ -751,6 +839,95 @@ public  final class Section extends
       return this;
     }
 
+    /**
+     * <pre>
+     * Only on Deployed: this week's throughput, as the terminal puts it on the
+     * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+     * Empty when the window was truncated through this week's bucket, where the
+     * count is unknown rather than zero: printing "0 deploys" above the very
+     * deploys it denies is worse than printing nothing.
+     * </pre>
+     *
+     * <code>string summary = 5;</code>
+     * @return The summary.
+     */
+    @java.lang.Override
+    public java.lang.String getSummary() {
+      return instance.getSummary();
+    }
+    /**
+     * <pre>
+     * Only on Deployed: this week's throughput, as the terminal puts it on the
+     * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+     * Empty when the window was truncated through this week's bucket, where the
+     * count is unknown rather than zero: printing "0 deploys" above the very
+     * deploys it denies is worse than printing nothing.
+     * </pre>
+     *
+     * <code>string summary = 5;</code>
+     * @return The bytes for summary.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getSummaryBytes() {
+      return instance.getSummaryBytes();
+    }
+    /**
+     * <pre>
+     * Only on Deployed: this week's throughput, as the terminal puts it on the
+     * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+     * Empty when the window was truncated through this week's bucket, where the
+     * count is unknown rather than zero: printing "0 deploys" above the very
+     * deploys it denies is worse than printing nothing.
+     * </pre>
+     *
+     * <code>string summary = 5;</code>
+     * @param value The summary to set.
+     * @return This builder for chaining.
+     */
+    public Builder setSummary(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setSummary(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Only on Deployed: this week's throughput, as the terminal puts it on the
+     * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+     * Empty when the window was truncated through this week's bucket, where the
+     * count is unknown rather than zero: printing "0 deploys" above the very
+     * deploys it denies is worse than printing nothing.
+     * </pre>
+     *
+     * <code>string summary = 5;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearSummary() {
+      copyOnWrite();
+      instance.clearSummary();
+      return this;
+    }
+    /**
+     * <pre>
+     * Only on Deployed: this week's throughput, as the terminal puts it on the
+     * right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+     * Empty when the window was truncated through this week's bucket, where the
+     * count is unknown rather than zero: printing "0 deploys" above the very
+     * deploys it denies is worse than printing nothing.
+     * </pre>
+     *
+     * <code>string summary = 5;</code>
+     * @param value The bytes for summary to set.
+     * @return This builder for chaining.
+     */
+    public Builder setSummaryBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setSummaryBytes(value);
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:clarity.v1.Section)
   }
   @java.lang.Override
@@ -773,10 +950,11 @@ public  final class Section extends
             dev.ezcd.clarity.proto.Commit.class,
             "batches_",
             dev.ezcd.clarity.proto.Batch.class,
+            "summary_",
           };
           java.lang.String info =
-              "\u0000\u0004\u0000\u0000\u0001\u0004\u0004\u0000\u0002\u0000\u0001\f\u0002\u0208" +
-              "\u0003\u001b\u0004\u001b";
+              "\u0000\u0005\u0000\u0000\u0001\u0005\u0005\u0000\u0002\u0000\u0001\f\u0002\u0208" +
+              "\u0003\u001b\u0004\u001b\u0005\u0208";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

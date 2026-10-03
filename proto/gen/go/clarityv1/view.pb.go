@@ -326,9 +326,16 @@ type Section struct {
 	Kind  SectionKind            `protobuf:"varint,1,opt,name=kind,proto3,enum=clarity.v1.SectionKind" json:"kind,omitempty"`
 	// Label names the band: "HEAD", "CI Passed", "Deployed". Here rather than on
 	// the client so three UIs cannot disagree about what to call it.
-	Label         string    `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
-	Commits       []*Commit `protobuf:"bytes,3,rep,name=commits,proto3" json:"commits,omitempty"`
-	Batches       []*Batch  `protobuf:"bytes,4,rep,name=batches,proto3" json:"batches,omitempty"`
+	Label   string    `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	Commits []*Commit `protobuf:"bytes,3,rep,name=commits,proto3" json:"commits,omitempty"`
+	Batches []*Batch  `protobuf:"bytes,4,rep,name=batches,proto3" json:"batches,omitempty"`
+	// Only on Deployed: this week's throughput, as the terminal puts it on the
+	// right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+	//
+	// Empty when the window was truncated through this week's bucket, where the
+	// count is unknown rather than zero: printing "0 deploys" above the very
+	// deploys it denies is worse than printing nothing.
+	Summary       string `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -391,6 +398,13 @@ func (x *Section) GetBatches() []*Batch {
 	return nil
 }
 
+func (x *Section) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
 // Batch is one deploy attempt and the commits it carried.
 type Batch struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
@@ -404,7 +418,16 @@ type Batch struct {
 	DeployedAgo         string `protobuf:"bytes,4,opt,name=deployed_ago,json=deployedAgo,proto3" json:"deployed_ago,omitempty"` // "4m 43s ago"
 	// Live marks the newest passing batch: what is running in production right
 	// now, as opposed to settled history. Exactly one batch in a flow has it.
-	Live          bool      `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	Live bool `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	// Set on the first batch of a week that has not been named yet — the week
+	// divider the terminal draws above it. The current week is never repeated
+	// here: it is already on the section, in summary.
+	//
+	// Weeks are marked once, and batches are ordered by commit rather than by
+	// deploy time, so a redeploy of an older commit can put a week out of
+	// sequence. Which batch carries the label is therefore a decision, not a
+	// position a client can work out.
+	WeekLabel     string    `protobuf:"bytes,7,opt,name=week_label,json=weekLabel,proto3" json:"week_label,omitempty"`
 	Commits       []*Commit `protobuf:"bytes,6,rep,name=commits,proto3" json:"commits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -473,6 +496,13 @@ func (x *Batch) GetLive() bool {
 		return x.Live
 	}
 	return false
+}
+
+func (x *Batch) GetWeekLabel() string {
+	if x != nil {
+		return x.WeekLabel
+	}
+	return ""
 }
 
 func (x *Batch) GetCommits() []*Commit {
@@ -775,18 +805,21 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\n" +
 	"undeclared\x18\x03 \x01(\bR\n" +
 	"undeclared\x12/\n" +
-	"\bsections\x18\x04 \x03(\v2\x13.clarity.v1.SectionR\bsections\"\xa7\x01\n" +
+	"\bsections\x18\x04 \x03(\v2\x13.clarity.v1.SectionR\bsections\"\xc1\x01\n" +
 	"\aSection\x12+\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x17.clarity.v1.SectionKindR\x04kind\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12,\n" +
 	"\acommits\x18\x03 \x03(\v2\x12.clarity.v1.CommitR\acommits\x12+\n" +
-	"\abatches\x18\x04 \x03(\v2\x11.clarity.v1.BatchR\abatches\"\xe2\x01\n" +
+	"\abatches\x18\x04 \x03(\v2\x11.clarity.v1.BatchR\abatches\x12\x18\n" +
+	"\asummary\x18\x05 \x01(\tR\asummary\"\x81\x02\n" +
 	"\x05Batch\x12*\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x12.clarity.v1.StatusR\x06status\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x122\n" +
 	"\x15deployed_unix_seconds\x18\x03 \x01(\x03R\x13deployedUnixSeconds\x12!\n" +
 	"\fdeployed_ago\x18\x04 \x01(\tR\vdeployedAgo\x12\x12\n" +
-	"\x04live\x18\x05 \x01(\bR\x04live\x12,\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\x12\x1d\n" +
+	"\n" +
+	"week_label\x18\a \x01(\tR\tweekLabel\x12,\n" +
 	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xb1\x03\n" +
 	"\x06Commit\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +

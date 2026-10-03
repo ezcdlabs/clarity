@@ -104,6 +104,14 @@ message Section {
 
   repeated Commit commits = 3;
   repeated Batch batches = 4;
+
+  // Only on Deployed: this week's throughput, as the terminal puts it on the
+  // right of the section rule — "W2026-40  3 deploys  2h 14m avg".
+  //
+  // Empty when the window was truncated through this week's bucket, where the
+  // count is unknown rather than zero: printing "0 deploys" above the very
+  // deploys it denies is worse than printing nothing.
+  string summary = 5;
 }
 
 // Batch is one deploy attempt and the commits it carried.
@@ -122,6 +130,16 @@ message Batch {
   // Live marks the newest passing batch: what is running in production right
   // now, as opposed to settled history. Exactly one batch in a flow has it.
   bool live = 5;
+
+  // Set on the first batch of a week that has not been named yet — the week
+  // divider the terminal draws above it. The current week is never repeated
+  // here: it is already on the section, in summary.
+  //
+  // Weeks are marked once, and batches are ordered by commit rather than by
+  // deploy time, so a redeploy of an older commit can put a week out of
+  // sequence. Which batch carries the label is therefore a decision, not a
+  // position a client can work out.
+  string week_label = 7;
 
   repeated Commit commits = 6;
 }

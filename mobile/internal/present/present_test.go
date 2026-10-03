@@ -1,6 +1,7 @@
 package present_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -458,5 +459,100 @@ func TestView_ALiveLeadTimeCarriesItsAnchor(t *testing.T) {
 	}
 	if frozen.LeadTimeAnchorUnixSeconds != 0 {
 		t.Error("a stopped clock has nothing to tick from, and an anchor would invite one")
+	}
+}
+
+// weeksApart builds two deploys in different ISO weeks, so the divider between
+// them has something to divide.
+func weeksApart(now time.Time) core.Snapshot {
+	thisWeek := now.Add(-2 * time.Hour)
+	lastWeek := now.AddDate(0, 0, -9)
+	return core.Snapshot{RepoName: "api", Commits: []core.CommitView{
+		{SHA: "bbbbbbbbbbbb", Subject: "feat: recent", Time: thisWeek.Add(-time.Hour),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: thisWeek.Add(-30 * time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: thisWeek},
+			}},
+		{SHA: "aaaaaaaaaaaa", Subject: "feat: older", Time: lastWeek.Add(-time.Hour),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: lastWeek.Add(-30 * time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: lastWeek},
+			}},
+	}}
+}
+
+// TestView_ThisWeeksThroughputRidesOnTheSection mirrors where the terminal puts
+// it: on the right of the Deployed rule, saving a row, because this week is the
+// one a reader is asking about.
+func TestView_ThisWeeksThroughputRidesOnTheSection(t *testing.T) {
+	now := time.Now()
+	out := mapped(t, weeksApart(now), now)
+
+	shipped := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED)
+	if shipped.Summary == "" {
+		t.Fatal("the Deployed section carries no throughput summary")
+	}
+	year, week := now.UTC().ISOWeek()
+	if want := fmt.Sprintf("W%d-%02d", year, week); !strings.HasPrefix(shipped.Summary, want) {
+		t.Errorf("summary = %q, want it to name %s", shipped.Summary, want)
+	}
+	if !strings.Contains(shipped.Summary, "deploy") {
+		t.Errorf("summary = %q, want a deploy count", shipped.Summary)
+	}
+}
+
+// TestView_OlderWeeksAreNamedAboveTheirFirstBatch covers the divider. Which
+// batch carries it is a decision — batches run by commit, not by deploy time —
+// so a client cannot work it out from position.
+func TestView_OlderWeeksAreNamedAboveTheirFirstBatch(t *testing.T) {
+	now := time.Now()
+	out := mapped(t, weeksApart(now), now)
+
+	batches := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED).Batches
+	if len(batches) != 2 {
+		t.Fatalf("expected two batches, got %d", len(batches))
+	}
+	// The current week is already named on the section; repeating it above the
+	// first batch would say the same thing twice.
+	if batches[0].WeekLabel != "" {
+		t.Errorf("this week is named twice: %q", batches[0].WeekLabel)
+	}
+	if batches[1].WeekLabel == "" {
+		t.Fatal("the older week has no divider, so its rows read as this week's")
+	}
+	lastYear, lastWeek := now.AddDate(0, 0, -9).UTC().ISOWeek()
+	if want := fmt.Sprintf("W%d-%02d", lastYear, lastWeek); !strings.HasPrefix(batches[1].WeekLabel, want) {
+		t.Errorf("divider = %q, want it to name %s", batches[1].WeekLabel, want)
+	}
+}
+
+// TestView_AWeekIsNamedOnlyOnce guards the repeat the TUI's weekShown map
+// exists to prevent.
+func TestView_AWeekIsNamedOnlyOnce(t *testing.T) {
+	now := time.Now()
+	lastWeek := now.AddDate(0, 0, -9)
+	snap := core.Snapshot{RepoName: "api", Commits: []core.CommitView{
+		{SHA: "bbbbbbbbbbbb", Subject: "feat: second", Time: lastWeek.Add(-time.Hour),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: lastWeek.Add(-30 * time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: lastWeek.Add(time.Hour)},
+			}},
+		{SHA: "aaaaaaaaaaaa", Subject: "feat: first", Time: lastWeek.Add(-2 * time.Hour),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: lastWeek.Add(-90 * time.Minute)},
+				{Stage: "deploy", Status: "passed", Time: lastWeek},
+			}},
+	}}
+	out := mapped(t, snap, now)
+
+	batches := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED).Batches
+	named := 0
+	for _, b := range batches {
+		if b.WeekLabel != "" {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Errorf("two batches from one week produced %d dividers", named)
 	}
 }

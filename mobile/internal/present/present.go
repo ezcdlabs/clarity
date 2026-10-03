@@ -88,6 +88,21 @@ func flow(f core.FlowView, index map[string]int, now time.Time) *v1.Flow {
 		Kind:  v1.SectionKind_SECTION_KIND_DEPLOYED,
 		Label: "Deployed",
 	}
+
+	// The current week's throughput rides on the section itself, as it does on
+	// the terminal's section rule — it saves a row, and this week is the one a
+	// reader is asking about. Every other week gets named above its first
+	// batch instead.
+	statsByWeek := core.IndexStatsByWeek(f.Weekly)
+	topWeekKey, topWeekStat, weekState := core.CurrentWeekSummary(g, statsByWeek, now)
+	if weekState != core.WeekUnknown {
+		shipped.Summary = core.WeekDividerLabel(topWeekStat)
+	}
+	// A week is named once. Batches are ordered by commit rather than by deploy
+	// time, so a redeploy of an older commit puts a week out of sequence, and
+	// tracking only the previous key would name it twice.
+	weekShown := map[int64]bool{topWeekKey: true}
+
 	live := true
 	for _, b := range g.Deployed {
 		// Exactly one batch is what is running now: the newest that passed.
@@ -97,7 +112,17 @@ func flow(f core.FlowView, index map[string]int, now time.Time) *v1.Flow {
 		if isLive {
 			live = false
 		}
-		shipped.Batches = append(shipped.Batches, batch(b, isLive, &g, index, now))
+		out := batch(b, isLive, &g, index, now)
+		if b.Status == "passed" {
+			year, week := b.Time.UTC().ISOWeek()
+			if key := core.WeekKey(year, week); !weekShown[key] {
+				if s, ok := statsByWeek[key]; ok {
+					out.WeekLabel = core.WeekDividerLabel(s)
+				}
+				weekShown[key] = true
+			}
+		}
+		shipped.Batches = append(shipped.Batches, out)
 	}
 
 	return &v1.Flow{

@@ -82,6 +82,38 @@ public interface BatchOrBuilder extends
   boolean getLive();
 
   /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @return The weekLabel.
+   */
+  java.lang.String getWeekLabel();
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @return The bytes for weekLabel.
+   */
+  com.google.protobuf.ByteString
+      getWeekLabelBytes();
+
+  /**
    * <code>repeated .clarity.v1.Commit commits = 6;</code>
    */
   java.util.List<dev.ezcd.clarity.proto.Commit> 

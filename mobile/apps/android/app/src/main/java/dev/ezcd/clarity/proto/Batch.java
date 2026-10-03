@@ -18,6 +18,7 @@ public  final class Batch extends
   private Batch() {
     label_ = "";
     deployedAgo_ = "";
+    weekLabel_ = "";
     commits_ = emptyProtobufList();
   }
   public static final int STATUS_FIELD_NUMBER = 1;
@@ -276,6 +277,103 @@ public  final class Batch extends
   private void clearLive() {
     
     live_ = false;
+  }
+
+  public static final int WEEK_LABEL_FIELD_NUMBER = 7;
+  private java.lang.String weekLabel_;
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @return The weekLabel.
+   */
+  @java.lang.Override
+  public java.lang.String getWeekLabel() {
+    return weekLabel_;
+  }
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @return The bytes for weekLabel.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getWeekLabelBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(weekLabel_);
+  }
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @param value The weekLabel to set.
+   */
+  private void setWeekLabel(
+      java.lang.String value) {
+    java.lang.Class<?> valueClass = value.getClass();
+  
+    weekLabel_ = value;
+  }
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   */
+  private void clearWeekLabel() {
+    
+    weekLabel_ = getDefaultInstance().getWeekLabel();
+  }
+  /**
+   * <pre>
+   * Set on the first batch of a week that has not been named yet — the week
+   * divider the terminal draws above it. The current week is never repeated
+   * here: it is already on the section, in summary.
+   * Weeks are marked once, and batches are ordered by commit rather than by
+   * deploy time, so a redeploy of an older commit can put a week out of
+   * sequence. Which batch carries the label is therefore a decision, not a
+   * position a client can work out.
+   * </pre>
+   *
+   * <code>string week_label = 7;</code>
+   * @param value The bytes for weekLabel to set.
+   */
+  private void setWeekLabelBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    weekLabel_ = value.toStringUtf8();
+    
   }
 
   public static final int COMMITS_FIELD_NUMBER = 6;
@@ -742,6 +840,105 @@ public  final class Batch extends
     }
 
     /**
+     * <pre>
+     * Set on the first batch of a week that has not been named yet — the week
+     * divider the terminal draws above it. The current week is never repeated
+     * here: it is already on the section, in summary.
+     * Weeks are marked once, and batches are ordered by commit rather than by
+     * deploy time, so a redeploy of an older commit can put a week out of
+     * sequence. Which batch carries the label is therefore a decision, not a
+     * position a client can work out.
+     * </pre>
+     *
+     * <code>string week_label = 7;</code>
+     * @return The weekLabel.
+     */
+    @java.lang.Override
+    public java.lang.String getWeekLabel() {
+      return instance.getWeekLabel();
+    }
+    /**
+     * <pre>
+     * Set on the first batch of a week that has not been named yet — the week
+     * divider the terminal draws above it. The current week is never repeated
+     * here: it is already on the section, in summary.
+     * Weeks are marked once, and batches are ordered by commit rather than by
+     * deploy time, so a redeploy of an older commit can put a week out of
+     * sequence. Which batch carries the label is therefore a decision, not a
+     * position a client can work out.
+     * </pre>
+     *
+     * <code>string week_label = 7;</code>
+     * @return The bytes for weekLabel.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getWeekLabelBytes() {
+      return instance.getWeekLabelBytes();
+    }
+    /**
+     * <pre>
+     * Set on the first batch of a week that has not been named yet — the week
+     * divider the terminal draws above it. The current week is never repeated
+     * here: it is already on the section, in summary.
+     * Weeks are marked once, and batches are ordered by commit rather than by
+     * deploy time, so a redeploy of an older commit can put a week out of
+     * sequence. Which batch carries the label is therefore a decision, not a
+     * position a client can work out.
+     * </pre>
+     *
+     * <code>string week_label = 7;</code>
+     * @param value The weekLabel to set.
+     * @return This builder for chaining.
+     */
+    public Builder setWeekLabel(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setWeekLabel(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Set on the first batch of a week that has not been named yet — the week
+     * divider the terminal draws above it. The current week is never repeated
+     * here: it is already on the section, in summary.
+     * Weeks are marked once, and batches are ordered by commit rather than by
+     * deploy time, so a redeploy of an older commit can put a week out of
+     * sequence. Which batch carries the label is therefore a decision, not a
+     * position a client can work out.
+     * </pre>
+     *
+     * <code>string week_label = 7;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearWeekLabel() {
+      copyOnWrite();
+      instance.clearWeekLabel();
+      return this;
+    }
+    /**
+     * <pre>
+     * Set on the first batch of a week that has not been named yet — the week
+     * divider the terminal draws above it. The current week is never repeated
+     * here: it is already on the section, in summary.
+     * Weeks are marked once, and batches are ordered by commit rather than by
+     * deploy time, so a redeploy of an older commit can put a week out of
+     * sequence. Which batch carries the label is therefore a decision, not a
+     * position a client can work out.
+     * </pre>
+     *
+     * <code>string week_label = 7;</code>
+     * @param value The bytes for weekLabel to set.
+     * @return This builder for chaining.
+     */
+    public Builder setWeekLabelBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setWeekLabelBytes(value);
+      return this;
+    }
+
+    /**
      * <code>repeated .clarity.v1.Commit commits = 6;</code>
      */
     @java.lang.Override
@@ -866,10 +1063,11 @@ public  final class Batch extends
             "live_",
             "commits_",
             dev.ezcd.clarity.proto.Commit.class,
+            "weekLabel_",
           };
           java.lang.String info =
-              "\u0000\u0006\u0000\u0000\u0001\u0006\u0006\u0000\u0001\u0000\u0001\f\u0002\u0208" +
-              "\u0003\u0002\u0004\u0208\u0005\u0007\u0006\u001b";
+              "\u0000\u0007\u0000\u0000\u0001\u0007\u0007\u0000\u0001\u0000\u0001\f\u0002\u0208" +
+              "\u0003\u0002\u0004\u0208\u0005\u0007\u0006\u001b\u0007\u0208";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

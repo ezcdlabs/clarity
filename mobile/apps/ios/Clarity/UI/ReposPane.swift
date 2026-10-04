@@ -11,11 +11,18 @@ struct ReposPane: View {
     var body: some View {
         VStack(spacing: 0) {
             TopBar(title: "clarity") {
-                HStack(spacing: 16) {
-                    Button("key") { Task { await model.showKey() } }
-                        .font(.system(size: 13)).foregroundColor(Ink.dim)
-                    Button("add") { model.showAddRepo() }
-                        .font(.system(size: 13)).foregroundColor(Ink.blue)
+                HStack(spacing: 8) {
+                    GlyphButton("plus", "Add a repository", tint: Ink.blue) { model.showAddRepo() }
+                    // The device key is a once-ever action, so it goes where
+                    // once-ever actions go rather than taking a seat in the bar.
+                    Menu {
+                        Button("Device key") { Task { await model.showKey() } }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17))
+                            .foregroundColor(Ink.dim)
+                    }
+                    .accessibilityLabel("More")
                 }
             }
 
@@ -46,7 +53,11 @@ struct ReposPane: View {
                             }
                         }
                         .listRowBackground(open ? Ink.surface : Ink.bg)
-                        .swipeActions {
+                        // Removing is behind a press-and-hold rather than a
+                        // control on every row: it is rare, it is destructive,
+                        // and a row whose purpose is being tapped should not
+                        // carry a second thing to tap by mistake.
+                        .contextMenu {
                             Button("Remove", role: .destructive) {
                                 Task { await model.removeRepo(repo.id) }
                             }

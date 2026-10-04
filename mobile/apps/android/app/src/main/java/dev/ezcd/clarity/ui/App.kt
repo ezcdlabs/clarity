@@ -2,16 +2,18 @@ package dev.ezcd.clarity.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -90,6 +93,23 @@ fun App(model: ClarityModel, modifier: Modifier = Modifier) {
     }
 }
 
+/** An icon button sized and coloured like the rest of the chrome. */
+@Composable
+fun GlyphButton(
+    icon: ImageVector,
+    label: String,
+    tint: Color = Ink.dim,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        // The label is not drawn, but it is what a screen reader announces and
+        // what a long press surfaces as a tooltip. An unlabelled icon button is
+        // a button only sighted users have.
+        Icon(icon, contentDescription = label, tint = if (enabled) tint else Ink.line)
+    }
+}
+
 /** A title row with a leading action and trailing content. */
 @Composable
 fun TopBar(
@@ -153,6 +173,6 @@ fun ErrorBar(error: String?, onDismiss: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(error, color = Ink.red, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(vertical = 10.dp))
-        TextButton(onClick = onDismiss) { Text("dismiss", color = Ink.dim, fontSize = 13.sp) }
+        GlyphButton(Icons.Default.Close, "Dismiss", onClick = onDismiss)
     }
 }

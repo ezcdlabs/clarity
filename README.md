@@ -1210,8 +1210,18 @@ so the app opens into the colour the splash handed it. The commits sit on a
 second, darker navy, because a reading surface should be the extreme of the
 pair: every role gains contrast against it, and no role loses any.
 
-The step between the two is deliberately small, which is why the content has
-turned top corners. Close tones plus a shape read as a sheet laid on a ground;
+On the repository page the title starts tall and shrinks into the bar as the
+list rises to meet it, the sheet coming to rest under a compact bar. That is
+what makes the two levels read as layers rather than as two stacked panels, and
+it costs nothing: the space is only spent while you are at the top, which is
+when there is nothing underneath it to spend it on.
+
+What deliberately does *not* collapse is the lifecycle strip. "Is it green?" is
+the question the app exists to answer, and an answer that scrolls away is one
+you have to go back for.
+
+The step between the two tones is deliberately small, which is why the content
+has turned top corners. Close tones plus a shape read as a sheet laid on a ground;
 close tones alone read as two panels that failed to match. The pattern is
 Google Messages', and it is also one the TUI already has — it paints the header
 row one step off the background and cuts the selected flow out of it, so a tab
@@ -1292,6 +1302,18 @@ a week out of sequence, and a client tracking only "did the week change" would
 name the same week twice. The summary is empty when the window was truncated
 through this week's bucket — the count is then unknown rather than zero, and
 "0 deploys" printed above the very deploys it denies is worse than nothing.
+
+### Actions are glyphs, and rare ones are hidden
+
+A row of words across the top of a phone is a terminal habit, not a phone one.
+Add, refresh and dismiss are glyphs; the device key — a once-ever action — is in
+an overflow menu rather than holding a permanent seat in the bar; and removing a
+repository is behind a long press, because it is rare, it is destructive, and a
+row whose whole purpose is being tapped should not carry a second thing to tap
+by mistake.
+
+Every glyph carries a label that is never drawn. It is what a screen reader
+announces, and an unlabelled icon button is a button only sighted users have.
 
 ### Two pages, not a stack
 

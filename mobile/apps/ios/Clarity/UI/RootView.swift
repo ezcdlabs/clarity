@@ -116,6 +116,37 @@ struct BackArrow: View {
     }
 }
 
+/// An icon button sized and coloured like the rest of the chrome.
+///
+/// The label is not drawn, but it is what VoiceOver announces. An unlabelled
+/// icon button is a button only sighted users have.
+struct GlyphButton: View {
+    let symbol: String
+    let label: String
+    var tint: Color = Ink.dim
+    var enabled = true
+    let action: () -> Void
+
+    init(_ symbol: String, _ label: String, tint: Color = Ink.dim, enabled: Bool = true,
+         action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.label = label
+        self.tint = tint
+        self.enabled = enabled
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 17))
+                .foregroundColor(enabled ? tint : Ink.line)
+        }
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+}
+
 /// The error, if there is one, under whatever is on screen.
 ///
 /// Deliberately not an alert: the messages come from the core and from git
@@ -134,9 +165,7 @@ struct ErrorBar: View {
                     .foregroundColor(Ink.red)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("dismiss", action: onDismiss)
-                    .font(.system(size: 13))
-                    .foregroundColor(Ink.dim)
+                GlyphButton("xmark", "Dismiss", action: onDismiss)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

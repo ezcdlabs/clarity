@@ -33,12 +33,12 @@ struct RepoView: View {
                     }
                 },
                 trailing: {
-                    Button(model.state.syncing ? "fetching…" : "refresh") {
+                    GlyphButton(
+                        "arrow.clockwise", "Refresh",
+                        tint: Ink.blue, enabled: !model.state.syncing
+                    ) {
                         Task { await model.refresh() }
                     }
-                    .font(.system(size: 13))
-                    .foregroundColor(Ink.blue)
-                    .disabled(model.state.syncing)
                 }
             )
             if let view = model.state.view {

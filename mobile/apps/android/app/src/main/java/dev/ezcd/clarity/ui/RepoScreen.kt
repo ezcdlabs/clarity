@@ -13,10 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +78,7 @@ private val batchGapBelow = 3.dp
  * file decides is how wide things are and which colour they take, which is the
  * half of the job the proto boundary leaves to the platform.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
     var tab by rememberSaveable(state.selected) { mutableIntStateOf(0) }
@@ -79,26 +86,54 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
     val flows = view?.flowsList.orEmpty()
     val flow = flows.getOrNull(tab.coerceAtMost((flows.size - 1).coerceAtLeast(0)))
 
-    // Chrome down to the strip, then the sheet the commits are read on.
-    Column(Modifier.fillMaxSize().background(Ink.surface)) {
-        TopBar(
-            title = state.repo?.name ?: view?.repoName ?: "clarity",
-            // The name goes red when something is broken, as it does in the
-            // terminal: the one place the repository is always named is the one
-            // place a verdict is always visible.
-            titleColor = if (broken(view)) Ink.red else Ink.text,
-            leading = {
+    // The title starts tall and shrinks into the bar as the list comes up to
+    // meet it — the sheet rising to sit under a compact bar is what makes the
+    // two levels read as layers rather than as two stacked panels.
+    //
+    // The lifecycle strip is deliberately not part of what collapses. "Is it
+    // green?" is the question the app exists to answer, and an answer that
+    // scrolls away is one you have to go back for.
+    val collapsing = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
+    Column(
+        Modifier.fillMaxSize()
+            .background(Ink.surface)
+            .nestedScroll(collapsing.nestedScrollConnection),
+    ) {
+        LargeTopAppBar(
+            title = {
+                Text(
+                    state.repo?.name ?: view?.repoName ?: "clarity",
+                    // Red when something is broken, as the terminal does with
+                    // the repository name.
+                    color = if (broken(view)) Ink.red else Ink.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            navigationIcon = {
                 // The list is a swipe away; this is for anyone who does not find
                 // a gesture that has no affordance.
                 IconButton(onClick = onOpenList) {
                     Text("≡", style = Mono.copy(fontSize = 20.sp), color = Ink.dim)
                 }
             },
-        ) {
-            TextButton(onClick = { model.refresh() }, enabled = !state.syncing) {
-                Text(if (state.syncing) "fetching…" else "refresh", color = Ink.blue, fontSize = 13.sp)
-            }
-        }
+            actions = {
+                GlyphButton(
+                    Icons.Default.Refresh,
+                    "Refresh",
+                    tint = Ink.blue,
+                    enabled = !state.syncing,
+                    onClick = { model.refresh() },
+                )
+            },
+            colors = TopAppBarDefaults.largeTopAppBarColors(
+                containerColor = Ink.surface,
+                scrolledContainerColor = Ink.surface,
+            ),
+            scrollBehavior = collapsing,
+        )
+
         if (view != null) {
             Header(view, tab) { tab = it }
         }

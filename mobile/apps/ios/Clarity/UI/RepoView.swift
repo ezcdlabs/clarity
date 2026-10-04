@@ -305,11 +305,15 @@ private struct CommitRow: View {
 
 /// A duration that keeps counting between fetches.
 ///
+/// MainActor because it reads the model's clock, and the model is isolated to
+/// it. Every caller is a view body, which is already there.
+///
 /// The view arrives with every duration preformatted, which is right for the
 /// instant it was built and wrong a second later. Given an anchor, this
 /// recomputes against the model's clock; without one — or before the clock has
 /// started — it falls back to what the view said, which is never worse than
 /// what the last fetch showed.
+@MainActor
 private func ticking(
     _ model: ClarityModel,
     _ anchorUnixSeconds: Int64,

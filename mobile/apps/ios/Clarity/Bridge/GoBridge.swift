@@ -22,12 +22,23 @@ struct GoBridge: ClarityBridge {
 
     func hasKey() -> Bool { client.hasKey() }
 
+    // These two take an NSError out-parameter rather than arriving as throwing
+    // calls. Swift only applies the error convention when a failure can be told
+    // from the return value, and gomobile declares both of these _Nonnull — so
+    // the error is the only thing that says anything went wrong, and an empty
+    // string means nothing at all.
     func publicKey(comment: String) throws -> String {
-        try client.publicKey(comment)
+        var failure: NSError?
+        let key = client.publicKey(comment, error: &failure)
+        if let failure { throw failure }
+        return key
     }
 
     func addRepo(url: String, branch: String) throws -> String {
-        try client.addRepo(url, branch: branch)
+        var failure: NSError?
+        let id = client.addRepo(url, branch: branch, error: &failure)
+        if let failure { throw failure }
+        return id
     }
 
     func removeRepo(_ repoID: String) throws {

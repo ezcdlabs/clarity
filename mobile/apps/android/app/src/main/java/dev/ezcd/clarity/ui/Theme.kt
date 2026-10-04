@@ -44,34 +44,44 @@ data class Palette(
     val errorBg: Color,
 )
 
+// Dark is the brand's own ground. The mark is a navy disc, the splash is navy
+// to the edges, and opening the app on neutral black meant a visible step from
+// one to the other — so the step goes instead.
+//
+// The lifts are derived from the navy rather than picked beside it, which is
+// what the TUI does with the terminal's real background: lipgloss.Lighten(bg,
+// 0.10) is how its deploy strip gets a surface that belongs to whatever theme
+// it landed in. A grey chosen next to a blue can only ever look pasted on to
+// it.
 private val DarkInk = Palette(
-    bg = Color(0xFF101010),
-    surface = Color(0xFF1A1A1A),
-    line = Color(0xFF2A2A2A),
-    text = Color(0xFFE6E6E6),
-    dim = Color(0xFF808080),
+    bg = Color(0xFF061732),      // the mark's navy, exactly
+    surface = Color(0xFF092149),  // +5% lightness
+    line = Color(0xFF0C2D63),     // +11%
+    text = Color(0xFFE6EAF2),     // cooled a touch, so it belongs to the ground
+    dim = Color(0xFF8A94A8),      // ANSI 8's job, in the navy's own family
     red = Color(0xFFE06C75),
     green = Color(0xFF98C379),
-    yellow = Color(0xFFE5C07B),
-    blue = Color(0xFF61AFEF),
-    errorBg = Color(0xFF2A1416),
+    yellow = Color(0xFFF7C421),   // the mark's yellow
+    blue = Color(0xFF6AA2FF),     // the mark's blue
+    errorBg = Color(0xFF2E1526),
 )
 
-// Not the dark values lightened. A pastel green legible on near-black is
-// invisible on near-white, so each role is answered again at a weight that
-// carries against a light ground — which is exactly what a terminal theme does
-// when it maps the same ANSI codes for a light profile.
+// Light cannot take the brand's colours at their own values: the mark's yellow
+// on white is barely a colour at all, and its blue is a highlight rather than a
+// legible one. What carries over is the navy, as the ink — an off-black with
+// the brand's hue in it, which is the one place a light theme can hold the
+// identity without giving up contrast.
 private val LightInk = Palette(
-    bg = Color(0xFFFCFCFC),
-    surface = Color(0xFFEDEDED),
-    line = Color(0xFFDCDCDC),
-    text = Color(0xFF1A1A1A),
-    dim = Color(0xFF6B6B6B),
+    bg = Color(0xFFFBFCFD),
+    surface = Color(0xFFECEFF4),
+    line = Color(0xFFDADFE7),
+    text = Color(0xFF061732),     // the mark's navy, as off-black
+    dim = Color(0xFF5A6473),
     red = Color(0xFFC0392B),
     green = Color(0xFF2E7D32),
     yellow = Color(0xFF8A6D00),
     blue = Color(0xFF1565C0),
-    errorBg = Color(0xFFFBE9E9),
+    errorBg = Color(0xFFFBEAEC),
 )
 
 private val LocalInk = staticCompositionLocalOf { DarkInk }

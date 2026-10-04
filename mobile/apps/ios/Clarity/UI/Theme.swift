@@ -1,24 +1,79 @@
 import SwiftUI
+import UIKit
 
-/// The TUI's palette, read on a screen instead of a terminal.
+/// The TUI's palette, read on a screen instead of a terminal — and the brand's,
+/// where a screen can hold it.
 ///
 /// The terminal asks for ANSI 1/2/3/8/12 and lets the emulator decide what those
-/// look like. A phone has no such table, so these are the same six roles pinned
-/// to values that stay legible on an OLED panel — and the same values the
-/// Android app uses, so the two are one product.
+/// look like. A phone has no such table, so this is it: the same roles, answered
+/// twice, with the mark's own colours where they carry.
 enum Ink {
-    static let bg = Color(red: 0x10 / 255, green: 0x10 / 255, blue: 0x10 / 255)
-    static let surface = Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x1A / 255)
-    static let line = Color(red: 0x2A / 255, green: 0x2A / 255, blue: 0x2A / 255)
-    static let text = Color(red: 0xE6 / 255, green: 0xE6 / 255, blue: 0xE6 / 255)
+    /// Dark is the brand's ground. The mark is a navy disc and the launch screen
+    /// is navy to the edges, so opening on neutral black meant a visible step
+    /// from one to the other.
+    ///
+    /// The lifts are derived from the navy rather than picked beside it, which
+    /// is what the TUI does with the terminal's real background: a grey chosen
+    /// next to a blue can only ever look pasted on to it.
+    private static let dark = Shades(
+        bg: hex(0x061732),      // the mark's navy, exactly
+        surface: hex(0x092149), // +5% lightness
+        line: hex(0x0C2D63),    // +11%
+        text: hex(0xE6EAF2),
+        dim: hex(0x8A94A8),
+        red: hex(0xE06C75),
+        green: hex(0x98C379),
+        yellow: hex(0xF7C421),  // the mark's yellow
+        blue: hex(0x6AA2FF),    // the mark's blue
+        errorBg: hex(0x2E1526)
+    )
 
-    /// ANSI 8. Everything secondary in both UIs is this.
-    static let dim = Color(red: 0x80 / 255, green: 0x80 / 255, blue: 0x80 / 255)
+    /// Light cannot take the brand's colours at their own values: the mark's
+    /// yellow on white is barely a colour, and its blue is a highlight rather
+    /// than something legible. What carries over is the navy, as the ink.
+    private static let light = Shades(
+        bg: hex(0xFBFCFD),
+        surface: hex(0xECEFF4),
+        line: hex(0xDADFE7),
+        text: hex(0x061732),    // the mark's navy, as off-black
+        dim: hex(0x5A6473),
+        red: hex(0xC0392B),
+        green: hex(0x2E7D32),
+        yellow: hex(0x8A6D00),
+        blue: hex(0x1565C0),
+        errorBg: hex(0xFBEAEC)
+    )
 
-    static let red = Color(red: 0xE0 / 255, green: 0x6C / 255, blue: 0x75 / 255)
-    static let green = Color(red: 0x98 / 255, green: 0xC3 / 255, blue: 0x79 / 255)
-    static let yellow = Color(red: 0xE5 / 255, green: 0xC0 / 255, blue: 0x7B / 255)
-    static let blue = Color(red: 0x61 / 255, green: 0xAF / 255, blue: 0xEF / 255)
+    struct Shades {
+        let bg, surface, line, text, dim, red, green, yellow, blue, errorBg: Color
+    }
+
+    /// Resolved per trait collection, so the app follows the system the way the
+    /// terminal follows its theme.
+    static var bg: Color { dynamic(\.bg) }
+    static var surface: Color { dynamic(\.surface) }
+    static var line: Color { dynamic(\.line) }
+    static var text: Color { dynamic(\.text) }
+    static var dim: Color { dynamic(\.dim) }
+    static var red: Color { dynamic(\.red) }
+    static var green: Color { dynamic(\.green) }
+    static var yellow: Color { dynamic(\.yellow) }
+    static var blue: Color { dynamic(\.blue) }
+    static var errorBg: Color { dynamic(\.errorBg) }
+
+    private static func dynamic(_ role: KeyPath<Shades, Color>) -> Color {
+        Color(UIColor { traits in
+            UIColor(traits.userInterfaceStyle == .dark ? dark[keyPath: role] : light[keyPath: role])
+        })
+    }
+
+    private static func hex(_ v: UInt32) -> Color {
+        Color(
+            red: Double((v >> 16) & 0xFF) / 255,
+            green: Double((v >> 8) & 0xFF) / 255,
+            blue: Double(v & 0xFF) / 255
+        )
+    }
 }
 
 extension Font {

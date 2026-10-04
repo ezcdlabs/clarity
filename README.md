@@ -1204,6 +1204,26 @@ near-white, so each role is answered again at a weight that carries against a
 light ground, which is what a terminal theme does when it maps the same codes
 for a light profile.
 
+**Dark is the brand's own ground.** The mark is a navy disc and the launch
+screen is navy to the edges, so opening the app on neutral black put a visible
+step between the two — the step goes instead, and the app opens into the colour
+it launched from. The surface and rule shades are *derived* from that navy by
+lightness rather than picked beside it, which is exactly what the TUI does with
+the terminal's real background: a grey chosen next to a blue can only ever look
+pasted on to it. The mark's yellow and blue replace the ad-hoc ones, which were
+within a few points of them anyway.
+
+**Light takes only the navy, as ink.** The mark's yellow on white is barely a
+colour and its blue is a highlight rather than something legible, so neither
+carries. The navy does: as an off-black it holds the brand's hue at 17:1 against
+the page, which is the one place a light theme can carry the identity without
+giving up contrast.
+
+This is the one deliberate departure from the terminal, and the asymmetry is the
+point. The TUI never sets a background — it inherits the terminal's, which is
+why it has no brand colour and cannot have one. The phone owns its whole
+surface, so it can carry what the terminal structurally cannot.
+
 Three things had to agree for the system bars, and only all three together fix
 it: the window background follows the system (a `values-night` override rather
 than a hardcoded dark), the activity's theme parent follows it too, and

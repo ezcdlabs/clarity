@@ -6,7 +6,7 @@
          still matters: a hardcoded dark window under a light system tray is
          what made the status bar unreadable. -->
     <style name="Theme.Clarity" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#FCFCFC</item>
+        <item name="android:windowBackground">#FBFCFD</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

@@ -35,7 +35,6 @@ struct RootView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
-        .preferredColorScheme(.dark)
         // Picking a repository carries you to it. Here rather than in the tap
         // handler so it also happens when the selection changes for another
         // reason — the first launch, or the fallback after a removal.

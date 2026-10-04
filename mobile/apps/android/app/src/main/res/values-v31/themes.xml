@@ -9,7 +9,7 @@
          theme duplicated into values-v31 would lose its dark variant on every
          modern device. -->
     <style name="Theme.Clarity.Splash" parent="Theme.Clarity">
-        <item name="android:windowSplashScreenBackground">@color/brand_navy</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/splash_mark</item>
     </style>
 </resources>

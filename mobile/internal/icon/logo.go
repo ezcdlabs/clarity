@@ -76,6 +76,15 @@ const (
 // of it sitting inside a second, invisible circle.
 const ForegroundScale = (maskFraction / 2) / circleFraction
 
+// SplashScale fits the whole mark — disc, and the blue check's overflow past it
+// — inside the circle a launch screen is guaranteed to show.
+//
+// Smaller than ForegroundScale, and for a different reason. An adaptive icon is
+// masked, so the overflow is given up and the disc is mapped onto the mask. A
+// launch screen may or may not mask, so nothing may rely on it: the mark keeps
+// its overflow and sits far enough in that a mask would have nothing to cut.
+const SplashScale = 0.60
+
 // Ground says what fills the canvas behind the mark.
 type Ground int
 

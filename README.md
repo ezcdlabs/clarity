@@ -1204,11 +1204,19 @@ near-white, so each role is answered again at a weight that carries against a
 light ground, which is what a terminal theme does when it maps the same codes
 for a light profile.
 
-**Two tones, and which one is the brand's matters.** The chrome — the top bar,
-the flow strip, the ground the content is laid on — is the mark's navy exactly,
-so the app opens into the colour the splash handed it. The commits sit on a
-second, darker navy, because a reading surface should be the extreme of the
-pair: every role gains contrast against it, and no role loses any.
+**Two tones.** The chrome — the top bar, the flow strip, the ground the content
+is laid on — and a darker sheet the commits are read on. A reading surface
+should be the extreme of the pair: every role gains contrast against it, and no
+role loses any.
+
+**Both are neutral, and that is the second answer rather than the first.** The
+brand navy was tried as the ground, for the sake of a seamless handover from a
+navy launch screen, and it was too much — a tint across a whole screen is not a
+brand, it is a cast, and it competed with the one colour on the screen that is
+supposed to mean something. The fix was the other way round: the launch screen
+follows the theme and the ground stays out of the way. The brand lives in the
+mark, in the two accents taken from it, and in the navy that light mode reads
+its text in — a tint you read rather than one you sit in.
 
 On the repository page the title starts tall and shrinks into the bar as the
 list rises to meet it, the sheet coming to rest under a compact bar. That is
@@ -1229,11 +1237,8 @@ is continuous with the body it controls. On the phone the selected tab is cut
 to the content tone and the sheet begins immediately below it, so that idiom now
 works for the reason it was invented.
 
-Both navies are the same hue and saturation at different lightnesses, *derived*
-rather than picked beside each other — exactly what the TUI does with the
-terminal's real background, where a grey chosen next to a blue can only ever
-look pasted on to it. The mark's yellow and blue replace the ad-hoc ones, which
-were within a few points of them anyway.
+The mark's yellow and blue replace the ad-hoc accents, which were within a few
+points of them anyway.
 
 **Light takes only the navy, as ink.** The mark's yellow on white is barely a
 colour and its blue is a highlight rather than something legible, so neither
@@ -1466,10 +1471,18 @@ the mark, a tighter launcher crops navy the way a tighter mask crops any
 circular logo, and the blue overflow goes — because a check cannot be seen
 escaping the very thing that is cutting it.
 
-A splash screen is the mark with the navy pulled out to the screen. Android 12
-took splash screens over and ignores a window background set for the purpose, so
-there are two: a layer-list for the launch theme on older versions, and the v31
-attributes above it. Only the launch style is duplicated into `values-v31`, not
+A launch screen is the mark on the theme's own ground. It keeps its disc, unlike
+the adaptive foreground: the ground follows light and dark, and on a light one
+an ink-only mark would hand the white check a white background to disappear
+into. It is also sized smaller than the adaptive foreground, and for the
+opposite reason — an adaptive icon is definitely masked, so the mark is fitted
+to the mask; a launch screen may or may not be, so nothing may rely on it and
+the whole mark including the blue overflow sits far enough in that a mask would
+have nothing to cut.
+
+Android 12 took splash screens over and ignores a window background set for the
+purpose, so there are two: a layer-list for the launch theme on older versions,
+and the v31 attributes above it. Only the launch style is duplicated into `values-v31`, not
 the app's theme — night mode outranks platform version when Android picks a
 resource folder, so a theme copied there would lose its dark variant on every
 modern device.

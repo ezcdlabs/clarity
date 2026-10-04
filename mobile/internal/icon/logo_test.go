@@ -232,3 +232,26 @@ func inkFraction(img *image.RGBA) float64 {
 	}
 	return ink / float64(b.Dx()*b.Dy())
 }
+
+// TestTheSplashMarkSurvivesAMask covers the thing a launch screen will not
+// promise. Android gives a splash icon a 288dp canvas and guarantees only the
+// inner 192dp; whether it masks is not something to rely on, so the whole mark
+// — including the blue check's overflow, which the adaptive foreground gives up
+// — has to sit inside that circle on its own.
+func TestTheSplashMarkSurvivesAMask(t *testing.T) {
+	const size = 288
+	img := Logo(size, OnNothing, SplashScale)
+
+	centre := float64(size) / 2
+	visible := float64(size) * maskFraction / 2
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a == 0 {
+				continue
+			}
+			if d := math.Hypot(float64(x)+0.5-centre, float64(y)+0.5-centre); d > visible {
+				t.Fatalf("ink at (%d,%d) is %.1fpx out, past the %.1fpx a mask would keep", x, y, d, visible)
+			}
+		}
+	}
+}

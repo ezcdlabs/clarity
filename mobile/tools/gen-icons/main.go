@@ -57,6 +57,18 @@ func main() {
 			icon.Logo(d.adaptive, icon.InkOnly, icon.ForegroundScale))
 	}
 
+	// The launch screen's mark keeps its disc, unlike the adaptive foreground.
+	// The launch ground follows the theme, and on a light one an ink-only mark
+	// would hand the white check a white background to disappear into.
+	//
+	// Android gives a splash icon a 288dp canvas and guarantees only the inner
+	// 192dp. Whether it masks is not something to rely on, so the mark is sized
+	// to survive one either way.
+	for _, d := range densities {
+		write(filepath.Join(androidRes, "mipmap-"+d.name, "splash_mark.png"),
+			icon.Logo(splashSize(d.name), icon.OnNothing, icon.SplashScale))
+	}
+
 	writeFile(filepath.Join(androidRes, "mipmap-anydpi-v26", "ic_launcher.xml"), adaptiveXML)
 	writeFile(filepath.Join(androidRes, "mipmap-anydpi-v26", "ic_launcher_round.xml"), adaptiveXML)
 	writeFile(filepath.Join(androidRes, "values", "ic_launcher_background.xml"), backgroundXML())
@@ -77,6 +89,22 @@ type androidSize struct {
 	name     string
 	legacy   int // a 48dp launcher icon
 	adaptive int // a 108dp adaptive foreground
+}
+
+// splashSize is 288dp at each density, the canvas Android gives a splash icon.
+func splashSize(density string) int {
+	switch density {
+	case "mdpi":
+		return 288
+	case "hdpi":
+		return 432
+	case "xhdpi":
+		return 576
+	case "xxhdpi":
+		return 864
+	default:
+		return 1152
+	}
 }
 
 func androidSizes() []androidSize {
@@ -154,19 +182,25 @@ func backgroundXML() string {
 `, n.R, n.G, n.B, n.R, n.G, n.B)
 }
 
+// launchColorContents is a two-appearance colour set, so the iOS launch screen
+// follows the system the way the Android one does.
 func launchColorContents() string {
-	n := icon.Navy
-	return fmt.Sprintf(`{
+	return `{
   "colors" : [
     {
       "color" : {
         "color-space" : "srgb",
-        "components" : {
-          "alpha" : "1.000",
-          "blue" : "0x%02X",
-          "green" : "0x%02X",
-          "red" : "0x%02X"
-        }
+        "components" : { "alpha" : "1.000", "blue" : "0xED", "green" : "0xED", "red" : "0xED" }
+      },
+      "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        { "appearance" : "luminosity", "value" : "dark" }
+      ],
+      "color" : {
+        "color-space" : "srgb",
+        "components" : { "alpha" : "1.000", "blue" : "0x1A", "green" : "0x1A", "red" : "0x1A" }
       },
       "idiom" : "universal"
     }
@@ -176,7 +210,7 @@ func launchColorContents() string {
     "version" : 1
   }
 }
-`, n.B, n.G, n.R)
+`
 }
 
 const appIconContents = `{

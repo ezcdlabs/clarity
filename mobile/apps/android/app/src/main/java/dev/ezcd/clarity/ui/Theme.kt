@@ -49,49 +49,45 @@ data class Palette(
     val errorBg: Color,
 )
 
-// Two tones, and which one is the brand's matters.
+// Two tones: a chrome the bars sit on, and a darker sheet the commits are read
+// on. A reading surface should be the extreme of the pair — every role gains
+// contrast against it — and the step between them is tonal rather than a
+// boundary, which is what makes them read as one ground with a sheet laid on it.
 //
-// The chrome is the mark's navy exactly — it is what you see behind the top bar
-// and around the sheet, and it is what the splash hands over to, so the app
-// opens into the colour it launched from. The commits sit on a darker navy,
-// because a reading surface should be the extreme of the pair: every role gains
-// contrast against it, and the step between the two is tonal rather than a
-// boundary, which is what makes them read as one ground and a sheet laid on it.
-//
-// Both are the same hue and saturation at different lightnesses, derived rather
-// than picked beside each other — the thing the TUI does with the terminal's
-// real background, where lipgloss.Lighten(bg, 0.10) gets the deploy strip a
-// surface belonging to whatever theme it landed in. A grey chosen next to a
-// blue can only ever look pasted on to it.
+// Both are neutral. The brand navy was tried here and it was too much: a tint
+// across a whole screen is not a brand, it is a cast, and it fought the one
+// colour on the screen that is supposed to mean something. The brand lives in
+// the mark, in the launch screen, and in the two accents below — which is
+// enough, and is where a reader is looking anyway.
 private val DarkInk = Palette(
-    bg = Color(0xFF030C19),      // the brand navy taken down to half its lightness
-    surface = Color(0xFF061732),  // the mark's navy, exactly
-    line = Color(0xFF0C2D63),
-    text = Color(0xFFE6EAF2),     // cooled a touch, so it belongs to the ground
-    dim = Color(0xFF8A94A8),      // ANSI 8's job, in the navy's own family
+    bg = Color(0xFF0E0E0E),
+    surface = Color(0xFF1A1A1A),
+    line = Color(0xFF2B2B2B),
+    text = Color(0xFFE6E6E6),
+    dim = Color(0xFF8C8C8C),
     red = Color(0xFFE06C75),
     green = Color(0xFF98C379),
-    yellow = Color(0xFFF7C421),   // the mark's yellow
-    blue = Color(0xFF6AA2FF),     // the mark's blue
-    errorBg = Color(0xFF2E1526),
+    yellow = Color(0xFFF7C421),  // the mark's yellow
+    blue = Color(0xFF6AA2FF),    // the mark's blue
+    errorBg = Color(0xFF2A1416),
 )
 
 // Light cannot take the brand's colours at their own values: the mark's yellow
-// on white is barely a colour at all, and its blue is a highlight rather than a
-// legible one. What carries over is the navy, as the ink — an off-black with
-// the brand's hue in it, which is the one place a light theme can hold the
-// identity without giving up contrast.
+// on white is barely a colour and its blue is a highlight rather than something
+// legible. The navy does carry, as the ink — an off-black with the brand's hue
+// in it, at 17:1 against the page. It is a tint you read rather than one you
+// sit in, which is the difference that made it work here and not there.
 private val LightInk = Palette(
-    bg = Color(0xFFFCFDFF),
-    surface = Color(0xFFEDF0F6),
-    line = Color(0xFFDCE1EA),
-    text = Color(0xFF061732),     // the mark's navy, as off-black
-    dim = Color(0xFF5A6473),
+    bg = Color(0xFFFCFCFC),
+    surface = Color(0xFFEDEDED),
+    line = Color(0xFFDCDCDC),
+    text = Color(0xFF061732),    // the mark's navy, as off-black
+    dim = Color(0xFF6B6B6B),
     red = Color(0xFFC0392B),
     green = Color(0xFF2E7D32),
     yellow = Color(0xFF8A6D00),
     blue = Color(0xFF1565C0),
-    errorBg = Color(0xFFFBEAEC),
+    errorBg = Color(0xFFFBE9E9),
 )
 
 private val LocalInk = staticCompositionLocalOf { DarkInk }

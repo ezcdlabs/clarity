@@ -8,44 +8,44 @@ import UIKit
 /// look like. A phone has no such table, so this is it: the same roles, answered
 /// twice, with the mark's own colours where they carry.
 enum Ink {
-    /// Two tones, and which one is the brand's matters.
+    /// Two tones: a chrome the bars sit on, and a darker sheet the commits are
+    /// read on. A reading surface should be the extreme of the pair — every role
+    /// gains contrast against it — and the step between them is tonal rather
+    /// than a boundary, which is what makes them read as one ground with a
+    /// sheet laid on it.
     ///
-    /// The chrome is the mark's navy exactly — what you see behind the top bar
-    /// and around the sheet, and what the launch screen hands over to. The
-    /// commits sit on a darker navy, because a reading surface should be the
-    /// extreme of the pair: every role gains contrast against it.
-    ///
-    /// Both are the same hue and saturation at different lightnesses, derived
-    /// rather than picked beside each other — what the TUI does with the
-    /// terminal's real background, where a grey chosen next to a blue can only
-    /// ever look pasted on to it.
+    /// Both are neutral. The brand navy was tried here and it was too much: a
+    /// tint across a whole screen is not a brand, it is a cast, and it fought
+    /// the one colour on the screen that is supposed to mean something.
     private static let dark = Shades(
-        bg: hex(0x030C19),      // the brand navy at half its lightness
-        surface: hex(0x061732), // the mark's navy, exactly
-        line: hex(0x0C2D63),    // +11%
-        text: hex(0xE6EAF2),
-        dim: hex(0x8A94A8),
+        bg: hex(0x0E0E0E),
+        surface: hex(0x1A1A1A),
+        line: hex(0x2B2B2B),
+        text: hex(0xE6E6E6),
+        dim: hex(0x8C8C8C),
         red: hex(0xE06C75),
         green: hex(0x98C379),
-        yellow: hex(0xF7C421),  // the mark's yellow
-        blue: hex(0x6AA2FF),    // the mark's blue
-        errorBg: hex(0x2E1526)
+        yellow: hex(0xF7C421), // the mark's yellow
+        blue: hex(0x6AA2FF),   // the mark's blue
+        errorBg: hex(0x2A1416)
     )
 
     /// Light cannot take the brand's colours at their own values: the mark's
-    /// yellow on white is barely a colour, and its blue is a highlight rather
-    /// than something legible. What carries over is the navy, as the ink.
+    /// yellow on white is barely a colour and its blue is a highlight rather
+    /// than something legible. The navy does carry, as the ink — a tint you
+    /// read rather than one you sit in, which is the difference that made it
+    /// work here and not as a ground.
     private static let light = Shades(
-        bg: hex(0xFCFDFF),
-        surface: hex(0xEDF0F6),
-        line: hex(0xDCE1EA),
-        text: hex(0x061732),    // the mark's navy, as off-black
-        dim: hex(0x5A6473),
+        bg: hex(0xFCFCFC),
+        surface: hex(0xEDEDED),
+        line: hex(0xDCDCDC),
+        text: hex(0x061732),   // the mark's navy, as off-black
+        dim: hex(0x6B6B6B),
         red: hex(0xC0392B),
         green: hex(0x2E7D32),
         yellow: hex(0x8A6D00),
         blue: hex(0x1565C0),
-        errorBg: hex(0xFBEAEC)
+        errorBg: hex(0xFBE9E9)
     )
 
     struct Shades {

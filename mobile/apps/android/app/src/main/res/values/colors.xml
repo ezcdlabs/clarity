@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launch screen's ground, with res/values-night overriding it.
+         It follows the theme rather than the brand: a splash that hands over to
+         a screen of a different colour is a flash, and the mark carries the
+         brand on its own. -->
+    <color name="splash_background">#EDEDED</color>
+</resources>

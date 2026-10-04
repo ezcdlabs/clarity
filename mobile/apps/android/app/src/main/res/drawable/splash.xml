@@ -4,10 +4,10 @@
      first frame. Navy to the edges, with the mark centred — the same thing the
      v31 splash does, by the only means available here. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/brand_navy" />
+    <item android:drawable="@color/splash_background" />
     <item android:gravity="center">
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/ic_launcher_foreground" />
+            android:src="@mipmap/splash_mark" />
     </item>
 </layer-list>

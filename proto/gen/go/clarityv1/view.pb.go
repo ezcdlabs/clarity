@@ -719,10 +719,33 @@ type RepoSummary struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID is derived from the URL, so the same repository is the same entry
 	// across launches and devices.
-	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
-	Branch        string `protobuf:"bytes,4,opt,name=branch,proto3" json:"branch,omitempty"`
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Name is the last path segment, and the one part of a label that is never
+	// abbreviated away. Namespace is everything before it, shown dimmed in
+	// front; empty when the path is a single segment. Host is for the subtitle
+	// and is never part of the name.
+	//
+	// Derived here rather than in each app so that Android and iOS call the same
+	// repository by the same name. The rule is pure git with no host detection:
+	// clarity does not know what GitHub is, and a rule that did would be wrong
+	// on a box in a cupboard.
+	Name      string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace string `protobuf:"bytes,6,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Host      string `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
+	// Alias is what the user renamed this to, on this device only. When set it
+	// replaces the title and the derived namespace/name moves to the subtitle.
+	Alias  string `protobuf:"bytes,8,opt,name=alias,proto3" json:"alias,omitempty"`
+	Url    string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	Branch string `protobuf:"bytes,4,opt,name=branch,proto3" json:"branch,omitempty"`
+	// The last view's verdicts, so a switcher can show how each repository is
+	// doing without opening it. Absent until a repository has been read once —
+	// which is why these are statuses and not booleans: "not known yet" is a
+	// different thing from "nothing reported".
+	Ci     Status `protobuf:"varint,9,opt,name=ci,proto3,enum=clarity.v1.Status" json:"ci,omitempty"`
+	Deploy Status `protobuf:"varint,10,opt,name=deploy,proto3,enum=clarity.v1.Status" json:"deploy,omitempty"`
+	// One entry per deploy target, in the order the tabs show them. A switcher
+	// row draws one glyph each, with no names, and never hides one.
+	Flows         []*FlowSummary `protobuf:"bytes,11,rep,name=flows,proto3" json:"flows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -771,6 +794,27 @@ func (x *RepoSummary) GetName() string {
 	return ""
 }
 
+func (x *RepoSummary) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *RepoSummary) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *RepoSummary) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
 func (x *RepoSummary) GetUrl() string {
 	if x != nil {
 		return x.Url
@@ -783,6 +827,80 @@ func (x *RepoSummary) GetBranch() string {
 		return x.Branch
 	}
 	return ""
+}
+
+func (x *RepoSummary) GetCi() Status {
+	if x != nil {
+		return x.Ci
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (x *RepoSummary) GetDeploy() Status {
+	if x != nil {
+		return x.Deploy
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (x *RepoSummary) GetFlows() []*FlowSummary {
+	if x != nil {
+		return x.Flows
+	}
+	return nil
+}
+
+// FlowSummary is a deploy target's last known verdict.
+type FlowSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Deploy        Status                 `protobuf:"varint,2,opt,name=deploy,proto3,enum=clarity.v1.Status" json:"deploy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlowSummary) Reset() {
+	*x = FlowSummary{}
+	mi := &file_clarity_v1_view_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlowSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlowSummary) ProtoMessage() {}
+
+func (x *FlowSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlowSummary.ProtoReflect.Descriptor instead.
+func (*FlowSummary) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *FlowSummary) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FlowSummary) GetDeploy() Status {
+	if x != nil {
+		return x.Deploy
+	}
+	return Status_STATUS_UNSPECIFIED
 }
 
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
@@ -837,12 +955,22 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x1dlead_time_anchor_unix_seconds\x18\r \x01(\x03R\x19leadTimeAnchorUnixSeconds\"o\n" +
 	"\bRepoList\x12-\n" +
 	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\x124\n" +
-	"\x16generated_unix_seconds\x18\x02 \x01(\x03R\x14generatedUnixSeconds\"[\n" +
+	"\x16generated_unix_seconds\x18\x02 \x01(\x03R\x14generatedUnixSeconds\"\xa2\x02\n" +
 	"\vRepoSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
+	"\tnamespace\x18\x06 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04host\x18\a \x01(\tR\x04host\x12\x14\n" +
+	"\x05alias\x18\b \x01(\tR\x05alias\x12\x10\n" +
 	"\x03url\x18\x03 \x01(\tR\x03url\x12\x16\n" +
-	"\x06branch\x18\x04 \x01(\tR\x06branch*\x7f\n" +
+	"\x06branch\x18\x04 \x01(\tR\x06branch\x12\"\n" +
+	"\x02ci\x18\t \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12*\n" +
+	"\x06deploy\x18\n" +
+	" \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\x12-\n" +
+	"\x05flows\x18\v \x03(\v2\x17.clarity.v1.FlowSummaryR\x05flows\"M\n" +
+	"\vFlowSummary\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
+	"\x06deploy\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -870,7 +998,7 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
@@ -881,6 +1009,7 @@ var file_clarity_v1_view_proto_goTypes = []any{
 	(*Commit)(nil),      // 6: clarity.v1.Commit
 	(*RepoList)(nil),    // 7: clarity.v1.RepoList
 	(*RepoSummary)(nil), // 8: clarity.v1.RepoSummary
+	(*FlowSummary)(nil), // 9: clarity.v1.FlowSummary
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
@@ -895,11 +1024,15 @@ var file_clarity_v1_view_proto_depIdxs = []int32{
 	6,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
 	0,  // 10: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
 	8,  // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	0,  // 12: clarity.v1.RepoSummary.ci:type_name -> clarity.v1.Status
+	0,  // 13: clarity.v1.RepoSummary.deploy:type_name -> clarity.v1.Status
+	9,  // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
+	0,  // 15: clarity.v1.FlowSummary.deploy:type_name -> clarity.v1.Status
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -913,7 +1046,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

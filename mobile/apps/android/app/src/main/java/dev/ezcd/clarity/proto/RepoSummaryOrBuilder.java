@@ -30,16 +30,84 @@ public interface RepoSummaryOrBuilder extends
       getIdBytes();
 
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @return The name.
    */
   java.lang.String getName();
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @return The bytes for name.
    */
   com.google.protobuf.ByteString
       getNameBytes();
+
+  /**
+   * <code>string namespace = 6;</code>
+   * @return The namespace.
+   */
+  java.lang.String getNamespace();
+  /**
+   * <code>string namespace = 6;</code>
+   * @return The bytes for namespace.
+   */
+  com.google.protobuf.ByteString
+      getNamespaceBytes();
+
+  /**
+   * <code>string host = 7;</code>
+   * @return The host.
+   */
+  java.lang.String getHost();
+  /**
+   * <code>string host = 7;</code>
+   * @return The bytes for host.
+   */
+  com.google.protobuf.ByteString
+      getHostBytes();
+
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @return The alias.
+   */
+  java.lang.String getAlias();
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @return The bytes for alias.
+   */
+  com.google.protobuf.ByteString
+      getAliasBytes();
 
   /**
    * <code>string url = 3;</code>
@@ -64,4 +132,69 @@ public interface RepoSummaryOrBuilder extends
    */
   com.google.protobuf.ByteString
       getBranchBytes();
+
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @return The enum numeric value on the wire for ci.
+   */
+  int getCiValue();
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @return The ci.
+   */
+  dev.ezcd.clarity.proto.Status getCi();
+
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @return The enum numeric value on the wire for deploy.
+   */
+  int getDeployValue();
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @return The deploy.
+   */
+  dev.ezcd.clarity.proto.Status getDeploy();
+
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  java.util.List<dev.ezcd.clarity.proto.FlowSummary> 
+      getFlowsList();
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  dev.ezcd.clarity.proto.FlowSummary getFlows(int index);
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  int getFlowsCount();
 }

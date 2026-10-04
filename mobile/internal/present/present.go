@@ -31,8 +31,8 @@ const shortSHALen = 8
 func View(view core.View, now time.Time) *v1.View {
 	out := &v1.View{
 		RepoName:  view.Snapshot.RepoName,
-		Ci:        status(view.Header.CI),
-		Deploy:    status(view.Header.Deploy),
+		Ci:        Status(view.Header.CI),
+		Deploy:    Status(view.Header.Deploy),
 		Truncated: view.Snapshot.Truncated,
 		Limit:     int32(view.Snapshot.Limit),
 		// Always set. A client holds this view across a failed refresh, so it
@@ -127,7 +127,7 @@ func flow(f core.FlowView, index map[string]int, now time.Time) *v1.Flow {
 
 	return &v1.Flow{
 		Name:       f.Name,
-		Deploy:     status(f.Deploy),
+		Deploy:     Status(f.Deploy),
 		Undeclared: f.Undeclared,
 		Sections:   []*v1.Section{head, green, shipped},
 	}
@@ -154,7 +154,7 @@ func batchLabel(status string, live bool) string {
 
 func batch(b core.DeployBatch, live bool, g *core.Groupings, index map[string]int, now time.Time) *v1.Batch {
 	out := &v1.Batch{
-		Status:  status(b.Status),
+		Status:  Status(b.Status),
 		Label:   batchLabel(b.Status, live),
 		Live:    live,
 		Commits: commits(b.Commits, g, index, now),
@@ -181,7 +181,7 @@ func commit(c core.CommitView, g *core.Groupings, index map[string]int, now time
 		Subject:             c.Subject,
 		Author:              c.Author,
 		AuthoredUnixSeconds: c.Time.Unix(),
-		Ci:                  status(core.CIStatus(c.Events)),
+		Ci:                  Status(core.CIStatus(c.Events)),
 	}
 	// No deploy status: whether this commit shipped is said by the section and
 	// the batch it sits in, which is why the terminal has only ever drawn one
@@ -212,10 +212,13 @@ func shortSHA(sha string) string {
 	return sha[:shortSHALen]
 }
 
-// status maps the string vocabulary the events use onto the enum. An
+// Status maps the string vocabulary the events use onto the enum. An
 // unrecognised value becomes NONE rather than UNSPECIFIED: a build that
 // predates a status should render the commit as unreported, not as broken.
-func status(s string) v1.Status {
+//
+// Exported because a repository summary needs the same mapping, and two
+// copies of it would be two chances to disagree about what "skipped" means.
+func Status(s string) v1.Status {
 	switch s {
 	case "passed":
 		return v1.Status_STATUS_PASSED

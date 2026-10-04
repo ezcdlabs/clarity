@@ -14,8 +14,12 @@ public  final class RepoSummary extends
   private RepoSummary() {
     id_ = "";
     name_ = "";
+    namespace_ = "";
+    host_ = "";
+    alias_ = "";
     url_ = "";
     branch_ = "";
+    flows_ = emptyProtobufList();
   }
   public static final int ID_FIELD_NUMBER = 1;
   private java.lang.String id_;
@@ -92,6 +96,17 @@ public  final class RepoSummary extends
   public static final int NAME_FIELD_NUMBER = 2;
   private java.lang.String name_;
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @return The name.
    */
@@ -100,6 +115,17 @@ public  final class RepoSummary extends
     return name_;
   }
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @return The bytes for name.
    */
@@ -109,6 +135,17 @@ public  final class RepoSummary extends
     return com.google.protobuf.ByteString.copyFromUtf8(name_);
   }
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @param value The name to set.
    */
@@ -119,6 +156,17 @@ public  final class RepoSummary extends
     name_ = value;
   }
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    */
   private void clearName() {
@@ -126,6 +174,17 @@ public  final class RepoSummary extends
     name_ = getDefaultInstance().getName();
   }
   /**
+   * <pre>
+   * Name is the last path segment, and the one part of a label that is never
+   * abbreviated away. Namespace is everything before it, shown dimmed in
+   * front; empty when the path is a single segment. Host is for the subtitle
+   * and is never part of the name.
+   * Derived here rather than in each app so that Android and iOS call the same
+   * repository by the same name. The rule is pure git with no host detection:
+   * clarity does not know what GitHub is, and a rule that did would be wrong
+   * on a box in a cupboard.
+   * </pre>
+   *
    * <code>string name = 2;</code>
    * @param value The bytes for name to set.
    */
@@ -133,6 +192,172 @@ public  final class RepoSummary extends
       com.google.protobuf.ByteString value) {
     checkByteStringIsUtf8(value);
     name_ = value.toStringUtf8();
+    
+  }
+
+  public static final int NAMESPACE_FIELD_NUMBER = 6;
+  private java.lang.String namespace_;
+  /**
+   * <code>string namespace = 6;</code>
+   * @return The namespace.
+   */
+  @java.lang.Override
+  public java.lang.String getNamespace() {
+    return namespace_;
+  }
+  /**
+   * <code>string namespace = 6;</code>
+   * @return The bytes for namespace.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getNamespaceBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(namespace_);
+  }
+  /**
+   * <code>string namespace = 6;</code>
+   * @param value The namespace to set.
+   */
+  private void setNamespace(
+      java.lang.String value) {
+    java.lang.Class<?> valueClass = value.getClass();
+  
+    namespace_ = value;
+  }
+  /**
+   * <code>string namespace = 6;</code>
+   */
+  private void clearNamespace() {
+    
+    namespace_ = getDefaultInstance().getNamespace();
+  }
+  /**
+   * <code>string namespace = 6;</code>
+   * @param value The bytes for namespace to set.
+   */
+  private void setNamespaceBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    namespace_ = value.toStringUtf8();
+    
+  }
+
+  public static final int HOST_FIELD_NUMBER = 7;
+  private java.lang.String host_;
+  /**
+   * <code>string host = 7;</code>
+   * @return The host.
+   */
+  @java.lang.Override
+  public java.lang.String getHost() {
+    return host_;
+  }
+  /**
+   * <code>string host = 7;</code>
+   * @return The bytes for host.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getHostBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(host_);
+  }
+  /**
+   * <code>string host = 7;</code>
+   * @param value The host to set.
+   */
+  private void setHost(
+      java.lang.String value) {
+    java.lang.Class<?> valueClass = value.getClass();
+  
+    host_ = value;
+  }
+  /**
+   * <code>string host = 7;</code>
+   */
+  private void clearHost() {
+    
+    host_ = getDefaultInstance().getHost();
+  }
+  /**
+   * <code>string host = 7;</code>
+   * @param value The bytes for host to set.
+   */
+  private void setHostBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    host_ = value.toStringUtf8();
+    
+  }
+
+  public static final int ALIAS_FIELD_NUMBER = 8;
+  private java.lang.String alias_;
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @return The alias.
+   */
+  @java.lang.Override
+  public java.lang.String getAlias() {
+    return alias_;
+  }
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @return The bytes for alias.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getAliasBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(alias_);
+  }
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @param value The alias to set.
+   */
+  private void setAlias(
+      java.lang.String value) {
+    java.lang.Class<?> valueClass = value.getClass();
+  
+    alias_ = value;
+  }
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   */
+  private void clearAlias() {
+    
+    alias_ = getDefaultInstance().getAlias();
+  }
+  /**
+   * <pre>
+   * Alias is what the user renamed this to, on this device only. When set it
+   * replaces the title and the derived namespace/name moves to the subtitle.
+   * </pre>
+   *
+   * <code>string alias = 8;</code>
+   * @param value The bytes for alias to set.
+   */
+  private void setAliasBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    alias_ = value.toStringUtf8();
     
   }
 
@@ -228,6 +453,274 @@ public  final class RepoSummary extends
     checkByteStringIsUtf8(value);
     branch_ = value.toStringUtf8();
     
+  }
+
+  public static final int CI_FIELD_NUMBER = 9;
+  private int ci_;
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @return The enum numeric value on the wire for ci.
+   */
+  @java.lang.Override
+  public int getCiValue() {
+    return ci_;
+  }
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @return The ci.
+   */
+  @java.lang.Override
+  public dev.ezcd.clarity.proto.Status getCi() {
+    dev.ezcd.clarity.proto.Status result = dev.ezcd.clarity.proto.Status.forNumber(ci_);
+    return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
+  }
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @param value The enum numeric value on the wire for ci to set.
+   */
+  private void setCiValue(int value) {
+      ci_ = value;
+  }
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   * @param value The ci to set.
+   */
+  private void setCi(dev.ezcd.clarity.proto.Status value) {
+    ci_ = value.getNumber();
+    
+  }
+  /**
+   * <pre>
+   * The last view's verdicts, so a switcher can show how each repository is
+   * doing without opening it. Absent until a repository has been read once —
+   * which is why these are statuses and not booleans: "not known yet" is a
+   * different thing from "nothing reported".
+   * </pre>
+   *
+   * <code>.clarity.v1.Status ci = 9;</code>
+   */
+  private void clearCi() {
+    
+    ci_ = 0;
+  }
+
+  public static final int DEPLOY_FIELD_NUMBER = 10;
+  private int deploy_;
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @return The enum numeric value on the wire for deploy.
+   */
+  @java.lang.Override
+  public int getDeployValue() {
+    return deploy_;
+  }
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @return The deploy.
+   */
+  @java.lang.Override
+  public dev.ezcd.clarity.proto.Status getDeploy() {
+    dev.ezcd.clarity.proto.Status result = dev.ezcd.clarity.proto.Status.forNumber(deploy_);
+    return result == null ? dev.ezcd.clarity.proto.Status.UNRECOGNIZED : result;
+  }
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @param value The enum numeric value on the wire for deploy to set.
+   */
+  private void setDeployValue(int value) {
+      deploy_ = value;
+  }
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   * @param value The deploy to set.
+   */
+  private void setDeploy(dev.ezcd.clarity.proto.Status value) {
+    deploy_ = value.getNumber();
+    
+  }
+  /**
+   * <code>.clarity.v1.Status deploy = 10;</code>
+   */
+  private void clearDeploy() {
+    
+    deploy_ = 0;
+  }
+
+  public static final int FLOWS_FIELD_NUMBER = 11;
+  private com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.FlowSummary> flows_;
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  @java.lang.Override
+  public java.util.List<dev.ezcd.clarity.proto.FlowSummary> getFlowsList() {
+    return flows_;
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  public java.util.List<? extends dev.ezcd.clarity.proto.FlowSummaryOrBuilder> 
+      getFlowsOrBuilderList() {
+    return flows_;
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  @java.lang.Override
+  public int getFlowsCount() {
+    return flows_.size();
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  @java.lang.Override
+  public dev.ezcd.clarity.proto.FlowSummary getFlows(int index) {
+    return flows_.get(index);
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  public dev.ezcd.clarity.proto.FlowSummaryOrBuilder getFlowsOrBuilder(
+      int index) {
+    return flows_.get(index);
+  }
+  private void ensureFlowsIsMutable() {
+    com.google.protobuf.Internal.ProtobufList<dev.ezcd.clarity.proto.FlowSummary> tmp = flows_;
+    if (!tmp.isModifiable()) {
+      flows_ =
+          com.google.protobuf.GeneratedMessageLite.mutableCopy(tmp);
+     }
+  }
+
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void setFlows(
+      int index, dev.ezcd.clarity.proto.FlowSummary value) {
+    value.getClass();
+  ensureFlowsIsMutable();
+    flows_.set(index, value);
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void addFlows(dev.ezcd.clarity.proto.FlowSummary value) {
+    value.getClass();
+  ensureFlowsIsMutable();
+    flows_.add(value);
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void addFlows(
+      int index, dev.ezcd.clarity.proto.FlowSummary value) {
+    value.getClass();
+  ensureFlowsIsMutable();
+    flows_.add(index, value);
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void addAllFlows(
+      java.lang.Iterable<? extends dev.ezcd.clarity.proto.FlowSummary> values) {
+    ensureFlowsIsMutable();
+    com.google.protobuf.AbstractMessageLite.addAll(
+        values, flows_);
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void clearFlows() {
+    flows_ = emptyProtobufList();
+  }
+  /**
+   * <pre>
+   * One entry per deploy target, in the order the tabs show them. A switcher
+   * row draws one glyph each, with no names, and never hides one.
+   * </pre>
+   *
+   * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+   */
+  private void removeFlows(int index) {
+    ensureFlowsIsMutable();
+    flows_.remove(index);
   }
 
   public static dev.ezcd.clarity.proto.RepoSummary parseFrom(
@@ -400,6 +893,17 @@ public  final class RepoSummary extends
     }
 
     /**
+     * <pre>
+     * Name is the last path segment, and the one part of a label that is never
+     * abbreviated away. Namespace is everything before it, shown dimmed in
+     * front; empty when the path is a single segment. Host is for the subtitle
+     * and is never part of the name.
+     * Derived here rather than in each app so that Android and iOS call the same
+     * repository by the same name. The rule is pure git with no host detection:
+     * clarity does not know what GitHub is, and a rule that did would be wrong
+     * on a box in a cupboard.
+     * </pre>
+     *
      * <code>string name = 2;</code>
      * @return The name.
      */
@@ -408,6 +912,17 @@ public  final class RepoSummary extends
       return instance.getName();
     }
     /**
+     * <pre>
+     * Name is the last path segment, and the one part of a label that is never
+     * abbreviated away. Namespace is everything before it, shown dimmed in
+     * front; empty when the path is a single segment. Host is for the subtitle
+     * and is never part of the name.
+     * Derived here rather than in each app so that Android and iOS call the same
+     * repository by the same name. The rule is pure git with no host detection:
+     * clarity does not know what GitHub is, and a rule that did would be wrong
+     * on a box in a cupboard.
+     * </pre>
+     *
      * <code>string name = 2;</code>
      * @return The bytes for name.
      */
@@ -417,6 +932,17 @@ public  final class RepoSummary extends
       return instance.getNameBytes();
     }
     /**
+     * <pre>
+     * Name is the last path segment, and the one part of a label that is never
+     * abbreviated away. Namespace is everything before it, shown dimmed in
+     * front; empty when the path is a single segment. Host is for the subtitle
+     * and is never part of the name.
+     * Derived here rather than in each app so that Android and iOS call the same
+     * repository by the same name. The rule is pure git with no host detection:
+     * clarity does not know what GitHub is, and a rule that did would be wrong
+     * on a box in a cupboard.
+     * </pre>
+     *
      * <code>string name = 2;</code>
      * @param value The name to set.
      * @return This builder for chaining.
@@ -428,6 +954,17 @@ public  final class RepoSummary extends
       return this;
     }
     /**
+     * <pre>
+     * Name is the last path segment, and the one part of a label that is never
+     * abbreviated away. Namespace is everything before it, shown dimmed in
+     * front; empty when the path is a single segment. Host is for the subtitle
+     * and is never part of the name.
+     * Derived here rather than in each app so that Android and iOS call the same
+     * repository by the same name. The rule is pure git with no host detection:
+     * clarity does not know what GitHub is, and a rule that did would be wrong
+     * on a box in a cupboard.
+     * </pre>
+     *
      * <code>string name = 2;</code>
      * @return This builder for chaining.
      */
@@ -437,6 +974,17 @@ public  final class RepoSummary extends
       return this;
     }
     /**
+     * <pre>
+     * Name is the last path segment, and the one part of a label that is never
+     * abbreviated away. Namespace is everything before it, shown dimmed in
+     * front; empty when the path is a single segment. Host is for the subtitle
+     * and is never part of the name.
+     * Derived here rather than in each app so that Android and iOS call the same
+     * repository by the same name. The rule is pure git with no host detection:
+     * clarity does not know what GitHub is, and a rule that did would be wrong
+     * on a box in a cupboard.
+     * </pre>
+     *
      * <code>string name = 2;</code>
      * @param value The bytes for name to set.
      * @return This builder for chaining.
@@ -445,6 +993,178 @@ public  final class RepoSummary extends
         com.google.protobuf.ByteString value) {
       copyOnWrite();
       instance.setNameBytes(value);
+      return this;
+    }
+
+    /**
+     * <code>string namespace = 6;</code>
+     * @return The namespace.
+     */
+    @java.lang.Override
+    public java.lang.String getNamespace() {
+      return instance.getNamespace();
+    }
+    /**
+     * <code>string namespace = 6;</code>
+     * @return The bytes for namespace.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getNamespaceBytes() {
+      return instance.getNamespaceBytes();
+    }
+    /**
+     * <code>string namespace = 6;</code>
+     * @param value The namespace to set.
+     * @return This builder for chaining.
+     */
+    public Builder setNamespace(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setNamespace(value);
+      return this;
+    }
+    /**
+     * <code>string namespace = 6;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearNamespace() {
+      copyOnWrite();
+      instance.clearNamespace();
+      return this;
+    }
+    /**
+     * <code>string namespace = 6;</code>
+     * @param value The bytes for namespace to set.
+     * @return This builder for chaining.
+     */
+    public Builder setNamespaceBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setNamespaceBytes(value);
+      return this;
+    }
+
+    /**
+     * <code>string host = 7;</code>
+     * @return The host.
+     */
+    @java.lang.Override
+    public java.lang.String getHost() {
+      return instance.getHost();
+    }
+    /**
+     * <code>string host = 7;</code>
+     * @return The bytes for host.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getHostBytes() {
+      return instance.getHostBytes();
+    }
+    /**
+     * <code>string host = 7;</code>
+     * @param value The host to set.
+     * @return This builder for chaining.
+     */
+    public Builder setHost(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setHost(value);
+      return this;
+    }
+    /**
+     * <code>string host = 7;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearHost() {
+      copyOnWrite();
+      instance.clearHost();
+      return this;
+    }
+    /**
+     * <code>string host = 7;</code>
+     * @param value The bytes for host to set.
+     * @return This builder for chaining.
+     */
+    public Builder setHostBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setHostBytes(value);
+      return this;
+    }
+
+    /**
+     * <pre>
+     * Alias is what the user renamed this to, on this device only. When set it
+     * replaces the title and the derived namespace/name moves to the subtitle.
+     * </pre>
+     *
+     * <code>string alias = 8;</code>
+     * @return The alias.
+     */
+    @java.lang.Override
+    public java.lang.String getAlias() {
+      return instance.getAlias();
+    }
+    /**
+     * <pre>
+     * Alias is what the user renamed this to, on this device only. When set it
+     * replaces the title and the derived namespace/name moves to the subtitle.
+     * </pre>
+     *
+     * <code>string alias = 8;</code>
+     * @return The bytes for alias.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getAliasBytes() {
+      return instance.getAliasBytes();
+    }
+    /**
+     * <pre>
+     * Alias is what the user renamed this to, on this device only. When set it
+     * replaces the title and the derived namespace/name moves to the subtitle.
+     * </pre>
+     *
+     * <code>string alias = 8;</code>
+     * @param value The alias to set.
+     * @return This builder for chaining.
+     */
+    public Builder setAlias(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setAlias(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Alias is what the user renamed this to, on this device only. When set it
+     * replaces the title and the derived namespace/name moves to the subtitle.
+     * </pre>
+     *
+     * <code>string alias = 8;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearAlias() {
+      copyOnWrite();
+      instance.clearAlias();
+      return this;
+    }
+    /**
+     * <pre>
+     * Alias is what the user renamed this to, on this device only. When set it
+     * replaces the title and the derived namespace/name moves to the subtitle.
+     * </pre>
+     *
+     * <code>string alias = 8;</code>
+     * @param value The bytes for alias to set.
+     * @return This builder for chaining.
+     */
+    public Builder setAliasBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setAliasBytes(value);
       return this;
     }
 
@@ -546,6 +1266,295 @@ public  final class RepoSummary extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The last view's verdicts, so a switcher can show how each repository is
+     * doing without opening it. Absent until a repository has been read once —
+     * which is why these are statuses and not booleans: "not known yet" is a
+     * different thing from "nothing reported".
+     * </pre>
+     *
+     * <code>.clarity.v1.Status ci = 9;</code>
+     * @return The enum numeric value on the wire for ci.
+     */
+    @java.lang.Override
+    public int getCiValue() {
+      return instance.getCiValue();
+    }
+    /**
+     * <pre>
+     * The last view's verdicts, so a switcher can show how each repository is
+     * doing without opening it. Absent until a repository has been read once —
+     * which is why these are statuses and not booleans: "not known yet" is a
+     * different thing from "nothing reported".
+     * </pre>
+     *
+     * <code>.clarity.v1.Status ci = 9;</code>
+     * @param value The ci to set.
+     * @return This builder for chaining.
+     */
+    public Builder setCiValue(int value) {
+      copyOnWrite();
+      instance.setCiValue(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The last view's verdicts, so a switcher can show how each repository is
+     * doing without opening it. Absent until a repository has been read once —
+     * which is why these are statuses and not booleans: "not known yet" is a
+     * different thing from "nothing reported".
+     * </pre>
+     *
+     * <code>.clarity.v1.Status ci = 9;</code>
+     * @return The ci.
+     */
+    @java.lang.Override
+    public dev.ezcd.clarity.proto.Status getCi() {
+      return instance.getCi();
+    }
+    /**
+     * <pre>
+     * The last view's verdicts, so a switcher can show how each repository is
+     * doing without opening it. Absent until a repository has been read once —
+     * which is why these are statuses and not booleans: "not known yet" is a
+     * different thing from "nothing reported".
+     * </pre>
+     *
+     * <code>.clarity.v1.Status ci = 9;</code>
+     * @param value The enum numeric value on the wire for ci to set.
+     * @return This builder for chaining.
+     */
+    public Builder setCi(dev.ezcd.clarity.proto.Status value) {
+      copyOnWrite();
+      instance.setCi(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The last view's verdicts, so a switcher can show how each repository is
+     * doing without opening it. Absent until a repository has been read once —
+     * which is why these are statuses and not booleans: "not known yet" is a
+     * different thing from "nothing reported".
+     * </pre>
+     *
+     * <code>.clarity.v1.Status ci = 9;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearCi() {
+      copyOnWrite();
+      instance.clearCi();
+      return this;
+    }
+
+    /**
+     * <code>.clarity.v1.Status deploy = 10;</code>
+     * @return The enum numeric value on the wire for deploy.
+     */
+    @java.lang.Override
+    public int getDeployValue() {
+      return instance.getDeployValue();
+    }
+    /**
+     * <code>.clarity.v1.Status deploy = 10;</code>
+     * @param value The deploy to set.
+     * @return This builder for chaining.
+     */
+    public Builder setDeployValue(int value) {
+      copyOnWrite();
+      instance.setDeployValue(value);
+      return this;
+    }
+    /**
+     * <code>.clarity.v1.Status deploy = 10;</code>
+     * @return The deploy.
+     */
+    @java.lang.Override
+    public dev.ezcd.clarity.proto.Status getDeploy() {
+      return instance.getDeploy();
+    }
+    /**
+     * <code>.clarity.v1.Status deploy = 10;</code>
+     * @param value The enum numeric value on the wire for deploy to set.
+     * @return This builder for chaining.
+     */
+    public Builder setDeploy(dev.ezcd.clarity.proto.Status value) {
+      copyOnWrite();
+      instance.setDeploy(value);
+      return this;
+    }
+    /**
+     * <code>.clarity.v1.Status deploy = 10;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearDeploy() {
+      copyOnWrite();
+      instance.clearDeploy();
+      return this;
+    }
+
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    @java.lang.Override
+    public java.util.List<dev.ezcd.clarity.proto.FlowSummary> getFlowsList() {
+      return java.util.Collections.unmodifiableList(
+          instance.getFlowsList());
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    @java.lang.Override
+    public int getFlowsCount() {
+      return instance.getFlowsCount();
+    }/**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    @java.lang.Override
+    public dev.ezcd.clarity.proto.FlowSummary getFlows(int index) {
+      return instance.getFlows(index);
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder setFlows(
+        int index, dev.ezcd.clarity.proto.FlowSummary value) {
+      copyOnWrite();
+      instance.setFlows(index, value);
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder setFlows(
+        int index, dev.ezcd.clarity.proto.FlowSummary.Builder builderForValue) {
+      copyOnWrite();
+      instance.setFlows(index,
+          builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder addFlows(dev.ezcd.clarity.proto.FlowSummary value) {
+      copyOnWrite();
+      instance.addFlows(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder addFlows(
+        int index, dev.ezcd.clarity.proto.FlowSummary value) {
+      copyOnWrite();
+      instance.addFlows(index, value);
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder addFlows(
+        dev.ezcd.clarity.proto.FlowSummary.Builder builderForValue) {
+      copyOnWrite();
+      instance.addFlows(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder addFlows(
+        int index, dev.ezcd.clarity.proto.FlowSummary.Builder builderForValue) {
+      copyOnWrite();
+      instance.addFlows(index,
+          builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder addAllFlows(
+        java.lang.Iterable<? extends dev.ezcd.clarity.proto.FlowSummary> values) {
+      copyOnWrite();
+      instance.addAllFlows(values);
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder clearFlows() {
+      copyOnWrite();
+      instance.clearFlows();
+      return this;
+    }
+    /**
+     * <pre>
+     * One entry per deploy target, in the order the tabs show them. A switcher
+     * row draws one glyph each, with no names, and never hides one.
+     * </pre>
+     *
+     * <code>repeated .clarity.v1.FlowSummary flows = 11;</code>
+     */
+    public Builder removeFlows(int index) {
+      copyOnWrite();
+      instance.removeFlows(index);
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:clarity.v1.RepoSummary)
   }
   @java.lang.Override
@@ -566,10 +1575,17 @@ public  final class RepoSummary extends
             "name_",
             "url_",
             "branch_",
+            "namespace_",
+            "host_",
+            "alias_",
+            "ci_",
+            "deploy_",
+            "flows_",
+            dev.ezcd.clarity.proto.FlowSummary.class,
           };
           java.lang.String info =
-              "\u0000\u0004\u0000\u0000\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
-              "\u0003\u0208\u0004\u0208";
+              "\u0000\n\u0000\u0000\u0001\u000b\n\u0000\u0001\u0000\u0001\u0208\u0002\u0208\u0003" +
+              "\u0208\u0004\u0208\u0006\u0208\u0007\u0208\b\u0208\t\f\n\f\u000b\u001b";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       // fall through

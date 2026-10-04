@@ -68,28 +68,10 @@ func TestAdd_SameRepositoryTwiceIsOneEntry(t *testing.T) {
 	}
 }
 
-// TestAdd_NamesTheRepositoryFromItsURL covers the menu label, across the
-// spellings a remote takes.
-func TestAdd_NamesTheRepositoryFromItsURL(t *testing.T) {
-	cases := map[string]string{
-		"https://github.com/ezcdlabs/clarity.git": "clarity",
-		"git@github.com:ezcdlabs/clarity.git":     "clarity",
-		"ssh://git@example.com:2222/team/api.git": "api",
-		"https://gitlab.com/group/sub/deep/thing": "thing",
-	}
-	for url, want := range cases {
-		r := registry.Open(t.TempDir())
-		e, err := r.Add(url, "")
-		if err != nil {
-			t.Fatalf("Add(%q): %v", url, err)
-		}
-		if e.Name != want {
-			t.Errorf("Add(%q).Name = %q, want %q", url, e.Name, want)
-		}
-	}
-}
-
-// TestRegistry_SurvivesRestart is the point of persisting at all.
+// TestRegistry_SurvivesRestart pins the only thing persistence owes: what the
+// user gave us comes back. What a repository is *called* is not stored at all
+// — it is read off the URL by mobile/internal/remote every time, so a change
+// to that rule reaches entries that were added before it.
 func TestRegistry_SurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := registry.Open(dir).Add("https://github.com/a/b.git", "main"); err != nil {
@@ -99,8 +81,11 @@ func TestRegistry_SurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List after reopen: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name != "b" {
-		t.Errorf("the repository did not survive reopening: %+v", entries)
+	if len(entries) != 1 {
+		t.Fatalf("the repository did not survive reopening: %+v", entries)
+	}
+	if entries[0].URL != "https://github.com/a/b.git" || entries[0].Branch != "main" {
+		t.Errorf("came back as %+v", entries[0])
 	}
 }
 
@@ -154,5 +139,99 @@ func TestStorePath_IsPerRepository(t *testing.T) {
 	}
 	if !filepath.IsAbs(r.StorePath(a.ID)) && !filepath.IsLocal(r.StorePath(a.ID)) {
 		t.Errorf("store path escapes the data directory: %q", r.StorePath(a.ID))
+	}
+}
+
+// TestAlias_IsLocalAndClearable covers renaming. The alias lives on this
+// device only — nothing is written to the host — and clearing it has to be
+// possible, because "go back to the real name" is the other half of renaming.
+func TestAlias_IsLocalAndClearable(t *testing.T) {
+	r := registry.Open(t.TempDir())
+	e, err := r.Add("git@github.com:acme/web-platform.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.SetAlias(e.ID, "  The Platform  "); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Get(e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Trimmed, because a name with invisible edges is a name that sorts and
+	// compares wrongly for a reason nobody can see.
+	if got.Alias != "The Platform" {
+		t.Errorf("alias = %q, want %q", got.Alias, "The Platform")
+	}
+
+	if err := r.SetAlias(e.ID, "   "); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = r.Get(e.ID)
+	if got.Alias != "" {
+		t.Errorf("a blank alias left %q behind instead of clearing", got.Alias)
+	}
+}
+
+// TestStatus_IsRememberedAcrossRestart is what lets the switcher say how every
+// repository is doing without opening each one. It is cached rather than
+// derived, so it has to survive the process that cached it.
+func TestStatus_IsRememberedAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	r := registry.Open(dir)
+	e, err := r.Add("git@github.com:acme/monorepo.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := registry.Status{
+		CI:     "passed",
+		Deploy: "failed",
+		Flows: []registry.FlowStatus{
+			{Name: "web", Deploy: "passed"},
+			{Name: "ios", Deploy: "failed"},
+		},
+	}
+	if err := r.SetStatus(e.ID, want); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := registry.Open(dir).Get(e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status == nil {
+		t.Fatal("the cached status did not survive a restart")
+	}
+	if got.Status.CI != "passed" || got.Status.Deploy != "failed" {
+		t.Errorf("status = %+v, want ci passed and deploy failed", got.Status)
+	}
+	if len(got.Status.Flows) != 2 || got.Status.Flows[1].Name != "ios" {
+		t.Errorf("flows = %+v, want web then ios in order", got.Status.Flows)
+	}
+}
+
+// TestStatus_IsAbsentUntilSomethingHasBeenRead pins the distinction a boolean
+// could not carry: a repository nobody has fetched yet has no verdict, which
+// is not the same as a verdict of "nothing reported".
+func TestStatus_IsAbsentUntilSomethingHasBeenRead(t *testing.T) {
+	r := registry.Open(t.TempDir())
+	e, err := r.Add("git@github.com:acme/fresh.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.Get(e.ID)
+	if got.Status != nil {
+		t.Errorf("a never-fetched repository already has a status: %+v", got.Status)
+	}
+}
+
+// TestSetAlias_RejectsAnUnknownRepository keeps a rename from quietly creating
+// an entry out of a stale id.
+func TestSetAlias_RejectsAnUnknownRepository(t *testing.T) {
+	r := registry.Open(t.TempDir())
+	if err := r.SetAlias("nope", "x"); err == nil {
+		t.Error("renaming a repository that is not tracked succeeded")
 	}
 }

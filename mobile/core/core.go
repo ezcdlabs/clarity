@@ -23,6 +23,7 @@ import (
 	"github.com/ezcdlabs/clarity/mobile/internal/keys"
 	"github.com/ezcdlabs/clarity/mobile/internal/present"
 	"github.com/ezcdlabs/clarity/mobile/internal/registry"
+	"github.com/ezcdlabs/clarity/mobile/internal/remote"
 	v1 "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/cache"
@@ -109,11 +110,44 @@ func (c *Client) ListRepos() ([]byte, error) {
 	}
 	out := &v1.RepoList{GeneratedUnixSeconds: time.Now().Unix()}
 	for _, e := range entries {
-		out.Repos = append(out.Repos, &v1.RepoSummary{
-			Id: e.ID, Name: e.Name, Url: e.URL, Branch: e.Branch,
-		})
+		out.Repos = append(out.Repos, summary(e))
 	}
 	return proto.Marshal(out)
+}
+
+// Rename gives a repository a different title on this device. A blank name
+// clears the rename and the URL's own name comes back.
+func (c *Client) Rename(repoID, name string) error {
+	return c.repos.SetAlias(repoID, name)
+}
+
+// summary labels a tracked repository for a list.
+//
+// The name, namespace and host are derived here rather than stored, so a
+// change to the rule applies to every repository already added instead of only
+// to the next one. The alias and the cached verdicts are facts and come from
+// the registry.
+func summary(e registry.Entry) *v1.RepoSummary {
+	ref := remote.Parse(e.URL)
+	out := &v1.RepoSummary{
+		Id:        e.ID,
+		Name:      ref.Name,
+		Namespace: ref.Namespace,
+		Host:      ref.Host,
+		Alias:     e.Alias,
+		Url:       e.URL,
+		Branch:    e.Branch,
+	}
+	if e.Status != nil {
+		out.Ci = present.Status(e.Status.CI)
+		out.Deploy = present.Status(e.Status.Deploy)
+		for _, f := range e.Status.Flows {
+			out.Flows = append(out.Flows, &v1.FlowSummary{
+				Name: f.Name, Deploy: present.Status(f.Deploy),
+			})
+		}
+	}
+	return out
 }
 
 // Sync fetches a repository. Blocking: the caller runs it off the UI thread,
@@ -158,7 +192,21 @@ func (c *Client) View(repoID string, limit int) ([]byte, error) {
 	// The same derivation the CLI runs, from the same config — so a repo
 	// reads the same on a phone as it does in a terminal.
 	view := core.DeriveView(snap, cfg.LeadTimeMode(), cfg.Deploys())
+	c.remember(repoID, view)
 	return proto.Marshal(present.View(view, time.Now()))
+}
+
+// remember writes down what a view said, so a switcher can label every
+// repository without opening each one.
+//
+// Best effort on purpose: a label in a list is not worth failing the view the
+// user actually asked for.
+func (c *Client) remember(repoID string, view core.View) {
+	st := registry.Status{CI: view.Header.CI, Deploy: view.Header.Deploy}
+	for _, f := range view.Flows {
+		st.Flows = append(st.Flows, registry.FlowStatus{Name: f.Name, Deploy: f.Deploy})
+	}
+	_ = c.repos.SetStatus(repoID, st)
 }
 
 // open prepares the git store for a tracked repository.

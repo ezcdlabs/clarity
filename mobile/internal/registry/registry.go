@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ezcdlabs/clarity/mobile/internal/remote"
 )
 
 // Entry is one tracked repository.
@@ -27,9 +29,31 @@ type Entry struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
 	Branch string `json:"branch"`
-	// Name is what the list shows. Derived from the URL, because asking the
-	// user to name a repo they have just pasted is a step that earns nothing.
-	Name string `json:"name"`
+	// Alias is a rename, and it lives on this device only — nothing is written
+	// to the host, and another device showing the same repository shows the
+	// name the URL gives it. Empty means no rename.
+	Alias string `json:"alias,omitempty"`
+
+	// Status is the last view's verdict, kept so a switcher can say how every
+	// repository is doing without opening each one.
+	//
+	// A pointer, and absent until something has actually been read: "nobody
+	// has fetched this yet" is a different thing from "nothing was reported",
+	// and a value type could not tell them apart.
+	Status *Status `json:"status,omitempty"`
+}
+
+// Status is what the last view said, in the vocabulary the events use.
+type Status struct {
+	CI     string       `json:"ci"`
+	Deploy string       `json:"deploy"`
+	Flows  []FlowStatus `json:"flows,omitempty"`
+}
+
+// FlowStatus is one deploy target's verdict, in the order the tabs show them.
+type FlowStatus struct {
+	Name   string `json:"name"`
+	Deploy string `json:"deploy"`
 }
 
 // Registry is the set of tracked repositories, persisted under a directory.
@@ -60,7 +84,6 @@ func (r *Registry) Add(rawURL, branch string) (Entry, error) {
 		ID:     id(rawURL),
 		URL:    rawURL,
 		Branch: branch,
-		Name:   nameFrom(rawURL),
 	}
 
 	entries, err := r.List()
@@ -110,9 +133,14 @@ func (r *Registry) List() ([]Entry, error) {
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return nil, fmt.Errorf("read repositories: %w", err)
 	}
+	// Ordered by the name a list will show, which is derived rather than
+	// stored — the registry keeps facts, and what a repository is called is
+	// read off its URL every time so a change to that rule reaches entries
+	// already added.
 	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Name != entries[j].Name {
-			return entries[i].Name < entries[j].Name
+		a, b := remote.Parse(entries[i].URL), remote.Parse(entries[j].URL)
+		if a.Name != b.Name {
+			return a.Name < b.Name
 		}
 		return entries[i].ID < entries[j].ID
 	})
@@ -176,15 +204,33 @@ func normalise(rawURL string) string {
 
 // nameFrom is the last path segment — "api" from any of the ways that repo
 // can be addressed.
-func nameFrom(rawURL string) string {
-	s := normalise(rawURL)
-	if i := strings.LastIndexAny(s, "/:"); i >= 0 && i+1 < len(s) {
-		s = s[i+1:]
+// SetAlias renames a repository on this device, or clears the rename when the
+// name is blank. Clearing has to be possible: "go back to the real name" is
+// the other half of renaming.
+func (r *Registry) SetAlias(id, alias string) error {
+	return r.update(id, func(e *Entry) { e.Alias = strings.TrimSpace(alias) })
+}
+
+// SetStatus records what the last view said about a repository.
+func (r *Registry) SetStatus(id string, s Status) error {
+	return r.update(id, func(e *Entry) { e.Status = &s })
+}
+
+// update applies a change to one entry and writes the registry back.
+func (r *Registry) update(id string, apply func(*Entry)) error {
+	entries, err := r.List()
+	if err != nil {
+		return err
 	}
-	if s == "" {
-		return rawURL
+	for i := range entries {
+		if entries[i].ID == id {
+			apply(&entries[i])
+			return r.save(entries)
+		}
 	}
-	return s
+	// Quietly creating an entry from a stale id would turn a rename into an
+	// add, which is not what anybody asked for.
+	return fmt.Errorf("no repository with id %q", id)
 }
 
 // looksLikeGitRemote rejects what is obviously not a remote, so a mistyped

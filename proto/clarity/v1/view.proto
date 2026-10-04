@@ -192,7 +192,41 @@ message RepoSummary {
   // ID is derived from the URL, so the same repository is the same entry
   // across launches and devices.
   string id = 1;
+
+  // Name is the last path segment, and the one part of a label that is never
+  // abbreviated away. Namespace is everything before it, shown dimmed in
+  // front; empty when the path is a single segment. Host is for the subtitle
+  // and is never part of the name.
+  //
+  // Derived here rather than in each app so that Android and iOS call the same
+  // repository by the same name. The rule is pure git with no host detection:
+  // clarity does not know what GitHub is, and a rule that did would be wrong
+  // on a box in a cupboard.
   string name = 2;
+  string namespace = 6;
+  string host = 7;
+
+  // Alias is what the user renamed this to, on this device only. When set it
+  // replaces the title and the derived namespace/name moves to the subtitle.
+  string alias = 8;
+
   string url = 3;
   string branch = 4;
+
+  // The last view's verdicts, so a switcher can show how each repository is
+  // doing without opening it. Absent until a repository has been read once —
+  // which is why these are statuses and not booleans: "not known yet" is a
+  // different thing from "nothing reported".
+  Status ci = 9;
+  Status deploy = 10;
+
+  // One entry per deploy target, in the order the tabs show them. A switcher
+  // row draws one glyph each, with no names, and never hides one.
+  repeated FlowSummary flows = 11;
+}
+
+// FlowSummary is a deploy target's last known verdict.
+message FlowSummary {
+  string name = 1;
+  Status deploy = 2;
 }

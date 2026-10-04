@@ -235,3 +235,105 @@ func TestElapsed(t *testing.T) {
 		})
 	}
 }
+
+// TestClient_ViewRemembersWhatItSaw is what lets a switcher show how every
+// repository is doing without opening each one. Reading a view is the only
+// moment the answer is known, so it is the moment to write it down.
+func TestClient_ViewRemembersWhatItSaw(t *testing.T) {
+	remoteRepo := gittest.NewRemote(t)
+	clone := remoteRepo.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+	head := clone.LogBranch("main")[0].Hash
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
+		Stage: "ci", Status: "passed", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+
+	client, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := client.AddRepo("file://"+remoteRepo.URL(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before := repoByID(t, client, id)
+	if before.Ci != v1.Status_STATUS_UNSPECIFIED {
+		t.Errorf("a never-read repository already has a verdict: %v", before.Ci)
+	}
+
+	if err := client.Sync(id, 0, 60); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if _, err := client.View(id, 50); err != nil {
+		t.Fatalf("view: %v", err)
+	}
+
+	after := repoByID(t, client, id)
+	if after.Ci != v1.Status_STATUS_PASSED {
+		t.Errorf("cached ci = %v, want PASSED", after.Ci)
+	}
+	if len(after.Flows) == 0 {
+		t.Error("no flow verdicts cached; the switcher has nothing to draw per target")
+	}
+}
+
+// TestClient_RenameIsLocalAndReversible covers the rename sheet. The alias sits
+// beside the derived name rather than replacing it, so clearing it can put the
+// real name back.
+func TestClient_RenameIsLocalAndReversible(t *testing.T) {
+	client, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := client.AddRepo("git@github.com:acme/web-platform.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := repoByID(t, client, id)
+	if got.Name != "web-platform" || got.Namespace != "acme" || got.Host != "github.com" {
+		t.Fatalf("labels = %q / %q / %q", got.Namespace, got.Name, got.Host)
+	}
+
+	if err := client.Rename(id, "The Platform"); err != nil {
+		t.Fatal(err)
+	}
+	got = repoByID(t, client, id)
+	if got.Alias != "The Platform" {
+		t.Errorf("alias = %q", got.Alias)
+	}
+	if got.Name != "web-platform" {
+		t.Errorf("the derived name was overwritten by the rename: %q", got.Name)
+	}
+
+	if err := client.Rename(id, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got = repoByID(t, client, id); got.Alias != "" {
+		t.Errorf("clearing the rename left %q", got.Alias)
+	}
+}
+
+func repoByID(t *testing.T, client *mobilecore.Client, id string) *v1.RepoSummary {
+	t.Helper()
+	raw, err := client.ListRepos()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var list v1.RepoList
+	if err := proto.Unmarshal(raw, &list); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range list.Repos {
+		if r.Id == id {
+			return r
+		}
+	}
+	t.Fatalf("no repository %q in the list", id)
+	return nil
+}

@@ -26,10 +26,19 @@ mkdir -p "$(dirname "$OUT")"
 # -javapkg puts the generated classes under the app's own namespace. Without
 # it they land in a top-level `core` package, which collides with anything else
 # bound into the same app and reads like a stray dependency.
+# gomobile shells out to gobind, which has to be on PATH. Build the pinned one
+# from go.mod rather than trusting whatever a developer happens to have
+# installed — a stray gobind in ~/go/bin is exactly why this passed on a laptop
+# and could never have passed anywhere clean.
+GOBIND="$(mktemp -d)"
+trap 'rm -rf "$GOBIND"' EXIT
+go build -o "$GOBIND/gobind" golang.org/x/mobile/cmd/gobind
+export PATH="$GOBIND:$PATH"
+
 # `go tool`, not a gomobile on PATH: the version is then pinned in go.mod with
 # everything else, and CI and a laptop cannot be building with different ones.
 echo "binding mobile/core -> $OUT"
-exec go tool gomobile bind \
+go tool gomobile bind \
   -target=android \
   -androidapi="$API" \
   -javapkg=dev.ezcd.clarity \

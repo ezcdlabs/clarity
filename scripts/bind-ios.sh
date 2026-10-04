@@ -18,12 +18,21 @@ fi
 rm -rf "$OUT"
 mkdir -p "$(dirname "$OUT")"
 
+# gomobile shells out to gobind, which has to be on PATH. Build the pinned one
+# from go.mod rather than trusting whatever a developer happens to have
+# installed — a stray gobind in ~/go/bin is exactly why this passed on a laptop
+# and could never have passed anywhere clean.
+GOBIND="$(mktemp -d)"
+trap 'rm -rf "$GOBIND"' EXIT
+go build -o "$GOBIND/gobind" golang.org/x/mobile/cmd/gobind
+export PATH="$GOBIND:$PATH"
+
 # The framework is ClarityCore, not Clarity, because the app target is Clarity
 # and a module cannot share a name with the target that imports it. -prefix is
 # the iOS counterpart of Android's -javapkg: without it the generated classes
 # are CoreClient and CoreNew, which read like something else's.
 echo "binding mobile/core -> $OUT"
-exec go tool gomobile bind \
+go tool gomobile bind \
   -target=ios,iossimulator \
   -prefix=Clarity \
   ${TAGS:+-tags "$TAGS"} \

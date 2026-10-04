@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch window before Android 12, which has no splash screen API: the
+     window background is the only thing that paints between the tap and the
+     first frame. Navy to the edges, with the mark centred — the same thing the
+     v31 splash does, by the only means available here. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brand_navy" />
+    <item android:gravity="center">
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher_foreground" />
+    </item>
+</layer-list>

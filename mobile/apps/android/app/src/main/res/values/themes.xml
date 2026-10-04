@@ -10,4 +10,14 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- The theme the launcher starts us in. It exists only to paint the brand
+         while the process starts; MainActivity swaps to Theme.Clarity before it
+         draws anything, so this never reaches the app itself.
+
+         Brand navy in both light and dark, deliberately: a splash is the mark,
+         and the mark has one colour. -->
+    <style name="Theme.Clarity.Splash" parent="Theme.Clarity">
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
 </resources>

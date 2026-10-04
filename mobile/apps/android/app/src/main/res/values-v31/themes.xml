@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12 took the splash over: it draws the icon itself, animates it,
+         and ignores a window background set for the purpose. These are the
+         attributes it does read.
+
+         Only this style is redefined here, not Theme.Clarity — night mode
+         outranks platform version when Android picks a resource folder, so a
+         theme duplicated into values-v31 would lose its dark variant on every
+         modern device. -->
+    <style name="Theme.Clarity.Splash" parent="Theme.Clarity">
+        <item name="android:windowSplashScreenBackground">@color/brand_navy</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+    </style>
+</resources>

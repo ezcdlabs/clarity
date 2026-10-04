@@ -1359,16 +1359,66 @@ FFI-friendly shape into a call on `mobile/internal/*`, which is where behaviour
 lives and where it can be tested without a device. Generated protobuf is
 committed, in Go and in each app's own language, the same way `proto/gen/go` is.
 
-So are the app icons. The mark is a check — the TUI's ✓, the glyph the whole
-product exists to answer — drawn as code in `mobile/internal/icon` and written
-out at every size both platforms want by `go run ./mobile/tools/gen-icons`. It
-is generated rather than drawn in an editor so that one definition serves both
-platforms, a change to it is a readable diff rather than a binary one, and the
-rules that are easy to get wrong by hand are assertions instead: the adaptive
-foreground stays inside the 66% circle Android guarantees will survive a
-launcher's mask, the legacy icons are pre-masked because Android 7 does not mask
-them itself, and the iOS icon is fully opaque because iOS rejects one that is
-not.
+So are the app icons, from the ezcd mark in `mobile/internal/icon` — written out
+at every size both platforms want by `go run ./mobile/tools/gen-icons`.
+
+### The mark is geometry, not a file
+
+Three identical checks offset along one axis on a navy disc: white at the back,
+then yellow, then blue in front. The two at the back are clipped to the disc —
+the white one runs off its lower left and is cut there — while the blue one is
+allowed past the edge at the top right. That asymmetry is the composition rather
+than an accident of drawing: the mark reads as layers, and layers need something
+to be in front of.
+
+The constants came off the original artwork by fitting the *edges* of each arm,
+not by finding its corners. Antialiasing erodes a sharp corner by a pixel or
+two, so corners read as consistently inside where the geometry really is, while
+a long straight edge fits exactly. Both arms turn out to sit at precisely 45°,
+the ends are cut square, the elbow is a mitre, and the checks are 33px apart on
+a 180px mark.
+
+The one thing that could not have been got by eye is the **moat**: every check
+carries a navy clearance that cuts the one behind it short. Two parallel arms
+are already far enough apart to show navy between them, but where a back check's
+long arm passes behind a front check's short arm they would meet and merge into
+a single shape. Modelling the moat took the reconstruction from 3.4% of pixels
+wrong to 1.6% — the difference between three checks that happen to be near each
+other and a stack that reads as layers.
+
+Holding it as geometry rather than as a PNG is what lets one definition serve an
+Android adaptive foreground, two legacy densities, an iOS app icon and a splash
+screen, and makes a change to it a readable diff.
+
+### Each format wants the mark differently
+
+Three grounds, because the formats disagree about what may be behind the mark.
+Transparent outside the disc is the mark as the brand uses it. Navy to the edges
+is for anywhere transparency is refused — an iOS app icon is rejected outright
+if any pixel is see-through — and the navy reaching the corners is the same navy
+the disc is made of. Ink only, with every navy pixel including the moats left
+transparent, is what an adaptive icon's foreground is: Android paints the
+background layer and moves it independently, so a foreground carrying its own
+disc would be a second navy that cannot follow the first.
+
+The adaptive foreground is the one place the blue check is clipped like the
+others, and the one place sizing is a judgement rather than a rule. Android
+guarantees only the inner 66dp of a 108dp canvas, but it shows 72dp — and the
+strict safe zone is for a mark with a subject floating in space, which this is
+not. Sized to it, the mark sat adrift in a ring of empty navy and was barely
+legible at 48dp, which is the size that decides whether an icon works. So the
+disc is mapped onto the mask instead: the mask plays the part the disc plays in
+the mark, a tighter launcher crops navy the way a tighter mask crops any
+circular logo, and the blue overflow goes — because a check cannot be seen
+escaping the very thing that is cutting it.
+
+A splash screen is the mark with the navy pulled out to the screen. Android 12
+took splash screens over and ignores a window background set for the purpose, so
+there are two: a layer-list for the launch theme on older versions, and the v31
+attributes above it. Only the launch style is duplicated into `values-v31`, not
+the app's theme — night mode outranks platform version when Android picks a
+resource folder, so a theme copied there would lose its dark variant on every
+modern device.
 
 The bound archive is not committed. `scripts/bind-android.sh` produces a 33 MB
 `.aar` of per-ABI native code; checking it in would make every bind a binary

@@ -45,6 +45,10 @@ class MainActivity : ComponentActivity() {
     private val viewModel: ClarityViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The launcher started us in the splash theme; this is where it stops.
+        // Before super.onCreate, because that is when the window is created and
+        // a theme set after it has no window left to apply to.
+        setTheme(R.style.Theme_Clarity)
         super.onCreate(savedInstanceState)
         // Default arguments, deliberately: they pick the system bar icon colours
         // from the system's own dark-mode setting, which is now the same thing

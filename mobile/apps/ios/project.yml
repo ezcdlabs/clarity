@@ -25,6 +25,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.ezcd.clarity
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        # Navy to the edges while the app starts, matching Android's splash and
+        # the disc the mark is made of. The colour comes from the asset
+        # catalogue so it is the one gen-icons wrote, not a second copy of it.
+        INFOPLIST_KEY_UILaunchScreen_UIColorName: LaunchBackground
         INFOPLIST_KEY_CFBundleDisplayName: clarity
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"

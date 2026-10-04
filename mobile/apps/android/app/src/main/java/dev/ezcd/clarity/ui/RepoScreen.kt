@@ -47,6 +47,23 @@ private val iconGap = 10.dp
 private val subjectColumn = rowPadding + iconWidth + iconGap
 
 /**
+ * The vertical rhythm, which is the only thing saying what belongs to what.
+ *
+ * The terminal separates a deploy from the one above it with a blank line and
+ * binds it to its own commits by adjacency. On a phone those two gaps have to
+ * be visibly different sizes or the subheader floats between the batch above
+ * and the batch below, attached to neither — which is exactly how it read.
+ *
+ * So: a commit's own two lines touch — no gap at all, they are one commit —
+ * commits in a batch are a small gap apart, and the gap before a deploy line is
+ * bigger than both put together. The gap *after* it is the smallest on the
+ * screen, because what follows it is what it describes.
+ */
+private val commitGap = 14.dp
+private val batchGapAbove = 30.dp
+private val batchGapBelow = 3.dp
+
+/**
  * One repository, in the same three-band shape the TUI draws: what has landed,
  * what is green, and what has shipped.
  *
@@ -107,17 +124,17 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
             flow?.sectionsList?.forEach { section ->
                 item(key = "s-${section.kind}") { SectionHeader(section) }
 
-                if (section.commitsCount == 0 && section.batchesCount == 0) {
-                    item(key = "e-${section.kind}") { EmptyRow(emptyLine(section.kind)) }
-                }
                 items(section.commitsCount, key = { i -> section.getCommits(i).sha }) { i ->
                     CommitRow(section.getCommits(i), state, model)
                 }
                 section.batchesList.forEachIndexed { b, batch ->
-                    if (batch.weekLabel.isNotEmpty()) {
+                    val divided = batch.weekLabel.isNotEmpty()
+                    if (divided) {
                         item(key = "w-${section.kind}-$b") { WeekDivider(batch.weekLabel) }
                     }
-                    item(key = "b-${section.kind}-$b") { BatchHeader(batch, state, model) }
+                    item(key = "b-${section.kind}-$b") {
+                        BatchHeader(batch, state, model, tight = divided || b == 0)
+                    }
                     items(batch.commitsCount, key = { i -> batch.getCommits(i).sha }) { i ->
                         CommitRow(batch.getCommits(i), state, model)
                     }
@@ -209,19 +226,12 @@ private fun Badge(label: String, status: Status, modifier: Modifier = Modifier) 
 private fun broken(view: View?): Boolean =
     view != null && (view.ci == Status.STATUS_FAILED || view.deploy == Status.STATUS_FAILED)
 
-/** What an empty band says, so the frame still reads as an answer. */
-private fun emptyLine(kind: SectionKind): String = when (kind) {
-    SectionKind.SECTION_KIND_HEAD -> "nothing waiting on CI"
-    SectionKind.SECTION_KIND_CI_PASSED -> "nothing waiting to deploy"
-    SectionKind.SECTION_KIND_DEPLOYED -> "nothing deployed yet"
-    else -> ""
-}
-
 /**
  * The lifecycle accents the TUI uses: HEAD neutral, CI Passed yellow, Deployed
  * blue. The colour marks the band, not a status — a yellow CI Passed header
  * does not mean anything is wrong.
  */
+@Composable
 private fun accent(kind: SectionKind): Color = when (kind) {
     SectionKind.SECTION_KIND_CI_PASSED -> Ink.yellow
     SectionKind.SECTION_KIND_DEPLOYED -> Ink.blue
@@ -230,7 +240,7 @@ private fun accent(kind: SectionKind): Color = when (kind) {
 
 @Composable
 private fun SectionHeader(section: Section) {
-    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = batchGapAbove)) {
         Row(
             Modifier.fillMaxWidth().padding(start = subjectColumn, end = rowPadding, bottom = 3.dp),
             verticalAlignment = Alignment.Bottom,
@@ -262,7 +272,12 @@ private fun SectionHeader(section: Section) {
 @Composable
 private fun WeekDivider(label: String) {
     Row(
-        Modifier.fillMaxWidth().padding(start = subjectColumn, end = rowPadding, top = 16.dp, bottom = 2.dp),
+        Modifier.fillMaxWidth().padding(
+            start = subjectColumn,
+            end = rowPadding,
+            top = batchGapAbove,
+            bottom = 0.dp,
+        ),
         horizontalArrangement = Arrangement.End,
     ) {
         Text(label, color = Ink.dim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
@@ -270,7 +285,7 @@ private fun WeekDivider(label: String) {
 }
 
 @Composable
-private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
+private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel, tight: Boolean) {
     val colour = when (batch.status) {
         Status.STATUS_FAILED -> Ink.red
         Status.STATUS_STARTED -> Ink.dim
@@ -293,8 +308,11 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
         modifier = Modifier.fillMaxWidth().padding(
             start = subjectColumn,
             end = rowPadding,
-            top = 10.dp,
-            bottom = 2.dp,
+            // Something already separated this one: the section rule it opens,
+            // or the week divider naming it. Spending the gap twice would push
+            // the subheader away from the commits it describes.
+            top = if (tight) batchGapBelow else batchGapAbove,
+            bottom = batchGapBelow,
         ),
     )
 }
@@ -314,17 +332,26 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel) {
  */
 @Composable
 private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 4.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = rowPadding, end = rowPadding, bottom = commitGap),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // One mark, not two. Whether this commit shipped is said by the band
             // and the batch it sits in, which is why the terminal has only ever
             // drawn the CI result here.
-            StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
+            StatusGlyph(
+                commit.ci,
+                stale = commit.ciStale,
+                tight = true,
+                modifier = Modifier.width(iconWidth),
+            )
 
             Text(
                 commit.author,
                 color = Ink.dim,
                 fontSize = 12.sp,
+                lineHeight = 14.sp,
+                style = Tight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = iconGap),
@@ -352,9 +379,16 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
             commit.subject,
             color = Ink.text,
             fontSize = 14.sp,
+            // Tighter than the default for this size: a wrapped subject is one
+            // sentence, and default leading opens a gap inside it wide enough to
+            // compete with the gap between two commits.
+            lineHeight = 17.sp,
+            style = Tight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = iconWidth + iconGap, top = 1.dp),
+            // Nothing between the two lines. They are one commit, and the only
+            // gap on this row that means anything is the one below it.
+            modifier = Modifier.padding(start = iconWidth + iconGap),
         )
     }
 }

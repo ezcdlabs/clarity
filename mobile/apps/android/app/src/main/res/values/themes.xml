@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Only exists to stop a light flash before Compose draws: clarity is a
-         dark UI in a terminal and a dark UI on a phone. Every colour past this
-         point is decided in Compose, not here. -->
-    <style name="Theme.Clarity" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#101010</item>
-        <item name="android:statusBarColor">#101010</item>
-        <item name="android:navigationBarColor">#101010</item>
+    <!-- The light theme, with res/values-night overriding it. This only has to
+         paint the window before Compose draws its first frame and the ground
+         behind the system bars — everything else is decided in Compose. It
+         still matters: a hardcoded dark window under a light system tray is
+         what made the status bar unreadable. -->
+    <style name="Theme.Clarity" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FCFCFC</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

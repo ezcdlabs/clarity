@@ -4,6 +4,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import dev.ezcd.clarity.proto.Status
 
 /**
@@ -29,13 +30,18 @@ fun StatusGlyph(
     status: Status,
     prominent: Boolean = false,
     stale: Boolean = false,
+    tight: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val (mark, colour) = if (prominent) summary(status) else row(status, stale)
-    Text(mark, style = Mono, color = colour, modifier = modifier)
+    // In a commit row the glyph shares a line with the author, so it has to give
+    // up its font padding too or it sets the row's height on its own.
+    val style = if (tight) Mono.merge(Tight).copy(lineHeight = 14.sp) else Mono
+    Text(mark, style = style, color = colour, modifier = modifier)
 }
 
 /** The header table: green, red, or nothing resolved yet. */
+@Composable
 private fun summary(status: Status): Pair<String, Color> = when (status) {
     Status.STATUS_PASSED -> "✓" to Ink.green
     Status.STATUS_FAILED -> "✗" to Ink.red
@@ -43,6 +49,7 @@ private fun summary(status: Status): Pair<String, Color> = when (status) {
 }
 
 /** The row table: shape carries the meaning, red carries the alarm. */
+@Composable
 private fun row(status: Status, stale: Boolean): Pair<String, Color> = when (status) {
     Status.STATUS_PASSED -> "✓" to Ink.dim
     Status.STATUS_FAILED -> "✗" to if (stale) Ink.dim else Ink.red

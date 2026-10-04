@@ -130,18 +130,10 @@ fun BackArrow(onClick: () -> Unit) {
 fun ErrorBar(error: String?, onDismiss: () -> Unit) {
     if (error == null) return
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFF2A1416)).padding(start = 12.dp),
+        Modifier.fillMaxWidth().background(Ink.errorBg).padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(error, color = Ink.red, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(vertical = 10.dp))
         TextButton(onClick = onDismiss) { Text("dismiss", color = Ink.dim, fontSize = 13.sp) }
-    }
-}
-
-/** Space where a section has nothing in it, so the frame still reads. */
-@Composable
-fun EmptyRow(text: String) {
-    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(text, color = Ink.line, fontSize = 13.sp)
     }
 }

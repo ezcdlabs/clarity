@@ -46,6 +46,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Default arguments, deliberately: they pick the system bar icon colours
+        // from the system's own dark-mode setting, which is now the same thing
+        // the palette follows. Forcing a style here is what made the tray
+        // unreadable — dark icons drawn over a window we had painted dark.
         enableEdgeToEdge()
         setContent {
             ClarityTheme {

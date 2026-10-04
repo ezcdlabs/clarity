@@ -1190,6 +1190,31 @@ the boundary is — so the walk in `mobile/internal/gitsource/walk.go` stops the
 deliberately and reports the history as truncated, which is the same thing the
 TUI's commit limit does.
 
+### Light mode, for the reason the terminal already had it
+
+The TUI works on a light terminal without a line of code about light terminals,
+because it never picks a colour: it asks for ANSI 1/2/3/8/12 and the emulator
+answers. The phone had the same structure — nine roles, named — but only one
+answer, so it stayed dark under a light system and left the status bar
+unreadable.
+
+So there are two answers now, behind a composition local. The light palette is
+not the dark one lightened: a pastel green legible on near-black vanishes on
+near-white, so each role is answered again at a weight that carries against a
+light ground, which is what a terminal theme does when it maps the same codes
+for a light profile.
+
+Three things had to agree for the system bars, and only all three together fix
+it: the window background follows the system (a `values-night` override rather
+than a hardcoded dark), the activity's theme parent follows it too, and
+`enableEdgeToEdge` picks the bar icon colours from the system's own dark-mode
+setting — which was right all along, and was drawing dark icons over a window
+painted dark.
+
+Nothing may reach for a literal colour. Anything that does is a thing that
+looks wrong under one of the two themes, and the only way to find out is to be
+holding the phone.
+
 ### The phone follows the terminal's two colour tables
 
 Not one table. The header is the summary and earns the colour the per-row icons

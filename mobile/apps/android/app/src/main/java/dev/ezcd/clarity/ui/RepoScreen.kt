@@ -34,6 +34,7 @@ import dev.ezcd.clarity.AppState
 import dev.ezcd.clarity.ClarityModel
 import dev.ezcd.clarity.proto.Batch
 import dev.ezcd.clarity.proto.Commit
+import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.Section
 import dev.ezcd.clarity.proto.SectionKind
 import dev.ezcd.clarity.proto.Status
@@ -78,7 +79,8 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
     val flows = view?.flowsList.orEmpty()
     val flow = flows.getOrNull(tab.coerceAtMost((flows.size - 1).coerceAtLeast(0)))
 
-    Column(Modifier.fillMaxSize().background(Ink.bg)) {
+    // Chrome down to the strip, then the sheet the commits are read on.
+    Column(Modifier.fillMaxSize().background(Ink.surface)) {
         TopBar(
             title = state.repo?.name ?: view?.repoName ?: "clarity",
             // The name goes red when something is broken, as it does in the
@@ -100,55 +102,67 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
         if (view != null) {
             Header(view, tab) { tab = it }
         }
+        // On the chrome, not the sheet: a fetch belongs to the bar that started
+        // it, and the sheet's turned corners would clip the ends off it.
         if (state.syncing) {
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = Ink.blue, trackColor = Ink.line)
         }
-        ErrorBar(state.error) { model.dismissError() }
 
-        if (view == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    when {
-                        state.syncing -> "Fetching…"
-                        state.repos.isEmpty() -> "Add a repository to begin."
-                        else -> "Nothing fetched yet."
-                    },
-                    color = Ink.dim,
-                    fontSize = 14.sp,
-                )
+        Sheet {
+            Column(Modifier.fillMaxSize()) {
+                ErrorBar(state.error) { model.dismissError() }
+
+                if (view == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            when {
+                                state.syncing -> "Fetching…"
+                                state.repos.isEmpty() -> "Add a repository to begin."
+                                else -> "Nothing fetched yet."
+                            },
+                            color = Ink.dim,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    return@Column
+                }
+
+                CommitList(view, flow, state, model)
             }
-            return@Column
         }
+    }
+}
 
-        LazyColumn(Modifier.fillMaxSize()) {
+@Composable
+private fun CommitList(view: View, flow: Flow?, state: AppState, model: ClarityModel) {
+    LazyColumn(Modifier.fillMaxSize()) {
             flow?.sectionsList?.forEach { section ->
-                item(key = "s-${section.kind}") { SectionHeader(section) }
+            item(key = "s-${section.kind}") { SectionHeader(section) }
 
-                items(section.commitsCount, key = { i -> section.getCommits(i).sha }) { i ->
-                    CommitRow(section.getCommits(i), state, model)
+            items(section.commitsCount, key = { i -> section.getCommits(i).sha }) { i ->
+                CommitRow(section.getCommits(i), state, model)
+            }
+            section.batchesList.forEachIndexed { b, batch ->
+                val divided = batch.weekLabel.isNotEmpty()
+                if (divided) {
+                    item(key = "w-${section.kind}-$b") { WeekDivider(batch.weekLabel) }
                 }
-                section.batchesList.forEachIndexed { b, batch ->
-                    val divided = batch.weekLabel.isNotEmpty()
-                    if (divided) {
-                        item(key = "w-${section.kind}-$b") { WeekDivider(batch.weekLabel) }
-                    }
-                    item(key = "b-${section.kind}-$b") {
-                        BatchHeader(batch, state, model, tight = divided || b == 0)
-                    }
-                    items(batch.commitsCount, key = { i -> batch.getCommits(i).sha }) { i ->
-                        CommitRow(batch.getCommits(i), state, model)
-                    }
+                item(key = "b-${section.kind}-$b") {
+                    BatchHeader(batch, state, model, tight = divided || b == 0)
+                }
+                items(batch.commitsCount, key = { i -> batch.getCommits(i).sha }) { i ->
+                    CommitRow(batch.getCommits(i), state, model)
                 }
             }
-            if (view.truncated) {
-                item {
-                    Text(
-                        "Showing the most recent ${view.limit} commits.",
-                        color = Ink.dim,
-                        fontSize = 12.sp,
-                        modifier = Modifier.fillMaxWidth().padding(rowPadding),
-                    )
-                }
+            }
+        if (view.truncated) {
+            item {
+            Text(
+                "Showing the most recent ${view.limit} commits.",
+                color = Ink.dim,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().padding(rowPadding),
+            )
             }
         }
     }
@@ -189,21 +203,21 @@ private fun Header(view: View, tab: Int, onPick: (Int) -> Unit) {
         Text("deploy:", color = Ink.dim, fontSize = 13.sp)
         flows.forEachIndexed { i, f ->
             Row(
-                Modifier
-                    .background(if (i == tab) Ink.bg else Color.Transparent)
-                    .clickable { onPick(i) }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            Modifier
+                .background(if (i == tab) Ink.bg else Color.Transparent)
+                .clickable { onPick(i) }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                // Undeclared: seen in the events but absent from .ezcd.json.
-                Text(
-                    if (f.undeclared) "${f.name} ?" else f.name,
-                    color = if (i == tab) Ink.text else Ink.dim,
-                    fontSize = 13.sp,
-                )
-                // Status sits after the name, matching `ci: ✓`.
-                StatusGlyph(f.deploy, prominent = true)
+            // Undeclared: seen in the events but absent from .ezcd.json.
+            Text(
+                if (f.undeclared) "${f.name} ?" else f.name,
+                color = if (i == tab) Ink.text else Ink.dim,
+                fontSize = 13.sp,
+            )
+            // Status sits after the name, matching `ci: ✓`.
+            StatusGlyph(f.deploy, prominent = true)
             }
         }
     }

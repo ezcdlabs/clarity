@@ -19,6 +19,8 @@ struct ReposPane: View {
                 }
             }
 
+            Sheet {
+            VStack(spacing: 0) {
             if model.state.repos.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No repositories yet.")
@@ -54,7 +56,9 @@ struct ReposPane: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
+            }
+            }
         }
-        .background(Ink.bg)
+        .background(Ink.surface)
     }
 }

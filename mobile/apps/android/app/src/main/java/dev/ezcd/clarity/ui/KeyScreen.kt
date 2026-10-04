@@ -29,11 +29,12 @@ import dev.ezcd.clarity.ClarityModel
 fun KeyScreen(state: AppState, model: ClarityModel, modifier: Modifier = Modifier) {
     val clipboard = LocalClipboardManager.current
 
-    Column(modifier.fillMaxSize()) {
+    Column(modifier.fillMaxSize().background(Ink.surface)) {
         TopBar("Device key", leading = { BackArrow { model.closeOverlay() } })
-        ErrorBar(state.error) { model.dismissError() }
 
+        Sheet {
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+            ErrorBar(state.error) { model.dismissError() }
             Text(
                 "Add this as a deploy key or an account key on the host, with read " +
                     "access. The private half never leaves this device.",
@@ -58,6 +59,7 @@ fun KeyScreen(state: AppState, model: ClarityModel, modifier: Modifier = Modifie
                     modifier = Modifier.padding(top = 16.dp),
                 ) { Text("Copy") }
             }
+        }
         }
     }
 }

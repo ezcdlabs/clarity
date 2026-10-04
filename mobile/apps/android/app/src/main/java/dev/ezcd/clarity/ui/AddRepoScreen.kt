@@ -1,5 +1,6 @@
 package dev.ezcd.clarity.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,11 +32,12 @@ fun AddRepoScreen(state: AppState, model: ClarityModel, modifier: Modifier = Mod
     var url by rememberSaveable { mutableStateOf("") }
     var branch by rememberSaveable { mutableStateOf("") }
 
-    Column(modifier.fillMaxSize()) {
+    Column(modifier.fillMaxSize().background(Ink.surface)) {
         TopBar("Add a repository", leading = { BackArrow { model.closeOverlay() } })
-        ErrorBar(state.error) { model.dismissError() }
 
+        Sheet {
         Column(Modifier.padding(16.dp)) {
+            ErrorBar(state.error) { model.dismissError() }
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
@@ -68,6 +70,7 @@ fun AddRepoScreen(state: AppState, model: ClarityModel, modifier: Modifier = Mod
             ) {
                 Text(if (state.busy) "Adding…" else "Add")
             }
+        }
         }
     }
 }

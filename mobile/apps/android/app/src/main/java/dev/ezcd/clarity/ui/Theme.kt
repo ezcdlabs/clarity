@@ -29,8 +29,13 @@ import androidx.compose.ui.unit.sp
  * only way to find out is to be holding the phone.
  */
 data class Palette(
+    /** The reading surface: the sheet the commits sit on, and the darker of the two. */
     val bg: Color,
-    /** One step off the background: the header bar the selected tab is cut out of. */
+    /**
+     * The chrome around it — the top bar, the flow strip, the ground the sheet
+     * is laid on. One step toward the middle from [bg], and the tone that
+     * carries the brand.
+     */
     val surface: Color,
     val line: Color,
     val text: Color,
@@ -44,19 +49,24 @@ data class Palette(
     val errorBg: Color,
 )
 
-// Dark is the brand's own ground. The mark is a navy disc, the splash is navy
-// to the edges, and opening the app on neutral black meant a visible step from
-// one to the other — so the step goes instead.
+// Two tones, and which one is the brand's matters.
 //
-// The lifts are derived from the navy rather than picked beside it, which is
-// what the TUI does with the terminal's real background: lipgloss.Lighten(bg,
-// 0.10) is how its deploy strip gets a surface that belongs to whatever theme
-// it landed in. A grey chosen next to a blue can only ever look pasted on to
-// it.
+// The chrome is the mark's navy exactly — it is what you see behind the top bar
+// and around the sheet, and it is what the splash hands over to, so the app
+// opens into the colour it launched from. The commits sit on a darker navy,
+// because a reading surface should be the extreme of the pair: every role gains
+// contrast against it, and the step between the two is tonal rather than a
+// boundary, which is what makes them read as one ground and a sheet laid on it.
+//
+// Both are the same hue and saturation at different lightnesses, derived rather
+// than picked beside each other — the thing the TUI does with the terminal's
+// real background, where lipgloss.Lighten(bg, 0.10) gets the deploy strip a
+// surface belonging to whatever theme it landed in. A grey chosen next to a
+// blue can only ever look pasted on to it.
 private val DarkInk = Palette(
-    bg = Color(0xFF061732),      // the mark's navy, exactly
-    surface = Color(0xFF092149),  // +5% lightness
-    line = Color(0xFF0C2D63),     // +11%
+    bg = Color(0xFF030C19),      // the brand navy taken down to half its lightness
+    surface = Color(0xFF061732),  // the mark's navy, exactly
+    line = Color(0xFF0C2D63),
     text = Color(0xFFE6EAF2),     // cooled a touch, so it belongs to the ground
     dim = Color(0xFF8A94A8),      // ANSI 8's job, in the navy's own family
     red = Color(0xFFE06C75),
@@ -72,9 +82,9 @@ private val DarkInk = Palette(
 // the brand's hue in it, which is the one place a light theme can hold the
 // identity without giving up contrast.
 private val LightInk = Palette(
-    bg = Color(0xFFFBFCFD),
-    surface = Color(0xFFECEFF4),
-    line = Color(0xFFDADFE7),
+    bg = Color(0xFFFCFDFF),
+    surface = Color(0xFFEDF0F6),
+    line = Color(0xFFDCE1EA),
     text = Color(0xFF061732),     // the mark's navy, as off-black
     dim = Color(0xFF5A6473),
     red = Color(0xFFC0392B),

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The repository list and the repository, in that order.
 private let pageRepos = 0
@@ -20,7 +21,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Ink.bg.ignoresSafeArea()
+            Ink.surface.ignoresSafeArea()
 
             switch model.state.overlay {
             case .addRepo:
@@ -71,6 +72,38 @@ struct TopBar<Leading: View, Trailing: View>: View {
 extension TopBar where Leading == EmptyView {
     init(title: String, @ViewBuilder trailing: () -> Trailing) {
         self.init(title: title, titleColor: Ink.text, leading: { EmptyView() }, trailing: trailing)
+    }
+}
+
+/// The reading surface, laid on the chrome.
+///
+/// The turned corners are what make the two tones read as a sheet on a ground
+/// rather than as a join between two panels that failed to match — the levels
+/// are deliberately close in tone, so the shape has to do the explaining.
+struct Sheet<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Ink.bg)
+            .clipShape(TopRounded(radius: 14))
+    }
+}
+
+/// Rounded at the top only. UnevenRoundedRectangle would say this in one line
+/// and arrived in iOS 17; the deployment target is 16.
+private struct TopRounded: Shape {
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(
+            UIBezierPath(
+                roundedRect: rect,
+                byRoundingCorners: [.topLeft, .topRight],
+                cornerRadii: CGSize(width: radius, height: radius)
+            ).cgPath
+        )
     }
 }
 

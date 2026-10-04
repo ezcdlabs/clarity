@@ -1204,14 +1204,26 @@ near-white, so each role is answered again at a weight that carries against a
 light ground, which is what a terminal theme does when it maps the same codes
 for a light profile.
 
-**Dark is the brand's own ground.** The mark is a navy disc and the launch
-screen is navy to the edges, so opening the app on neutral black put a visible
-step between the two — the step goes instead, and the app opens into the colour
-it launched from. The surface and rule shades are *derived* from that navy by
-lightness rather than picked beside it, which is exactly what the TUI does with
-the terminal's real background: a grey chosen next to a blue can only ever look
-pasted on to it. The mark's yellow and blue replace the ad-hoc ones, which were
-within a few points of them anyway.
+**Two tones, and which one is the brand's matters.** The chrome — the top bar,
+the flow strip, the ground the content is laid on — is the mark's navy exactly,
+so the app opens into the colour the splash handed it. The commits sit on a
+second, darker navy, because a reading surface should be the extreme of the
+pair: every role gains contrast against it, and no role loses any.
+
+The step between the two is deliberately small, which is why the content has
+turned top corners. Close tones plus a shape read as a sheet laid on a ground;
+close tones alone read as two panels that failed to match. The pattern is
+Google Messages', and it is also one the TUI already has — it paints the header
+row one step off the background and cuts the selected flow out of it, so a tab
+is continuous with the body it controls. On the phone the selected tab is cut
+to the content tone and the sheet begins immediately below it, so that idiom now
+works for the reason it was invented.
+
+Both navies are the same hue and saturation at different lightnesses, *derived*
+rather than picked beside each other — exactly what the TUI does with the
+terminal's real background, where a grey chosen next to a blue can only ever
+look pasted on to it. The mark's yellow and blue replace the ad-hoc ones, which
+were within a few points of them anyway.
 
 **Light takes only the navy, as ink.** The mark's yellow on white is barely a
 colour and its blue is a highlight rather than something legible, so neither

@@ -12,6 +12,9 @@ struct KeyView: View {
     var body: some View {
         VStack(spacing: 0) {
             TopBar(title: "Device key", leading: { BackArrow { model.closeOverlay() } }, trailing: { EmptyView() })
+
+            Sheet {
+            VStack(spacing: 0) {
             ErrorBar(error: model.state.error) { model.dismissError() }
 
             ScrollView {
@@ -37,6 +40,9 @@ struct KeyView: View {
                 }
                 .padding(16)
             }
+            }
+            }
         }
+        .background(Ink.surface)
     }
 }

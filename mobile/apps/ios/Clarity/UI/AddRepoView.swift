@@ -14,6 +14,9 @@ struct AddRepoView: View {
     var body: some View {
         VStack(spacing: 0) {
             TopBar(title: "Add a repository", leading: { BackArrow { model.closeOverlay() } }, trailing: { EmptyView() })
+
+            Sheet {
+            VStack(spacing: 0) {
             ErrorBar(error: model.state.error) { model.dismissError() }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -48,6 +51,9 @@ struct AddRepoView: View {
             .padding(16)
 
             Spacer()
+            }
+            }
         }
+        .background(Ink.surface)
     }
 }

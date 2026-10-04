@@ -44,11 +44,15 @@ struct RepoView: View {
             if let view = model.state.view {
                 header(view)
             }
+            // On the chrome, not the sheet: a fetch belongs to the bar that
+            // started it, and the sheet's turned corners would clip its ends.
             if model.state.syncing {
                 ProgressView().progressViewStyle(.linear).tint(Ink.blue)
             }
-            ErrorBar(error: model.state.error) { model.dismissError() }
 
+            Sheet {
+            VStack(spacing: 0) {
+            ErrorBar(error: model.state.error) { model.dismissError() }
             if model.state.view == nil {
                 Spacer()
                 Text(emptyMessage).font(.system(size: 14)).foregroundColor(Ink.dim)
@@ -101,8 +105,10 @@ struct RepoView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
+            }
+            }
         }
-        .background(Ink.bg)
+        .background(Ink.surface)
     }
 
     /// Whether anything in this repository is currently failing.

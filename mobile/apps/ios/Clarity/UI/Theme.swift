@@ -8,16 +8,20 @@ import UIKit
 /// look like. A phone has no such table, so this is it: the same roles, answered
 /// twice, with the mark's own colours where they carry.
 enum Ink {
-    /// Dark is the brand's ground. The mark is a navy disc and the launch screen
-    /// is navy to the edges, so opening on neutral black meant a visible step
-    /// from one to the other.
+    /// Two tones, and which one is the brand's matters.
     ///
-    /// The lifts are derived from the navy rather than picked beside it, which
-    /// is what the TUI does with the terminal's real background: a grey chosen
-    /// next to a blue can only ever look pasted on to it.
+    /// The chrome is the mark's navy exactly — what you see behind the top bar
+    /// and around the sheet, and what the launch screen hands over to. The
+    /// commits sit on a darker navy, because a reading surface should be the
+    /// extreme of the pair: every role gains contrast against it.
+    ///
+    /// Both are the same hue and saturation at different lightnesses, derived
+    /// rather than picked beside each other — what the TUI does with the
+    /// terminal's real background, where a grey chosen next to a blue can only
+    /// ever look pasted on to it.
     private static let dark = Shades(
-        bg: hex(0x061732),      // the mark's navy, exactly
-        surface: hex(0x092149), // +5% lightness
+        bg: hex(0x030C19),      // the brand navy at half its lightness
+        surface: hex(0x061732), // the mark's navy, exactly
         line: hex(0x0C2D63),    // +11%
         text: hex(0xE6EAF2),
         dim: hex(0x8A94A8),
@@ -32,9 +36,9 @@ enum Ink {
     /// yellow on white is barely a colour, and its blue is a highlight rather
     /// than something legible. What carries over is the navy, as the ink.
     private static let light = Shades(
-        bg: hex(0xFBFCFD),
-        surface: hex(0xECEFF4),
-        line: hex(0xDADFE7),
+        bg: hex(0xFCFDFF),
+        surface: hex(0xEDF0F6),
+        line: hex(0xDCE1EA),
         text: hex(0x061732),    // the mark's navy, as off-black
         dim: hex(0x5A6473),
         red: hex(0xC0392B),

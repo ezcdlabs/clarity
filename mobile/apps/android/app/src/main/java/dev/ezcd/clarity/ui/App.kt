@@ -2,6 +2,7 @@ package dev.ezcd.clarity.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,7 +80,7 @@ fun App(model: ClarityModel, modifier: Modifier = Modifier) {
         }
     }
 
-    HorizontalPager(state = pager, modifier = modifier.fillMaxSize().background(Ink.bg)) { page ->
+    HorizontalPager(state = pager, modifier = modifier.fillMaxSize().background(Ink.surface)) { page ->
         when (page) {
             PAGE_REPOS -> ReposPane(state, model)
             else -> RepoScreen(state, model, onOpenList = {
@@ -97,7 +99,7 @@ fun TopBar(
     trailing: @Composable () -> Unit = {},
 ) {
     Row(
-        Modifier.fillMaxWidth().background(Ink.bg).padding(horizontal = 4.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().background(Ink.surface).padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading()
@@ -109,6 +111,23 @@ fun TopBar(
         )
         trailing()
     }
+}
+
+/**
+ * The reading surface, laid on the chrome.
+ *
+ * The turned corners are what make the two tones read as a sheet on a ground
+ * rather than as a join between two panels that failed to match — the levels
+ * are deliberately close in tone, so the shape has to do the explaining.
+ */
+@Composable
+fun Sheet(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+            .background(Ink.bg),
+    ) { content() }
 }
 
 @Composable

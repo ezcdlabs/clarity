@@ -2,6 +2,7 @@ package dev.ezcd.clarity.bridge
 
 import dev.ezcd.clarity.core.Client
 import dev.ezcd.clarity.core.Core
+import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.SyncResult
@@ -49,6 +50,9 @@ class GoBridge(private val client: Client) : ClarityBridge {
 
     override fun metrics(repoId: String, commitLimit: Int, weeks: Int): Metrics =
         Metrics.parseFrom(client.metrics(repoId, commitLimit.toLong(), weeks.toLong()))
+
+    override fun check(timeoutSeconds: Int): Changes =
+        Changes.parseFrom(client.check(timeoutSeconds.toLong()))
 
     override fun elapsed(seconds: Long): String = Core.elapsed(seconds)
 

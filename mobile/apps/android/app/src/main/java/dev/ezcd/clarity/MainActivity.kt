@@ -1,15 +1,21 @@
 package dev.ezcd.clarity
 
+import android.Manifest
 import android.app.Application
+import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
@@ -20,6 +26,8 @@ import androidx.lifecycle.viewModelScope
 import dev.ezcd.clarity.bridge.GoBridge
 import dev.ezcd.clarity.ui.App
 import dev.ezcd.clarity.ui.ClarityTheme
+import dev.ezcd.clarity.watch.CheckWorker
+import dev.ezcd.clarity.watch.Notifications
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 
@@ -66,11 +74,62 @@ class MainActivity : ComponentActivity() {
                 LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.model.resume() }
                 LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.model.pause() }
 
+                // Asked for when it first means something — once there is a
+                // repository to be told about — rather than at launch. A
+                // permission dialog in front of an empty screen is a question
+                // about nothing, and the answer to those is usually no.
+                val ask = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { if (it) CheckWorker.schedule(applicationContext) }
+
+                LaunchedEffect(state.repos.isNotEmpty()) {
+                    if (!state.repos.isNotEmpty()) {
+                        // Nothing to watch. A check that wakes the phone to
+                        // fetch no repositories is pure cost.
+                        CheckWorker.cancel(applicationContext)
+                        return@LaunchedEffect
+                    }
+                    Notifications.ensureChannels(applicationContext)
+                    when {
+                        Notifications.permitted(applicationContext) ->
+                            CheckWorker.schedule(applicationContext)
+                        // Once, ever. Android stops showing the dialog after two
+                        // refusals anyway, but asking again on every cold start
+                        // is nagging whether or not the system draws anything.
+                        !askedAlready() -> {
+                            rememberAsked()
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                ask.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                    }
+                }
+
                 // System back closes an overlay; from the repository itself it
                 // leaves the app, because the repository is the home screen.
                 BackHandler(enabled = state.overlay != null) { viewModel.model.closeOverlay() }
                 App(viewModel.model, Modifier.windowInsetsPadding(WindowInsets.systemBars))
             }
         }
+    }
+
+    /**
+     * Whether the notification permission has been put to the user before.
+     *
+     * Persisted rather than held in memory: a flag that resets with the process
+     * asks again on every cold start, which is the behaviour people are
+     * complaining about when they say an app nags.
+     */
+    private fun askedAlready(): Boolean =
+        prefs().getBoolean(ASKED_FOR_NOTIFICATIONS, false)
+
+    private fun rememberAsked() {
+        prefs().edit().putBoolean(ASKED_FOR_NOTIFICATIONS, true).apply()
+    }
+
+    private fun prefs() = getSharedPreferences("clarity", Context.MODE_PRIVATE)
+
+    private companion object {
+        const val ASKED_FOR_NOTIFICATIONS = "asked-for-notifications"
     }
 }

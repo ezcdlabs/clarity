@@ -5,6 +5,14 @@
          else. No analytics, no accounts, no provider SDK. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- To say a pipeline went red while the app was closed. Asked for at the
+         moment it first means something, not at launch. Deliberately NOT
+         USE_FULL_SCREEN_INTENT: a background check is up to a quarter of an
+         hour behind, and waking a phone at 3am over something that broke
+         twenty minutes ago is the behaviour of an alarm clock rather than of a
+         dashboard. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

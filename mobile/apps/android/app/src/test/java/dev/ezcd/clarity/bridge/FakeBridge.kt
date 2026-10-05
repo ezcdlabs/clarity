@@ -4,6 +4,7 @@ import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.HostKey
 import dev.ezcd.clarity.proto.AxisTick
+import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.LeadAxis
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.MetricsFlow
@@ -152,6 +153,14 @@ class FakeBridge : ClarityBridge {
         return weekly[repoId]
             // What a repo that has never been fetched gives you, as [view] does.
             ?: throw RuntimeException("reference not found")
+    }
+
+    /** What the next [check] reports. */
+    var changes: Changes = Changes.newBuilder().setGeneratedUnixSeconds(1).build()
+
+    override fun check(timeoutSeconds: Int): Changes {
+        calls += "check"
+        return changes
     }
 
     // Not the real formatter — the model only passes through to it, so a test

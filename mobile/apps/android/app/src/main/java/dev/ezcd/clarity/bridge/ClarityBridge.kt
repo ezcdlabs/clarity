@@ -1,5 +1,6 @@
 package dev.ezcd.clarity.bridge
 
+import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.SyncResult
@@ -66,6 +67,20 @@ interface ClarityBridge {
      * back a reader can see does not depend on how busy the repository was.
      */
     fun metrics(repoId: String, commitLimit: Int, weeks: Int): Metrics
+
+    /**
+     * Fetches every tracked repository and reports the pipelines that have
+     * crossed between green and red since the last check.
+     *
+     * What a background worker calls. Transitions rather than state: a check
+     * runs on a timer whether or not anything happened, and a notification
+     * keyed on state fires for as long as a build stays broken.
+     *
+     * One repository failing does not fail the check — a phone is offline half
+     * the time — so the result counts what could not be read rather than
+     * throwing.
+     */
+    fun check(timeoutSeconds: Int): Changes
 
     /**
      * Formats a duration the way every clarity UI formats one.

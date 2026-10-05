@@ -79,6 +79,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // The sanctioned way to run work the user is not watching. Its periodic
+    // floor is fifteen minutes and Doze can stretch that, which is the price of
+    // not holding a wake lock or a permanent notification.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 

@@ -43,7 +43,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ezcd.clarity.AppState
@@ -123,27 +122,17 @@ fun Switcher(state: AppState, model: ClarityModel, onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Key, null, tint = Ink.dim, modifier = Modifier.size(18.dp))
+                // Just the label. This row is a way through to the key, and a
+                // fingerprint clipped to fit is one nobody can check against
+                // anything — which is the only thing a fingerprint is for. The
+                // whole key is one tap away.
                 Text(
                     "Device key",
                     style = Type.bodySmall,
                     color = Ink.text,
                     maxLines = 1,
-                    modifier = Modifier.padding(start = 10.dp),
+                    modifier = Modifier.weight(1f).padding(start = 10.dp),
                 )
-                // The fingerprint takes what is left and truncates. It used to
-                // be the weighted one, and a 50-character string with nowhere
-                // to go squeezed the label out of existence.
-                state.fingerprint?.let {
-                    Text(
-                        it,
-                        style = Type.mono,
-                        color = Ink.dim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1f).padding(start = 12.dp),
-                    )
-                }
             }
         }
     }

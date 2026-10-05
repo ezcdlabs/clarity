@@ -44,6 +44,17 @@ class ClarityModel(
     private val fetchTimeoutSeconds = 0
 
     /**
+     * The window the metrics screen reads over.
+     *
+     * Weeks rather than commits, so how far back a reader can see does not
+     * depend on how busy the repository was — a commit limit gives a quiet repo
+     * a year and a busy one four days, which is useless for comparing trend.
+     * The commit cap only bounds the read; both match `git clarity metrics`.
+     */
+    private val metricsWeeks = 12
+    private val metricsCommitLimit = 2000
+
+    /**
      * How often the open repository re-fetches.
      *
      * The same five seconds refsource polls at, so the phone and the terminal
@@ -128,8 +139,33 @@ class ClarityModel(
         _state.update { it.copy(publicKey = key) }
     }
 
+    /**
+     * Opens the weekly aggregates for the flow the reader was already on.
+     *
+     * [flowIndex] comes in from the feed's tabs: tapping the chart from the ios
+     * tab is a question about ios, not about whichever flow happens to be
+     * first. Read once, here — trend is a question about history, and
+     * re-reading two thousand commits on the refresh tick would spend a
+     * phone's battery to learn nothing.
+     */
+    fun showMetrics(flowIndex: Int) {
+        _state.update {
+            it.copy(overlay = Overlay.Metrics, metricsFlow = flowIndex, error = null)
+        }
+        val id = _state.value.selected ?: return
+        act {
+            val metrics = bridge.metrics(id, metricsCommitLimit, metricsWeeks)
+            _state.update { it.copy(metrics = metrics) }
+        }
+    }
+
     /** Closes whatever is over the repository, leaving the selection alone. */
-    fun closeOverlay() = _state.update { it.copy(overlay = null, connect = Connect.Idle, error = null) }
+    fun closeOverlay() = _state.update {
+        // The chart goes with the screen. The next open follows a fetch, and a
+        // chart held over from before it would be older than what is on disk
+        // with nothing on screen saying so.
+        it.copy(overlay = null, connect = Connect.Idle, error = null, metrics = null)
+    }
 
     /**
      * Connects a repository: track it, then fetch it once.

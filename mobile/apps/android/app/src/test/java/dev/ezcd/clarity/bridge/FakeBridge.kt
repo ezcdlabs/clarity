@@ -3,7 +3,13 @@ package dev.ezcd.clarity.bridge
 import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.HostKey
+import dev.ezcd.clarity.proto.AxisTick
+import dev.ezcd.clarity.proto.LeadAxis
+import dev.ezcd.clarity.proto.Metrics
+import dev.ezcd.clarity.proto.MetricsFlow
 import dev.ezcd.clarity.proto.Outcome
+import dev.ezcd.clarity.proto.Plot
+import dev.ezcd.clarity.proto.Week
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.RepoSummary
 import dev.ezcd.clarity.proto.Section
@@ -42,6 +48,13 @@ class FakeBridge : ClarityBridge {
     var gitOutput: String = ""
     var failList: String? = null
     var failKey: String? = null
+    var failMetrics: String? = null
+
+    /** Weekly aggregates keyed by repo id, as [metrics] would read them. */
+    val weekly = mutableMapOf<String, Metrics>()
+
+    /** The arguments the last [metrics] call was made with. */
+    var metricsWindow: Pair<Int, Int>? = null
 
     /**
      * Runs inside [sync], before it succeeds or fails. A test uses it to observe
@@ -128,6 +141,15 @@ class FakeBridge : ClarityBridge {
         if (i >= 0) repos[i] = repos[i].toBuilder().setAlias(name).build()
     }
 
+    override fun metrics(repoId: String, commitLimit: Int, weeks: Int): Metrics {
+        calls += "metrics"
+        metricsWindow = commitLimit to weeks
+        failMetrics?.let { throw RuntimeException(it) }
+        return weekly[repoId]
+            // What a repo that has never been fetched gives you, as [view] does.
+            ?: throw RuntimeException("reference not found")
+    }
+
     // Not the real formatter — the model only passes through to it, so a test
     // that asserted the wording would be testing Go through two layers.
     override fun elapsed(seconds: Long): String = seconds.toString() + "s"
@@ -147,7 +169,6 @@ class FakeBridge : ClarityBridge {
     }
 
     companion object {
-        /** A one-commit view, enough to tell "we have data" from "we do not". */
         fun viewOf(subject: String): View = View.newBuilder()
             .addFlows(
                 Flow.newBuilder().setName("deploy").addSections(
@@ -160,5 +181,48 @@ class FakeBridge : ClarityBridge {
                 ),
             )
             .build()
+
+        /**
+         * One flow of weekly aggregates, newest week first.
+         *
+         * Deploy counts are the input because they are what a test asserts on;
+         * the distribution is filled in consistently so a chart has something
+         * to draw without every test having to describe a box plot.
+         */
+        fun metricsOf(vararg deploys: Int): Metrics {
+            val flow = MetricsFlow.newBuilder()
+                .setName("deploy")
+                .setMaxDeploys(deploys.maxOrNull() ?: 0)
+                .setAxis(
+                    LeadAxis.newBuilder()
+                        .setMaxSeconds(8 * 3600)
+                        .addTicks(AxisTick.newBuilder().setFraction(0.0).setLabel("0"))
+                        .addTicks(AxisTick.newBuilder().setFraction(0.25).setLabel("2h"))
+                        .addTicks(AxisTick.newBuilder().setFraction(0.5).setLabel("4h"))
+                        .addTicks(AxisTick.newBuilder().setFraction(0.75).setLabel("6h"))
+                        .addTicks(AxisTick.newBuilder().setFraction(1.0).setLabel("8h")),
+                )
+            deploys.forEachIndexed { i, n ->
+                val week = Week.newBuilder()
+                    .setLabel("W2026-%02d".format(40 - i))
+                    .setDeploys(n)
+                if (n == 0) {
+                    week.plot = Plot.PLOT_NONE
+                } else {
+                    week.plot = Plot.PLOT_BOX
+                    week.n = n
+                    week.minSeconds = 3600
+                    week.p25Seconds = 2 * 3600
+                    week.p50Seconds = 3 * 3600
+                    week.p75Seconds = 4 * 3600
+                    week.maxSeconds = 5 * 3600
+                }
+                flow.addWeeks(week)
+            }
+            return Metrics.newBuilder()
+                .addFlows(flow)
+                .setGeneratedUnixSeconds(1_700_000_000)
+                .build()
+        }
     }
 }

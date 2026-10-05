@@ -1,6 +1,7 @@
 package dev.ezcd.clarity
 
 import dev.ezcd.clarity.proto.HostKey
+import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoSummary
 import dev.ezcd.clarity.proto.View
 
@@ -11,6 +12,9 @@ enum class Overlay {
 
     /** This device's public key, on its own. */
     Key,
+
+    /** The weekly aggregates, with a back arrow. */
+    Metrics,
 }
 
 /**
@@ -50,6 +54,19 @@ data class AppState(
     val repos: List<RepoSummary> = emptyList(),
     val selected: String? = null,
     val view: View? = null,
+    /**
+     * The weekly aggregates, read when the metrics screen opens and dropped
+     * when it closes.
+     *
+     * Unlike [view] this is not held across anything. [view] survives a failed
+     * refresh because yesterday's pipeline still answers "is main green?"
+     * usefully; a chart of history held over from before a fetch would be
+     * answering "are we getting better?" with an older answer than the one on
+     * disk, and nothing on it would say so.
+     */
+    val metrics: Metrics? = null,
+    /** Which flow the metrics screen is showing, carried in from the feed. */
+    val metricsFlow: Int = 0,
     val overlay: Overlay? = null,
     val connect: Connect = Connect.Idle,
     /** True while a network fetch is in flight. */

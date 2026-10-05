@@ -480,6 +480,95 @@ class ClarityModelTest {
         assertEquals(aardvark, model.state.value.selected)
     }
 
+    // --- the metrics screen -------------------------------------------------
+
+    @Test
+    fun `opening metrics reads the aggregates for the flow you were on`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.weekly[id] = FakeBridge.metricsOf(12, 7, 0, 4)
+
+        model.showMetrics(flowIndex = 0)
+
+        assertEquals(Overlay.Metrics, model.state.value.overlay)
+        val metrics = model.state.value.metrics!!
+        assertEquals(listOf(12, 7, 0, 4), metrics.getFlows(0).weeksList.map { it.deploys })
+        // The window is weeks, not commits, so how far back you can see does
+        // not depend on how busy the repository was.
+        assertEquals(12, bridge.metricsWindow!!.second)
+    }
+
+    @Test
+    fun `metrics remembers which flow you were reading`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        bridge.weekly[model.state.value.repos.single().id] = FakeBridge.metricsOf(3)
+
+        model.showMetrics(flowIndex = 2)
+
+        // Tapping the chart from the ios tab asks about ios, not about
+        // whatever flow happens to be first.
+        assertEquals(2, model.state.value.metricsFlow)
+    }
+
+    @Test
+    fun `closing metrics leaves the repository where it was`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.views[id] = FakeBridge.viewOf("still here")
+        model.refresh()
+        bridge.weekly[id] = FakeBridge.metricsOf(5)
+
+        model.showMetrics(flowIndex = 0)
+        model.closeOverlay()
+
+        assertNull(model.state.value.overlay)
+        assertEquals(id, model.state.value.selected)
+        assertEquals("still here", subjectOf(model.state.value))
+        // Dropped rather than kept: the next open follows a fetch, and a chart
+        // held over from before it would be answering with old history.
+        assertNull(model.state.value.metrics)
+    }
+
+    @Test
+    fun `metrics is read when its screen opens and not by the refresh pump`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        bridge.weekly[model.state.value.repos.single().id] = FakeBridge.metricsOf(2)
+        model.showMetrics(flowIndex = 0)
+        bridge.calls.clear()
+
+        model.resume()
+        scheduler.advanceTimeBy(30_000)
+        scheduler.runCurrent()
+
+        // Trend is a question about history, so re-reading two thousand
+        // commits every five seconds would be spending a phone's battery to
+        // learn nothing.
+        assertTrue("re-read the aggregates on a tick: ${bridge.calls}", !bridge.calls.contains("metrics"))
+    }
+
+    @Test
+    fun `a repository with no history yet says so rather than showing an empty chart`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+
+        // Nothing in bridge.weekly, so the read fails the way a never-fetched
+        // repository fails.
+        model.showMetrics(flowIndex = 0)
+
+        assertEquals(Overlay.Metrics, model.state.value.overlay)
+        assertNull(model.state.value.metrics)
+        assertTrue(model.state.value.error!!.contains("reference not found"))
+    }
+
     // --- harness -------------------------------------------------------------
 
     private class TestBody(

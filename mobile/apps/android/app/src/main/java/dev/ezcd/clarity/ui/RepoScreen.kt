@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -113,7 +114,7 @@ fun RepoScreen(state: AppState, model: ClarityModel) {
     }
 
     Column(Modifier.fillMaxSize().background(Ink.surface)) {
-        AppBar(state, model) { switcher = true }
+        AppBar(state, model, tab) { switcher = true }
         if (view != null) {
             Strip(state, model, view, tab) { tab = it }
         }
@@ -198,7 +199,7 @@ private fun CommitList(view: View, flow: Flow?, state: AppState, model: ClarityM
  * you scroll is one you have to look at before you can hit it.
  */
 @Composable
-private fun AppBar(state: AppState, model: ClarityModel, onOpenSwitcher: () -> Unit) {
+private fun AppBar(state: AppState, model: ClarityModel, tab: Int, onOpenSwitcher: () -> Unit) {
     val repo = state.repo
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(start = PageMargin, end = 4.dp),
@@ -255,6 +256,12 @@ private fun AppBar(state: AppState, model: ClarityModel, onOpenSwitcher: () -> U
                     )
                 }
             }
+        }
+        // To the left of the menu rather than inside it: the chart is a place
+        // you go, and a destination behind a menu is one you forget exists.
+        // Everything in the menu is an action on the repository; this is not.
+        GlyphButton(Icons.Rounded.Insights, "Metrics", enabled = state.view != null) {
+            model.showMetrics(tab)
         }
         RepoMenu(state, model)
     }
@@ -456,22 +463,6 @@ private fun SectionHeader(section: Section) {
         Rule()
         Spacer(Modifier.height(10.dp))
     }
-}
-
-/**
- * The 1dp line under a band label or a week, spanning the page margins.
- *
- * It is what makes a label read as the head of what follows rather than as a
- * stray line of text — the job the terminal gives to a run of dashes.
- */
-@Composable
-private fun Rule() {
-    Box(
-        Modifier.fillMaxWidth()
-            .padding(horizontal = PageMargin, vertical = 4.dp)
-            .height(1.dp)
-            .background(Ink.line),
-    )
 }
 
 /**

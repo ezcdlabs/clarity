@@ -50,6 +50,7 @@ fun App(model: ClarityModel, modifier: Modifier = Modifier) {
         when (state.overlay) {
             Overlay.Connect -> ConnectScreen(state, model)
             Overlay.Key -> KeyScreen(state, model)
+            Overlay.Metrics -> MetricsScreen(state, model)
             null -> if (state.empty) EmptyScreen(model) else RepoScreen(state, model)
         }
     }
@@ -82,6 +83,24 @@ fun Sheet(
             .clip(RoundedCornerShape(topStart = topStartRadius.dp, topEnd = 20.dp))
             .background(Ink.bg),
     ) { content() }
+}
+
+/**
+ * The 1dp line under a band label, a week, or a chart's legend.
+ *
+ * It is what makes a label read as the head of what follows rather than as a
+ * stray line of text — the job the terminal gives to a run of dashes. Shared,
+ * because the feed and the metrics screen both lay headings over rows and two
+ * rules of different weights would read as two kinds of heading.
+ */
+@Composable
+fun Rule() {
+    Box(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = PageMargin, vertical = 4.dp)
+            .height(1.dp)
+            .background(Ink.line),
+    )
 }
 
 /**

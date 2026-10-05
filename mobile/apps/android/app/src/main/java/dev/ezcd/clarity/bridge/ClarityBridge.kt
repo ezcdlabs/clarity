@@ -1,5 +1,6 @@
 package dev.ezcd.clarity.bridge
 
+import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
@@ -52,6 +53,19 @@ interface ClarityBridge {
 
     /** Reads what the last [sync] fetched. Never touches the network. */
     fun view(repoId: String, limit: Int): View
+
+    /**
+     * Reads the weekly aggregates. Never touches the network.
+     *
+     * Separate from [view] and over a far larger commit window, because it
+     * answers a different question: [view] says whether main is green right
+     * now and is re-read every few seconds, this says whether things are
+     * getting better and is read when its screen opens.
+     *
+     * [weeks] is the window in whole weeks rather than in commits, so how far
+     * back a reader can see does not depend on how busy the repository was.
+     */
+    fun metrics(repoId: String, commitLimit: Int, weeks: Int): Metrics
 
     /**
      * Formats a duration the way every clarity UI formats one.

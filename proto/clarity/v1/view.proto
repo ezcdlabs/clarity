@@ -276,3 +276,123 @@ message HostKey {
   string type = 2;         // "ED25519", as a host publishes it
   string fingerprint = 3;  // "SHA256:…", as a host publishes it
 }
+
+// Metrics is the weekly aggregates view — the phone's counterpart of
+// `git clarity metrics`.
+//
+// A separate message and a separate read from View, for the reason that
+// command gives for never polling: `git clarity` answers "is main green right
+// now?", this answers "are we getting better?", and trend is a question about
+// history rather than about the last few seconds. It is also read over a much
+// larger commit window, which no five-second refresh should be carrying.
+//
+// The split of labour is the same as everywhere else here. What crosses is the
+// numbers and the words: the quantiles, the counts, the shared axis, the tick
+// labels. What does not is how wide a box is in pixels, how many ticks fit, or
+// which columns a bar occupies — the terminal's answers to those exist only
+// because it quantises to character cells, and none of them mean anything at
+// pixel resolution.
+message Metrics {
+  repeated MetricsFlow flows = 1;
+
+  // Truncated reports that the commit window, rather than the repository's
+  // age, is what ended the history — so an aggregate built from it is not the
+  // whole story. Worth more here than in a commit list: a reader can see the
+  // bottom of a scroll, but nothing on a chart says it is short a few deploys.
+  bool truncated = 2;
+  int32 limit = 3;
+
+  // Always set, for the reason View.generated_unix_seconds explains.
+  int64 generated_unix_seconds = 4;
+}
+
+// MetricsFlow is one deploy target's weeks, newest first.
+message MetricsFlow {
+  string name = 1;
+  bool undeclared = 2;
+
+  LeadAxis axis = 3;
+
+  // The busiest week on show, which is what every deploy bar is drawn
+  // relative to. A decision rather than geometry: bars could be scaled
+  // against a fixed ceiling or against the repository's all-time best, and
+  // "the busiest week you can see" is the one that makes the rows on screen
+  // comparable to each other.
+  int32 max_deploys = 4;
+
+  repeated Week weeks = 5;
+}
+
+// LeadAxis is the one x-axis every week in a flow is drawn against.
+//
+// One axis rather than one per row, because per-row scaling would make the
+// rows incomparable and comparing them is the only reason the view exists.
+message LeadAxis {
+  int64 max_seconds = 1;
+
+  // Clamped reports that some lead time sits beyond the scale, so a client can
+  // mark the axis as incomplete rather than clipping in silence.
+  bool clamped = 2;
+
+  // The labels, at the fractions of the axis they belong to. A client draws as
+  // many as it has room for and drops the rest — how many fit is geometry, but
+  // what a tick is called is not: the format keeps the five fractions distinct,
+  // which is why a half hour reads "1.5h" rather than rounding onto its
+  // neighbour.
+  repeated AxisTick ticks = 3;
+}
+
+message AxisTick {
+  double fraction = 1;  // 0, 0.25, 0.5, 0.75, 1
+  string label = 2;     // "0", "30m", "1.5h", "3d", and "7d+" when clamped
+}
+
+// Plot says how a week's lead times should be drawn.
+//
+// The choice, not the drawing. Below a handful of deploys the quantiles are
+// interpolations between two or three real values, so a box plot would put a
+// smear on screen where there were only two deploys — the individual samples
+// are the honest rendering, and the threshold is the core's to decide.
+enum Plot {
+  PLOT_UNSPECIFIED = 0;
+  PLOT_NONE = 1;    // nothing deployed; there is no distribution
+  PLOT_POINTS = 2;  // too few for quartiles — draw sample_seconds
+  PLOT_BOX = 3;     // whiskers, box, median
+}
+
+// Week is one ISO week's DORA-shaped summary.
+//
+// The bucket is the deploy date, which is DORA's own aggregation: a commit
+// authored three weeks ago and deployed today counts towards this week. A
+// ten-commit batch is one deploy, not ten.
+message Week {
+  string label = 1;  // "W2026-39"
+  int32 deploys = 2;
+
+  Plot plot = 3;
+
+  // How many commits contributed a lead time. Not the same as deploys: a
+  // batch carries several commits, and a week can measure lead times from
+  // batches whose own deploy event was never recorded.
+  int32 n = 4;
+
+  // The five-number summary, in seconds. The median is the headline rather
+  // than a mean: lead times are strongly right-skewed, so one commit that sat
+  // over a weekend drags an average badly. The quartiles carry the spread,
+  // which matters as much as the middle — a two-hour median with a three-day
+  // p75 is a problem the median alone hides.
+  int64 min_seconds = 5;
+  int64 p25_seconds = 6;
+  int64 p50_seconds = 7;
+  int64 p75_seconds = 8;
+  int64 max_seconds = 9;
+
+  // The individual lead times, set only when plot is PLOT_POINTS. Bounded by
+  // the same threshold, so this cannot grow with a busy week.
+  repeated int64 sample_seconds = 10;
+
+  // Whether this week has a lead time past the axis, so a client can mark the
+  // row rather than silently clipping it. Strictly beyond, so a value landing
+  // exactly on the axis is drawn rather than marked as excluded.
+  bool beyond_axis = 11;
+}

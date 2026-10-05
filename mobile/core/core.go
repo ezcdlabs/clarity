@@ -34,6 +34,44 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Metrics returns an encoded clarity.v1.Metrics for a repository: the weekly
+// aggregates view, read from what the last Sync fetched. Never touches the
+// network.
+//
+// Separate from View, and read over a far larger commit window, because it
+// answers a different question. View answers "is main green right now?" and is
+// re-read every few seconds; this answers "are we getting better?", which is
+// about history — so it is read when the screen opens and not again.
+//
+// weeks is the window, in whole weeks rather than in commits, so how far back a
+// reader can see does not depend on how busy the repository was: a commit limit
+// gives a quiet repo a year and a busy one four days, which is useless for
+// comparing trend. commitLimit bounds the read itself; 0 means unlimited, as it
+// does on every other entry point.
+func (c *Client) Metrics(repoID string, commitLimit, weeks int) ([]byte, error) {
+	if weeks < 1 {
+		return nil, fmt.Errorf("weeks must be at least 1, got %d", weeks)
+	}
+	repo, _, err := c.open(repoID)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := repo.Snapshot(commitLimit)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	// The same derivation and the same trimming the CLI runs, so a week reads
+	// the same on a phone as it does in a terminal — including recomputing the
+	// axis after narrowing, without which the scale claims to be hiding data
+	// from weeks nobody can see.
+	view := core.TrimToWholeWeeks(core.DeriveView(snap, cfg.LeadTimeMode(), cfg.Deploys()), weeks)
+	return proto.Marshal(present.Metrics(view, time.Now()))
+}
+
 // Elapsed formats a number of seconds the way every clarity UI formats a
 // duration.
 //

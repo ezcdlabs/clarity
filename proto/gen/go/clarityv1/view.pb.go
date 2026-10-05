@@ -199,6 +199,64 @@ func (Outcome) EnumDescriptor() ([]byte, []int) {
 	return file_clarity_v1_view_proto_rawDescGZIP(), []int{2}
 }
 
+// Plot says how a week's lead times should be drawn.
+//
+// The choice, not the drawing. Below a handful of deploys the quantiles are
+// interpolations between two or three real values, so a box plot would put a
+// smear on screen where there were only two deploys — the individual samples
+// are the honest rendering, and the threshold is the core's to decide.
+type Plot int32
+
+const (
+	Plot_PLOT_UNSPECIFIED Plot = 0
+	Plot_PLOT_NONE        Plot = 1 // nothing deployed; there is no distribution
+	Plot_PLOT_POINTS      Plot = 2 // too few for quartiles — draw sample_seconds
+	Plot_PLOT_BOX         Plot = 3 // whiskers, box, median
+)
+
+// Enum value maps for Plot.
+var (
+	Plot_name = map[int32]string{
+		0: "PLOT_UNSPECIFIED",
+		1: "PLOT_NONE",
+		2: "PLOT_POINTS",
+		3: "PLOT_BOX",
+	}
+	Plot_value = map[string]int32{
+		"PLOT_UNSPECIFIED": 0,
+		"PLOT_NONE":        1,
+		"PLOT_POINTS":      2,
+		"PLOT_BOX":         3,
+	}
+)
+
+func (x Plot) Enum() *Plot {
+	p := new(Plot)
+	*p = x
+	return p
+}
+
+func (x Plot) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Plot) Descriptor() protoreflect.EnumDescriptor {
+	return file_clarity_v1_view_proto_enumTypes[3].Descriptor()
+}
+
+func (Plot) Type() protoreflect.EnumType {
+	return &file_clarity_v1_view_proto_enumTypes[3]
+}
+
+func (x Plot) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Plot.Descriptor instead.
+func (Plot) EnumDescriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{3}
+}
+
 type View struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	RepoName string                 `protobuf:"bytes,1,opt,name=repo_name,json=repoName,proto3" json:"repo_name,omitempty"`
@@ -1110,6 +1168,441 @@ func (x *HostKey) GetFingerprint() string {
 	return ""
 }
 
+// Metrics is the weekly aggregates view — the phone's counterpart of
+// `git clarity metrics`.
+//
+// A separate message and a separate read from View, for the reason that
+// command gives for never polling: `git clarity` answers "is main green right
+// now?", this answers "are we getting better?", and trend is a question about
+// history rather than about the last few seconds. It is also read over a much
+// larger commit window, which no five-second refresh should be carrying.
+//
+// The split of labour is the same as everywhere else here. What crosses is the
+// numbers and the words: the quantiles, the counts, the shared axis, the tick
+// labels. What does not is how wide a box is in pixels, how many ticks fit, or
+// which columns a bar occupies — the terminal's answers to those exist only
+// because it quantises to character cells, and none of them mean anything at
+// pixel resolution.
+type Metrics struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Flows []*MetricsFlow         `protobuf:"bytes,1,rep,name=flows,proto3" json:"flows,omitempty"`
+	// Truncated reports that the commit window, rather than the repository's
+	// age, is what ended the history — so an aggregate built from it is not the
+	// whole story. Worth more here than in a commit list: a reader can see the
+	// bottom of a scroll, but nothing on a chart says it is short a few deploys.
+	Truncated bool  `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Limit     int32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Always set, for the reason View.generated_unix_seconds explains.
+	GeneratedUnixSeconds int64 `protobuf:"varint,4,opt,name=generated_unix_seconds,json=generatedUnixSeconds,proto3" json:"generated_unix_seconds,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *Metrics) Reset() {
+	*x = Metrics{}
+	mi := &file_clarity_v1_view_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Metrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Metrics) ProtoMessage() {}
+
+func (x *Metrics) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Metrics.ProtoReflect.Descriptor instead.
+func (*Metrics) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Metrics) GetFlows() []*MetricsFlow {
+	if x != nil {
+		return x.Flows
+	}
+	return nil
+}
+
+func (x *Metrics) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *Metrics) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *Metrics) GetGeneratedUnixSeconds() int64 {
+	if x != nil {
+		return x.GeneratedUnixSeconds
+	}
+	return 0
+}
+
+// MetricsFlow is one deploy target's weeks, newest first.
+type MetricsFlow struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Undeclared bool                   `protobuf:"varint,2,opt,name=undeclared,proto3" json:"undeclared,omitempty"`
+	Axis       *LeadAxis              `protobuf:"bytes,3,opt,name=axis,proto3" json:"axis,omitempty"`
+	// The busiest week on show, which is what every deploy bar is drawn
+	// relative to. A decision rather than geometry: bars could be scaled
+	// against a fixed ceiling or against the repository's all-time best, and
+	// "the busiest week you can see" is the one that makes the rows on screen
+	// comparable to each other.
+	MaxDeploys    int32   `protobuf:"varint,4,opt,name=max_deploys,json=maxDeploys,proto3" json:"max_deploys,omitempty"`
+	Weeks         []*Week `protobuf:"bytes,5,rep,name=weeks,proto3" json:"weeks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricsFlow) Reset() {
+	*x = MetricsFlow{}
+	mi := &file_clarity_v1_view_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricsFlow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricsFlow) ProtoMessage() {}
+
+func (x *MetricsFlow) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricsFlow.ProtoReflect.Descriptor instead.
+func (*MetricsFlow) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *MetricsFlow) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *MetricsFlow) GetUndeclared() bool {
+	if x != nil {
+		return x.Undeclared
+	}
+	return false
+}
+
+func (x *MetricsFlow) GetAxis() *LeadAxis {
+	if x != nil {
+		return x.Axis
+	}
+	return nil
+}
+
+func (x *MetricsFlow) GetMaxDeploys() int32 {
+	if x != nil {
+		return x.MaxDeploys
+	}
+	return 0
+}
+
+func (x *MetricsFlow) GetWeeks() []*Week {
+	if x != nil {
+		return x.Weeks
+	}
+	return nil
+}
+
+// LeadAxis is the one x-axis every week in a flow is drawn against.
+//
+// One axis rather than one per row, because per-row scaling would make the
+// rows incomparable and comparing them is the only reason the view exists.
+type LeadAxis struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	MaxSeconds int64                  `protobuf:"varint,1,opt,name=max_seconds,json=maxSeconds,proto3" json:"max_seconds,omitempty"`
+	// Clamped reports that some lead time sits beyond the scale, so a client can
+	// mark the axis as incomplete rather than clipping in silence.
+	Clamped bool `protobuf:"varint,2,opt,name=clamped,proto3" json:"clamped,omitempty"`
+	// The labels, at the fractions of the axis they belong to. A client draws as
+	// many as it has room for and drops the rest — how many fit is geometry, but
+	// what a tick is called is not: the format keeps the five fractions distinct,
+	// which is why a half hour reads "1.5h" rather than rounding onto its
+	// neighbour.
+	Ticks         []*AxisTick `protobuf:"bytes,3,rep,name=ticks,proto3" json:"ticks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LeadAxis) Reset() {
+	*x = LeadAxis{}
+	mi := &file_clarity_v1_view_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LeadAxis) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeadAxis) ProtoMessage() {}
+
+func (x *LeadAxis) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeadAxis.ProtoReflect.Descriptor instead.
+func (*LeadAxis) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *LeadAxis) GetMaxSeconds() int64 {
+	if x != nil {
+		return x.MaxSeconds
+	}
+	return 0
+}
+
+func (x *LeadAxis) GetClamped() bool {
+	if x != nil {
+		return x.Clamped
+	}
+	return false
+}
+
+func (x *LeadAxis) GetTicks() []*AxisTick {
+	if x != nil {
+		return x.Ticks
+	}
+	return nil
+}
+
+type AxisTick struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Fraction      float64                `protobuf:"fixed64,1,opt,name=fraction,proto3" json:"fraction,omitempty"` // 0, 0.25, 0.5, 0.75, 1
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`         // "0", "30m", "1.5h", "3d", and "7d+" when clamped
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AxisTick) Reset() {
+	*x = AxisTick{}
+	mi := &file_clarity_v1_view_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AxisTick) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AxisTick) ProtoMessage() {}
+
+func (x *AxisTick) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AxisTick.ProtoReflect.Descriptor instead.
+func (*AxisTick) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AxisTick) GetFraction() float64 {
+	if x != nil {
+		return x.Fraction
+	}
+	return 0
+}
+
+func (x *AxisTick) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+// Week is one ISO week's DORA-shaped summary.
+//
+// The bucket is the deploy date, which is DORA's own aggregation: a commit
+// authored three weeks ago and deployed today counts towards this week. A
+// ten-commit batch is one deploy, not ten.
+type Week struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Label   string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"` // "W2026-39"
+	Deploys int32                  `protobuf:"varint,2,opt,name=deploys,proto3" json:"deploys,omitempty"`
+	Plot    Plot                   `protobuf:"varint,3,opt,name=plot,proto3,enum=clarity.v1.Plot" json:"plot,omitempty"`
+	// How many commits contributed a lead time. Not the same as deploys: a
+	// batch carries several commits, and a week can measure lead times from
+	// batches whose own deploy event was never recorded.
+	N int32 `protobuf:"varint,4,opt,name=n,proto3" json:"n,omitempty"`
+	// The five-number summary, in seconds. The median is the headline rather
+	// than a mean: lead times are strongly right-skewed, so one commit that sat
+	// over a weekend drags an average badly. The quartiles carry the spread,
+	// which matters as much as the middle — a two-hour median with a three-day
+	// p75 is a problem the median alone hides.
+	MinSeconds int64 `protobuf:"varint,5,opt,name=min_seconds,json=minSeconds,proto3" json:"min_seconds,omitempty"`
+	P25Seconds int64 `protobuf:"varint,6,opt,name=p25_seconds,json=p25Seconds,proto3" json:"p25_seconds,omitempty"`
+	P50Seconds int64 `protobuf:"varint,7,opt,name=p50_seconds,json=p50Seconds,proto3" json:"p50_seconds,omitempty"`
+	P75Seconds int64 `protobuf:"varint,8,opt,name=p75_seconds,json=p75Seconds,proto3" json:"p75_seconds,omitempty"`
+	MaxSeconds int64 `protobuf:"varint,9,opt,name=max_seconds,json=maxSeconds,proto3" json:"max_seconds,omitempty"`
+	// The individual lead times, set only when plot is PLOT_POINTS. Bounded by
+	// the same threshold, so this cannot grow with a busy week.
+	SampleSeconds []int64 `protobuf:"varint,10,rep,packed,name=sample_seconds,json=sampleSeconds,proto3" json:"sample_seconds,omitempty"`
+	// Whether this week has a lead time past the axis, so a client can mark the
+	// row rather than silently clipping it. Strictly beyond, so a value landing
+	// exactly on the axis is drawn rather than marked as excluded.
+	BeyondAxis    bool `protobuf:"varint,11,opt,name=beyond_axis,json=beyondAxis,proto3" json:"beyond_axis,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Week) Reset() {
+	*x = Week{}
+	mi := &file_clarity_v1_view_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Week) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Week) ProtoMessage() {}
+
+func (x *Week) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Week.ProtoReflect.Descriptor instead.
+func (*Week) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Week) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *Week) GetDeploys() int32 {
+	if x != nil {
+		return x.Deploys
+	}
+	return 0
+}
+
+func (x *Week) GetPlot() Plot {
+	if x != nil {
+		return x.Plot
+	}
+	return Plot_PLOT_UNSPECIFIED
+}
+
+func (x *Week) GetN() int32 {
+	if x != nil {
+		return x.N
+	}
+	return 0
+}
+
+func (x *Week) GetMinSeconds() int64 {
+	if x != nil {
+		return x.MinSeconds
+	}
+	return 0
+}
+
+func (x *Week) GetP25Seconds() int64 {
+	if x != nil {
+		return x.P25Seconds
+	}
+	return 0
+}
+
+func (x *Week) GetP50Seconds() int64 {
+	if x != nil {
+		return x.P50Seconds
+	}
+	return 0
+}
+
+func (x *Week) GetP75Seconds() int64 {
+	if x != nil {
+		return x.P75Seconds
+	}
+	return 0
+}
+
+func (x *Week) GetMaxSeconds() int64 {
+	if x != nil {
+		return x.MaxSeconds
+	}
+	return 0
+}
+
+func (x *Week) GetSampleSeconds() []int64 {
+	if x != nil {
+		return x.SampleSeconds
+	}
+	return nil
+}
+
+func (x *Week) GetBeyondAxis() bool {
+	if x != nil {
+		return x.BeyondAxis
+	}
+	return false
+}
+
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
 
 const file_clarity_v1_view_proto_rawDesc = "" +
@@ -1188,7 +1681,48 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\aHostKey\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12 \n" +
-	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint*\x7f\n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\"\xa2\x01\n" +
+	"\aMetrics\x12-\n" +
+	"\x05flows\x18\x01 \x03(\v2\x17.clarity.v1.MetricsFlowR\x05flows\x12\x1c\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x124\n" +
+	"\x16generated_unix_seconds\x18\x04 \x01(\x03R\x14generatedUnixSeconds\"\xb4\x01\n" +
+	"\vMetricsFlow\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"undeclared\x18\x02 \x01(\bR\n" +
+	"undeclared\x12(\n" +
+	"\x04axis\x18\x03 \x01(\v2\x14.clarity.v1.LeadAxisR\x04axis\x12\x1f\n" +
+	"\vmax_deploys\x18\x04 \x01(\x05R\n" +
+	"maxDeploys\x12&\n" +
+	"\x05weeks\x18\x05 \x03(\v2\x10.clarity.v1.WeekR\x05weeks\"q\n" +
+	"\bLeadAxis\x12\x1f\n" +
+	"\vmax_seconds\x18\x01 \x01(\x03R\n" +
+	"maxSeconds\x12\x18\n" +
+	"\aclamped\x18\x02 \x01(\bR\aclamped\x12*\n" +
+	"\x05ticks\x18\x03 \x03(\v2\x14.clarity.v1.AxisTickR\x05ticks\"<\n" +
+	"\bAxisTick\x12\x1a\n" +
+	"\bfraction\x18\x01 \x01(\x01R\bfraction\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\"\xd7\x02\n" +
+	"\x04Week\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x18\n" +
+	"\adeploys\x18\x02 \x01(\x05R\adeploys\x12$\n" +
+	"\x04plot\x18\x03 \x01(\x0e2\x10.clarity.v1.PlotR\x04plot\x12\f\n" +
+	"\x01n\x18\x04 \x01(\x05R\x01n\x12\x1f\n" +
+	"\vmin_seconds\x18\x05 \x01(\x03R\n" +
+	"minSeconds\x12\x1f\n" +
+	"\vp25_seconds\x18\x06 \x01(\x03R\n" +
+	"p25Seconds\x12\x1f\n" +
+	"\vp50_seconds\x18\a \x01(\x03R\n" +
+	"p50Seconds\x12\x1f\n" +
+	"\vp75_seconds\x18\b \x01(\x03R\n" +
+	"p75Seconds\x12\x1f\n" +
+	"\vmax_seconds\x18\t \x01(\x03R\n" +
+	"maxSeconds\x12%\n" +
+	"\x0esample_seconds\x18\n" +
+	" \x03(\x03R\rsampleSeconds\x12\x1f\n" +
+	"\vbeyond_axis\x18\v \x01(\bR\n" +
+	"beyondAxis*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -1208,7 +1742,12 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x18OUTCOME_HOST_KEY_UNKNOWN\x10\x02\x12\x1c\n" +
 	"\x18OUTCOME_HOST_KEY_CHANGED\x10\x03\x12\x17\n" +
 	"\x13OUTCOME_AUTH_DENIED\x10\x04\x12\x12\n" +
-	"\x0eOUTCOME_FAILED\x10\x05Bf\n" +
+	"\x0eOUTCOME_FAILED\x10\x05*J\n" +
+	"\x04Plot\x12\x14\n" +
+	"\x10PLOT_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tPLOT_NONE\x10\x01\x12\x0f\n" +
+	"\vPLOT_POINTS\x10\x02\x12\f\n" +
+	"\bPLOT_BOX\x10\x03Bf\n" +
 	"\x16dev.ezcd.clarity.protoB\fClarityProtoP\x01Z<github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1b\x06proto3"
 
 var (
@@ -1223,47 +1762,58 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 	return file_clarity_v1_view_proto_rawDescData
 }
 
-var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
 	(Outcome)(0),        // 2: clarity.v1.Outcome
-	(*View)(nil),        // 3: clarity.v1.View
-	(*Flow)(nil),        // 4: clarity.v1.Flow
-	(*Section)(nil),     // 5: clarity.v1.Section
-	(*Batch)(nil),       // 6: clarity.v1.Batch
-	(*Commit)(nil),      // 7: clarity.v1.Commit
-	(*RepoList)(nil),    // 8: clarity.v1.RepoList
-	(*RepoSummary)(nil), // 9: clarity.v1.RepoSummary
-	(*FlowSummary)(nil), // 10: clarity.v1.FlowSummary
-	(*SyncResult)(nil),  // 11: clarity.v1.SyncResult
-	(*HostKey)(nil),     // 12: clarity.v1.HostKey
+	(Plot)(0),           // 3: clarity.v1.Plot
+	(*View)(nil),        // 4: clarity.v1.View
+	(*Flow)(nil),        // 5: clarity.v1.Flow
+	(*Section)(nil),     // 6: clarity.v1.Section
+	(*Batch)(nil),       // 7: clarity.v1.Batch
+	(*Commit)(nil),      // 8: clarity.v1.Commit
+	(*RepoList)(nil),    // 9: clarity.v1.RepoList
+	(*RepoSummary)(nil), // 10: clarity.v1.RepoSummary
+	(*FlowSummary)(nil), // 11: clarity.v1.FlowSummary
+	(*SyncResult)(nil),  // 12: clarity.v1.SyncResult
+	(*HostKey)(nil),     // 13: clarity.v1.HostKey
+	(*Metrics)(nil),     // 14: clarity.v1.Metrics
+	(*MetricsFlow)(nil), // 15: clarity.v1.MetricsFlow
+	(*LeadAxis)(nil),    // 16: clarity.v1.LeadAxis
+	(*AxisTick)(nil),    // 17: clarity.v1.AxisTick
+	(*Week)(nil),        // 18: clarity.v1.Week
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
 	0,  // 1: clarity.v1.View.deploy:type_name -> clarity.v1.Status
-	4,  // 2: clarity.v1.View.flows:type_name -> clarity.v1.Flow
+	5,  // 2: clarity.v1.View.flows:type_name -> clarity.v1.Flow
 	0,  // 3: clarity.v1.Flow.deploy:type_name -> clarity.v1.Status
-	5,  // 4: clarity.v1.Flow.sections:type_name -> clarity.v1.Section
+	6,  // 4: clarity.v1.Flow.sections:type_name -> clarity.v1.Section
 	1,  // 5: clarity.v1.Section.kind:type_name -> clarity.v1.SectionKind
-	7,  // 6: clarity.v1.Section.commits:type_name -> clarity.v1.Commit
-	6,  // 7: clarity.v1.Section.batches:type_name -> clarity.v1.Batch
+	8,  // 6: clarity.v1.Section.commits:type_name -> clarity.v1.Commit
+	7,  // 7: clarity.v1.Section.batches:type_name -> clarity.v1.Batch
 	0,  // 8: clarity.v1.Batch.status:type_name -> clarity.v1.Status
-	7,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
+	8,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
 	0,  // 10: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
-	9,  // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
+	10, // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
 	0,  // 12: clarity.v1.RepoSummary.ci:type_name -> clarity.v1.Status
 	0,  // 13: clarity.v1.RepoSummary.deploy:type_name -> clarity.v1.Status
-	10, // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
+	11, // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
 	0,  // 15: clarity.v1.FlowSummary.deploy:type_name -> clarity.v1.Status
 	2,  // 16: clarity.v1.SyncResult.outcome:type_name -> clarity.v1.Outcome
-	12, // 17: clarity.v1.SyncResult.host_key:type_name -> clarity.v1.HostKey
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	13, // 17: clarity.v1.SyncResult.host_key:type_name -> clarity.v1.HostKey
+	15, // 18: clarity.v1.Metrics.flows:type_name -> clarity.v1.MetricsFlow
+	16, // 19: clarity.v1.MetricsFlow.axis:type_name -> clarity.v1.LeadAxis
+	18, // 20: clarity.v1.MetricsFlow.weeks:type_name -> clarity.v1.Week
+	17, // 21: clarity.v1.LeadAxis.ticks:type_name -> clarity.v1.AxisTick
+	3,  // 22: clarity.v1.Week.plot:type_name -> clarity.v1.Plot
+	23, // [23:23] is the sub-list for method output_type
+	23, // [23:23] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -1276,8 +1826,8 @@ func file_clarity_v1_view_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   10,
+			NumEnums:      4,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

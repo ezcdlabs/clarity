@@ -393,3 +393,104 @@ func syncOK(t *testing.T, c *mobilecore.Client, id string) error {
 	}
 	return nil
 }
+
+// TestClient_Metrics walks the weekly aggregates across the bridge.
+//
+// A separate read from View and over a much larger commit window, because this
+// answers "are we getting better?" rather than "is main green right now?" —
+// the same reason `git clarity metrics` never polls.
+func TestClient_Metrics(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+	head := clone.LogBranch("main")[0].Hash
+	if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
+		Stage: "deploy", Status: "passed", Time: time.Now().Add(30 * time.Second),
+	}); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	id, err := c.AddRepo("file://"+remote.URL(), "main")
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if err := syncOK(t, c, id); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	raw, err := c.Metrics(id, 2000, 12)
+	if err != nil {
+		t.Fatalf("Metrics: %v", err)
+	}
+	var metrics v1.Metrics
+	if err := proto.Unmarshal(raw, &metrics); err != nil {
+		t.Fatalf("the bytes crossing the bridge did not decode: %v", err)
+	}
+	if len(metrics.Flows) == 0 {
+		t.Fatalf("no flows: %+v", &metrics)
+	}
+	flow := metrics.Flows[0]
+	if len(flow.Weeks) == 0 {
+		t.Fatalf("no weeks, so there is nothing to plot: %+v", flow)
+	}
+	if flow.Weeks[0].Deploys != 1 {
+		t.Errorf("deploys = %d, want the one that shipped", flow.Weeks[0].Deploys)
+	}
+	if flow.Axis == nil || len(flow.Axis.Ticks) != 5 {
+		t.Errorf("axis = %+v, want a scale with five labelled ticks", flow.Axis)
+	}
+	if metrics.GeneratedUnixSeconds == 0 {
+		// Load-bearing: a message with no field set encodes to zero bytes, and
+		// gomobile turns a zero-length slice into a null array on both
+		// platforms.
+		t.Error("the payload is unstamped, so an empty one could not cross")
+	}
+}
+
+// TestClient_Metrics_WindowIsWeeksNotCommits pins what --weeks means here: how
+// far back you can see must not depend on how busy the repository was.
+func TestClient_Metrics_WindowIsWeeksNotCommits(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+	head := clone.LogBranch("main")[0].Hash
+	for _, offset := range []time.Duration{30 * time.Second, -8 * 24 * time.Hour} {
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
+			Stage: "deploy", Status: "passed", Time: time.Now().Add(offset),
+		}); err != nil {
+			t.Fatalf("seed event: %v", err)
+		}
+	}
+
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	id, err := c.AddRepo("file://"+remote.URL(), "main")
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if err := syncOK(t, c, id); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	raw, err := c.Metrics(id, 2000, 1)
+	if err != nil {
+		t.Fatalf("Metrics: %v", err)
+	}
+	var metrics v1.Metrics
+	if err := proto.Unmarshal(raw, &metrics); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(metrics.Flows[0].Weeks); n != 1 {
+		t.Errorf("asked for one week and got %d", n)
+	}
+}

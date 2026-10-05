@@ -6,11 +6,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.sharp.Check
 import androidx.compose.material.icons.sharp.Close
-import androidx.compose.material.icons.sharp.MoreHoriz
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.ezcd.clarity.proto.Status
 
@@ -43,14 +46,40 @@ fun StatusGlyph(
     when (status) {
         Status.STATUS_PASSED -> Mark(Icons.Sharp.Check, "passed", colour, size, modifier)
         Status.STATUS_FAILED -> Mark(Icons.Sharp.Close, "failed", colour, size, modifier)
-        Status.STATUS_STARTED -> Mark(Icons.Sharp.MoreHoriz, "in progress", colour, size, modifier)
+        Status.STATUS_STARTED -> Spinner(colour, size, modifier)
         else ->
             // Nothing reported. A small square rather than a shrunken icon:
             // it has to read as an empty slot, not as a mark too faint to make
             // out, and at this size any glyph would.
-            Box(modifier.size(size.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Box(modifier.size(size.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(4.dp).background(colour))
             }
+    }
+}
+
+/**
+ * Something running, as the terminal draws it: a spinner rather than a mark.
+ *
+ * An ellipsis is a picture of waiting; a spinner is evidence of it. The
+ * distinction earns its keep on this screen in particular, because a build that
+ * is genuinely running and a view that has gone stale look identical in a
+ * still image — and the view behind this one refreshes on its own, so "is this
+ * moving?" is a question the reader actually has.
+ *
+ * Drawn at four fifths of the box, because Material's icons carry their own
+ * padding and a spinner filling the full square would read a size larger than
+ * the ticks and crosses beside it.
+ */
+@Composable
+private fun Spinner(colour: Color, size: Int, modifier: Modifier) {
+    Box(modifier.size(size.dp), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            Modifier
+                .size((size * 0.8f).dp)
+                .semantics { contentDescription = "in progress" },
+            color = colour,
+            strokeWidth = (size * 0.1f).dp,
+        )
     }
 }
 

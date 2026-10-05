@@ -439,20 +439,34 @@ private struct BatchHeader: View {
         // right edge made it look like a column of its own and broke the
         // sentence.
         let ago = ticking(model, batch.deployedUnixSeconds, batch.deployedAgo) { "\($0) ago" }
-        Text(ago.isEmpty ? batch.label : "\(batch.label) \(ago)")
-            .font(.system(size: 12, weight: batch.live ? .bold : .regular))
-            // The live batch is the present state rather than a past event, so
-            // it is the one carrying weight.
-            .italic(!batch.live)
-            .foregroundColor(colour)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // The glyph column, not the text column: it labels the marks below
-            // it rather than standing beside them, which is the edge the
-            // terminal uses too.
-            .padding(.horizontal, pageMargin)
-            .padding(.top, tight ? batchGapBelow : batchGapAbove)
-            .padding(.bottom, batchGapBelow)
+        HStack(spacing: 0) {
+            // A deploy in flight gets a spinner in the glyph column, as the
+            // terminal gives it one — and for the same reason a running build
+            // gets one: "deploying…" on its own is a claim the screen keeps
+            // making long after it has stopped being true. The label then
+            // starts at the text column, lining up with the subjects below it.
+            if batch.status == .started {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(colour)
+                    .frame(width: glyphColumn, alignment: .leading)
+                    .padding(.trailing, 10)
+            }
+            Text(ago.isEmpty ? batch.label : "\(batch.label) \(ago)")
+                .font(.system(size: 12, weight: batch.live ? .bold : .regular))
+                // The live batch is the present state rather than a past event,
+                // so it is the one carrying weight.
+                .italic(!batch.live)
+                .foregroundColor(colour)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        // Without a spinner the label sits at the glyph column: it labels the
+        // marks below it rather than standing beside them, which is the edge
+        // the terminal uses too.
+        .padding(.horizontal, pageMargin)
+        .padding(.top, tight ? batchGapBelow : batchGapAbove)
+        .padding(.bottom, batchGapBelow)
     }
 
     private var colour: Color {

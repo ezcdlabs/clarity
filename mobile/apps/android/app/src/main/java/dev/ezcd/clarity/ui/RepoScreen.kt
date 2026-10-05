@@ -497,20 +497,10 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel, tigh
     // "live on production · deployed 4m 43s ago". Pushing the time to the right
     // edge made it look like a column of its own and broke the sentence.
     val ago = ticking(state, model, batch.deployedUnixSeconds, batch.deployedAgo) { "$it ago" }
-    Text(
-        if (ago.isEmpty()) batch.label else "${batch.label} $ago",
-        color = colour,
-        fontSize = 12.sp,
-        // The live batch is the present state rather than a past event, so it is
-        // the one carrying weight.
-        fontWeight = if (batch.live) FontWeight.Bold else FontWeight.Normal,
-        fontStyle = if (batch.live) FontStyle.Normal else FontStyle.Italic,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(
-            // The glyph column, not the text column: it labels the marks below
-            // it rather than standing beside them, which is the edge the
-            // terminal uses too.
+    val running = batch.status == Status.STATUS_STARTED
+
+    Row(
+        Modifier.fillMaxWidth().padding(
             start = PageMargin,
             end = PageMargin,
             // Something already separated this one: the section rule it opens,
@@ -519,7 +509,39 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel, tigh
             top = if (tight) batchGapBelow else batchGapAbove,
             bottom = batchGapBelow,
         ),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // A deploy in flight gets a spinner in the glyph column, as the
+        // terminal gives it one — and for the same reason a running build gets
+        // one: "deploying…" on its own is a claim the screen keeps making long
+        // after it has stopped being true, and nothing in a still image says
+        // which. The label then starts at the text column, lining up with the
+        // commit subjects under it.
+        if (running) {
+            Box(Modifier.width(glyphColumn), contentAlignment = Alignment.CenterStart) {
+                CircularProgressIndicator(
+                    Modifier.size(11.dp),
+                    color = colour,
+                    strokeWidth = 1.5.dp,
+                )
+            }
+        }
+        Text(
+            if (ago.isEmpty()) batch.label else "${batch.label} $ago",
+            color = colour,
+            fontSize = 12.sp,
+            // The live batch is the present state rather than a past event, so
+            // it is the one carrying weight.
+            fontWeight = if (batch.live) FontWeight.Bold else FontWeight.Normal,
+            fontStyle = if (batch.live) FontStyle.Normal else FontStyle.Italic,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            // Without a spinner the label sits at the glyph column: it labels
+            // the marks below it rather than standing beside them, which is the
+            // edge the terminal uses too.
+            modifier = Modifier.weight(1f).padding(start = if (running) 10.dp else 0.dp),
+        )
+    }
 }
 
 /**

@@ -37,7 +37,20 @@ struct StatusGlyph: View {
             case .failed:
                 Image(systemName: "xmark").accessibilityLabel("failed")
             case .started:
-                Image(systemName: "ellipsis").accessibilityLabel("in progress")
+                // Something running, as the terminal draws it: a spinner rather
+                // than a mark. An ellipsis is a picture of waiting; a spinner is
+                // evidence of it — and on a screen that refreshes itself, a
+                // build that is genuinely running and a view that has gone stale
+                // look identical in a still image.
+                // Left at its own size inside the frame below rather than
+                // scaled to `size`: a ProgressView's intrinsic dimensions are
+                // not a documented number, so scaling to them is arithmetic on
+                // a guess. Mini lands close to an SF Symbol at this size, which
+                // carries its own padding too.
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(colour)
+                    .accessibilityLabel("in progress")
             default:
                 // Nothing reported. A small square rather than a shrunken
                 // symbol: it has to read as an empty slot, not as a mark too

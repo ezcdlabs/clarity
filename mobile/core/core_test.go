@@ -75,7 +75,7 @@ func TestClient_AddSyncView(t *testing.T) {
 	if deployed.Subject != "feat: first" {
 		t.Errorf("subject = %q", deployed.Subject)
 	}
-	if !deployed.HasLeadTime || deployed.LeadTime == "" {
+	if !deployed.LeadTimeKnown || deployed.LeadTime == "" {
 		t.Error("a shipped commit should carry its lead time across the bridge")
 	}
 }

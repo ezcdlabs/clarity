@@ -566,7 +566,7 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
                 modifier = Modifier.weight(1f).padding(start = 10.dp),
             )
 
-            if (commit.hasLeadTime) {
+            if (commit.leadTimeKnown) {
                 // Grey while it runs, blue once the deploy that stopped the
                 // clock landed — so a lead time blooms blue exactly when it
                 // freezes, matching the Deployed band it came to rest in.

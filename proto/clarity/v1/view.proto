@@ -168,7 +168,13 @@ message Commit {
   // Lead time is absent for a commit that has not shipped, and for one the
   // configured mode excludes. Zero seconds with an empty string means absent;
   // it is not the same as a lead time of zero.
-  bool has_lead_time = 9;
+  //
+  // Named "known" rather than the obvious "has_": protoc-gen-swift generates
+  // its own `has` accessors and renames any field that would collide with one,
+  // so `has_lead_time` arrives in Swift under a mangled name while Go and
+  // Kotlin see it as written. A field name one of the three target languages
+  // cannot spell is a bad field name.
+  bool lead_time_known = 9;
   int64 lead_time_seconds = 10;
   string lead_time = 11;
   // Live marks a lead time still running — the commit is deployed but the

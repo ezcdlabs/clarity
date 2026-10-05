@@ -594,7 +594,13 @@ type Commit struct {
 	// Lead time is absent for a commit that has not shipped, and for one the
 	// configured mode excludes. Zero seconds with an empty string means absent;
 	// it is not the same as a lead time of zero.
-	HasLeadTime     bool   `protobuf:"varint,9,opt,name=has_lead_time,json=hasLeadTime,proto3" json:"has_lead_time,omitempty"`
+	//
+	// Named "known" rather than the obvious "has_": protoc-gen-swift generates
+	// its own `has` accessors and renames any field that would collide with one,
+	// so `has_lead_time` arrives in Swift under a mangled name while Go and
+	// Kotlin see it as written. A field name one of the three target languages
+	// cannot spell is a bad field name.
+	LeadTimeKnown   bool   `protobuf:"varint,9,opt,name=lead_time_known,json=leadTimeKnown,proto3" json:"lead_time_known,omitempty"`
 	LeadTimeSeconds int64  `protobuf:"varint,10,opt,name=lead_time_seconds,json=leadTimeSeconds,proto3" json:"lead_time_seconds,omitempty"`
 	LeadTime        string `protobuf:"bytes,11,opt,name=lead_time,json=leadTime,proto3" json:"lead_time,omitempty"`
 	// Live marks a lead time still running — the commit is deployed but the
@@ -686,9 +692,9 @@ func (x *Commit) GetCiStale() bool {
 	return false
 }
 
-func (x *Commit) GetHasLeadTime() bool {
+func (x *Commit) GetLeadTimeKnown() bool {
 	if x != nil {
-		return x.HasLeadTime
+		return x.LeadTimeKnown
 	}
 	return false
 }
@@ -1139,7 +1145,7 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x04live\x18\x05 \x01(\bR\x04live\x12\x1d\n" +
 	"\n" +
 	"week_label\x18\a \x01(\tR\tweekLabel\x12,\n" +
-	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xb1\x03\n" +
+	"\acommits\x18\x06 \x03(\v2\x12.clarity.v1.CommitR\acommits\"\xb5\x03\n" +
 	"\x06Commit\x12\x10\n" +
 	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x1b\n" +
 	"\tshort_sha\x18\x02 \x01(\tR\bshortSha\x12\x18\n" +
@@ -1147,8 +1153,8 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x06author\x18\x04 \x01(\tR\x06author\x122\n" +
 	"\x15authored_unix_seconds\x18\x05 \x01(\x03R\x13authoredUnixSeconds\x12\"\n" +
 	"\x02ci\x18\a \x01(\x0e2\x12.clarity.v1.StatusR\x02ci\x12\x19\n" +
-	"\bci_stale\x18\b \x01(\bR\aciStale\x12\"\n" +
-	"\rhas_lead_time\x18\t \x01(\bR\vhasLeadTime\x12*\n" +
+	"\bci_stale\x18\b \x01(\bR\aciStale\x12&\n" +
+	"\x0flead_time_known\x18\t \x01(\bR\rleadTimeKnown\x12*\n" +
 	"\x11lead_time_seconds\x18\n" +
 	" \x01(\x03R\x0fleadTimeSeconds\x12\x1b\n" +
 	"\tlead_time\x18\v \x01(\tR\bleadTime\x12$\n" +

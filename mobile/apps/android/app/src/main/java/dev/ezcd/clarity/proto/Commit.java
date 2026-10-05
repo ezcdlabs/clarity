@@ -366,48 +366,63 @@ public  final class Commit extends
     ciStale_ = false;
   }
 
-  public static final int HAS_LEAD_TIME_FIELD_NUMBER = 9;
-  private boolean hasLeadTime_;
+  public static final int LEAD_TIME_KNOWN_FIELD_NUMBER = 9;
+  private boolean leadTimeKnown_;
   /**
    * <pre>
    * Lead time is absent for a commit that has not shipped, and for one the
    * configured mode excludes. Zero seconds with an empty string means absent;
    * it is not the same as a lead time of zero.
+   * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+   * its own `has` accessors and renames any field that would collide with one,
+   * so `has_lead_time` arrives in Swift under a mangled name while Go and
+   * Kotlin see it as written. A field name one of the three target languages
+   * cannot spell is a bad field name.
    * </pre>
    *
-   * <code>bool has_lead_time = 9;</code>
-   * @return The hasLeadTime.
+   * <code>bool lead_time_known = 9;</code>
+   * @return The leadTimeKnown.
    */
   @java.lang.Override
-  public boolean getHasLeadTime() {
-    return hasLeadTime_;
+  public boolean getLeadTimeKnown() {
+    return leadTimeKnown_;
   }
   /**
    * <pre>
    * Lead time is absent for a commit that has not shipped, and for one the
    * configured mode excludes. Zero seconds with an empty string means absent;
    * it is not the same as a lead time of zero.
+   * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+   * its own `has` accessors and renames any field that would collide with one,
+   * so `has_lead_time` arrives in Swift under a mangled name while Go and
+   * Kotlin see it as written. A field name one of the three target languages
+   * cannot spell is a bad field name.
    * </pre>
    *
-   * <code>bool has_lead_time = 9;</code>
-   * @param value The hasLeadTime to set.
+   * <code>bool lead_time_known = 9;</code>
+   * @param value The leadTimeKnown to set.
    */
-  private void setHasLeadTime(boolean value) {
+  private void setLeadTimeKnown(boolean value) {
     
-    hasLeadTime_ = value;
+    leadTimeKnown_ = value;
   }
   /**
    * <pre>
    * Lead time is absent for a commit that has not shipped, and for one the
    * configured mode excludes. Zero seconds with an empty string means absent;
    * it is not the same as a lead time of zero.
+   * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+   * its own `has` accessors and renames any field that would collide with one,
+   * so `has_lead_time` arrives in Swift under a mangled name while Go and
+   * Kotlin see it as written. A field name one of the three target languages
+   * cannot spell is a bad field name.
    * </pre>
    *
-   * <code>bool has_lead_time = 9;</code>
+   * <code>bool lead_time_known = 9;</code>
    */
-  private void clearHasLeadTime() {
+  private void clearLeadTimeKnown() {
     
-    hasLeadTime_ = false;
+    leadTimeKnown_ = false;
   }
 
   public static final int LEAD_TIME_SECONDS_FIELD_NUMBER = 10;
@@ -1029,29 +1044,39 @@ public  final class Commit extends
      * Lead time is absent for a commit that has not shipped, and for one the
      * configured mode excludes. Zero seconds with an empty string means absent;
      * it is not the same as a lead time of zero.
+     * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+     * its own `has` accessors and renames any field that would collide with one,
+     * so `has_lead_time` arrives in Swift under a mangled name while Go and
+     * Kotlin see it as written. A field name one of the three target languages
+     * cannot spell is a bad field name.
      * </pre>
      *
-     * <code>bool has_lead_time = 9;</code>
-     * @return The hasLeadTime.
+     * <code>bool lead_time_known = 9;</code>
+     * @return The leadTimeKnown.
      */
     @java.lang.Override
-    public boolean getHasLeadTime() {
-      return instance.getHasLeadTime();
+    public boolean getLeadTimeKnown() {
+      return instance.getLeadTimeKnown();
     }
     /**
      * <pre>
      * Lead time is absent for a commit that has not shipped, and for one the
      * configured mode excludes. Zero seconds with an empty string means absent;
      * it is not the same as a lead time of zero.
+     * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+     * its own `has` accessors and renames any field that would collide with one,
+     * so `has_lead_time` arrives in Swift under a mangled name while Go and
+     * Kotlin see it as written. A field name one of the three target languages
+     * cannot spell is a bad field name.
      * </pre>
      *
-     * <code>bool has_lead_time = 9;</code>
-     * @param value The hasLeadTime to set.
+     * <code>bool lead_time_known = 9;</code>
+     * @param value The leadTimeKnown to set.
      * @return This builder for chaining.
      */
-    public Builder setHasLeadTime(boolean value) {
+    public Builder setLeadTimeKnown(boolean value) {
       copyOnWrite();
-      instance.setHasLeadTime(value);
+      instance.setLeadTimeKnown(value);
       return this;
     }
     /**
@@ -1059,14 +1084,19 @@ public  final class Commit extends
      * Lead time is absent for a commit that has not shipped, and for one the
      * configured mode excludes. Zero seconds with an empty string means absent;
      * it is not the same as a lead time of zero.
+     * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+     * its own `has` accessors and renames any field that would collide with one,
+     * so `has_lead_time` arrives in Swift under a mangled name while Go and
+     * Kotlin see it as written. A field name one of the three target languages
+     * cannot spell is a bad field name.
      * </pre>
      *
-     * <code>bool has_lead_time = 9;</code>
+     * <code>bool lead_time_known = 9;</code>
      * @return This builder for chaining.
      */
-    public Builder clearHasLeadTime() {
+    public Builder clearLeadTimeKnown() {
       copyOnWrite();
-      instance.clearHasLeadTime();
+      instance.clearLeadTimeKnown();
       return this;
     }
 
@@ -1256,7 +1286,7 @@ public  final class Commit extends
             "authoredUnixSeconds_",
             "ci_",
             "ciStale_",
-            "hasLeadTime_",
+            "leadTimeKnown_",
             "leadTimeSeconds_",
             "leadTime_",
             "leadTimeLive_",

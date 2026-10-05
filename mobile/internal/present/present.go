@@ -189,7 +189,7 @@ func commit(c core.CommitView, g *core.Groupings, index map[string]int, now time
 	if i, ok := index[c.SHA]; ok && g != nil {
 		out.CiStale = g.IsStaleStage(i, "ci")
 		if d, frozen, has := g.LeadTime(i, now); has {
-			out.HasLeadTime = true
+			out.LeadTimeKnown = true
 			out.LeadTimeSeconds = int64(d / time.Second)
 			out.LeadTime = core.FormatElapsed(d)
 			// Live is the inverse of frozen: the deploy that stops this

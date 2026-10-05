@@ -105,7 +105,7 @@ func TestView_CarriesTheDecisionsNotTheGeometry(t *testing.T) {
 		t.Errorf("the full sha must survive for anything that needs to address the commit")
 	}
 	// Lead time is two hours: authored at 01:00, deployed at 03:00.
-	if !c.HasLeadTime {
+	if !c.LeadTimeKnown {
 		t.Fatal("a shipped commit has a lead time")
 	}
 	if c.LeadTimeSeconds != int64(2*time.Hour/time.Second) {
@@ -129,7 +129,7 @@ func TestView_LiveLeadTimeIsMarkedLive(t *testing.T) {
 	if undeployed == nil {
 		t.Fatal("expected the un-shipped commit above the deploy line")
 	}
-	if !undeployed.HasLeadTime {
+	if !undeployed.LeadTimeKnown {
 		t.Fatal("a commit waiting to ship has a running lead time, not none")
 	}
 	if !undeployed.LeadTimeLive {
@@ -160,7 +160,7 @@ func TestView_AbsentLeadTimeIsNotZero(t *testing.T) {
 	if c == nil {
 		t.Fatal("the excluded commit is missing from every section")
 	}
-	if c.HasLeadTime {
+	if c.LeadTimeKnown {
 		t.Errorf("a commit the mode excludes reports a lead time of %q", c.LeadTime)
 	}
 	if c.LeadTimeSeconds != 0 {

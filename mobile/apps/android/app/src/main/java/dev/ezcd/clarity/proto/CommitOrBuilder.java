@@ -107,12 +107,17 @@ public interface CommitOrBuilder extends
    * Lead time is absent for a commit that has not shipped, and for one the
    * configured mode excludes. Zero seconds with an empty string means absent;
    * it is not the same as a lead time of zero.
+   * Named "known" rather than the obvious "has_": protoc-gen-swift generates
+   * its own `has` accessors and renames any field that would collide with one,
+   * so `has_lead_time` arrives in Swift under a mangled name while Go and
+   * Kotlin see it as written. A field name one of the three target languages
+   * cannot spell is a bad field name.
    * </pre>
    *
-   * <code>bool has_lead_time = 9;</code>
-   * @return The hasLeadTime.
+   * <code>bool lead_time_known = 9;</code>
+   * @return The leadTimeKnown.
    */
-  boolean getHasLeadTime();
+  boolean getLeadTimeKnown();
 
   /**
    * <code>int64 lead_time_seconds = 10;</code>

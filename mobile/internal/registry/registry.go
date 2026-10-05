@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/ezcdlabs/clarity/mobile/internal/remote"
 )
@@ -57,8 +58,19 @@ type FlowStatus struct {
 }
 
 // Registry is the set of tracked repositories, persisted under a directory.
+//
+// Safe for concurrent use, which it has to be: every mutation is a
+// read-modify-write of one file, and two that overlap leave only the second —
+// the first's change was read into the second's snapshot before it was made,
+// and writing that snapshot back erases it. The background check records what
+// it found at the same time as the screen records what it read, so this is the
+// ordinary case rather than a corner of one.
+//
+// The lock covers reads as well. A List that runs between another writer's read
+// and its write would be reporting a state that is about to be thrown away.
 type Registry struct {
 	dir string
+	mu  sync.Mutex
 }
 
 func Open(dir string) *Registry { return &Registry{dir: dir} }
@@ -69,6 +81,9 @@ const fileName = "repos.json"
 // tracked updates it rather than duplicating — re-pasting a URL to fix a
 // branch should do what the user means.
 func (r *Registry) Add(rawURL, branch string) (Entry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return Entry{}, errors.New("a repository URL is required")
@@ -86,7 +101,7 @@ func (r *Registry) Add(rawURL, branch string) (Entry, error) {
 		Branch: branch,
 	}
 
-	entries, err := r.List()
+	entries, err := r.list()
 	if err != nil {
 		return Entry{}, err
 	}
@@ -106,7 +121,10 @@ func (r *Registry) Add(rawURL, branch string) (Entry, error) {
 // Remove forgets a repository. Removing one that is not tracked is not an
 // error: the caller wanted it gone, and it is.
 func (r *Registry) Remove(repoID string) error {
-	entries, err := r.List()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entries, err := r.list()
 	if err != nil {
 		return err
 	}
@@ -122,6 +140,13 @@ func (r *Registry) Remove(repoID string) error {
 // List returns the tracked repositories, ordered by name so the menu does not
 // reshuffle itself between launches.
 func (r *Registry) List() ([]Entry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.list()
+}
+
+// list is List without the lock, for the callers that already hold it.
+func (r *Registry) list() ([]Entry, error) {
 	data, err := os.ReadFile(filepath.Join(r.dir, fileName))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -149,7 +174,10 @@ func (r *Registry) List() ([]Entry, error) {
 
 // Get returns one entry.
 func (r *Registry) Get(repoID string) (Entry, error) {
-	entries, err := r.List()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entries, err := r.list()
 	if err != nil {
 		return Entry{}, err
 	}
@@ -232,7 +260,10 @@ func (r *Registry) SetStatus(id string, s Status) error {
 
 // update applies a change to one entry and writes the registry back.
 func (r *Registry) update(id string, apply func(*Entry)) error {
-	entries, err := r.List()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entries, err := r.list()
 	if err != nil {
 		return err
 	}

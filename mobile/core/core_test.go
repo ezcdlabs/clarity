@@ -591,3 +591,66 @@ func check(t *testing.T, c *mobilecore.Client) *v1.Changes {
 	}
 	return &out
 }
+
+// TestClient_Check_LeavesTheStoreWarm is the other half of what a background
+// check is for.
+//
+// It fetches into the same object store the screens read, so the work is not
+// spent only on deciding whether to notify: opening the app after a check shows
+// what that check pulled, immediately and without waiting for the network. On a
+// phone that is most of the perceived speed of the thing.
+func TestClient_Check_LeavesTheStoreWarm(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: before the check")
+	clone.Push("main")
+
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	id, err := c.AddRepo("file://"+remote.URL(), "main")
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if _, err := c.Check(30); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+
+	// Something lands while the app is closed, and the next check picks it up.
+	clone.WriteFile("f.txt", "two")
+	clone.CommitAll("feat: while you were away")
+	clone.Push("main")
+	if _, err := c.Check(30); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+
+	// Read with no fetch in between, which is what opening the app does first.
+	raw, err := c.View(id, 50)
+	if err != nil {
+		t.Fatalf("View: %v", err)
+	}
+	var view v1.View
+	if err := proto.Unmarshal(raw, &view); err != nil {
+		t.Fatal(err)
+	}
+
+	var subjects []string
+	for _, f := range view.Flows {
+		for _, sec := range f.Sections {
+			for _, cm := range sec.Commits {
+				subjects = append(subjects, cm.Subject)
+			}
+		}
+	}
+	found := false
+	for _, s := range subjects {
+		if s == "feat: while you were away" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("a read straight after a check does not see what the check fetched: %v", subjects)
+	}
+}

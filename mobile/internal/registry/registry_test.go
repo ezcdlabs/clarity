@@ -1,8 +1,10 @@
 package registry_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/ezcdlabs/clarity/mobile/internal/registry"
@@ -277,5 +279,55 @@ func TestSetBranch_BlankMeansMain(t *testing.T) {
 	}
 	if got, _ := r.Get(e.ID); got.Branch != "main" {
 		t.Errorf("branch = %q, want main", got.Branch)
+	}
+}
+
+// TestRegistry_ConcurrentUpdatesDoNotLoseEachOther covers two writers.
+//
+// Every mutation is a read-modify-write of one file, so two that overlap leave
+// only the second: the first's change was read into the second's snapshot
+// before it was made, and writing that snapshot back erases it. Not
+// hypothetical here — a background check records what it found at the same time
+// as the screen records what it read.
+//
+// Each writer sets a different value, which is what makes the loss visible. An
+// earlier version had them all write the same alias, and a lost update of an
+// identical write looks exactly like no loss at all.
+func TestRegistry_ConcurrentUpdatesDoNotLoseEachOther(t *testing.T) {
+	const writers = 20
+	r := registry.Open(t.TempDir())
+
+	ids := make([]string, writers)
+	for i := range ids {
+		e, err := r.Add(fmt.Sprintf("https://h/repo-%02d.git", i), "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = e.ID
+	}
+
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Add(1)
+		go func(i int, id string) {
+			defer wg.Done()
+			_ = r.SetAlias(id, fmt.Sprintf("name-%02d", i))
+		}(i, id)
+	}
+	wg.Wait()
+
+	var lost []string
+	for i, id := range ids {
+		got, err := r.Get(id)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if want := fmt.Sprintf("name-%02d", i); got.Alias != want {
+			lost = append(lost, fmt.Sprintf("%s (alias %q, want %q)", id, got.Alias, want))
+		}
+	}
+	if len(lost) > 0 {
+		t.Errorf("%d of %d renames were overwritten by a concurrent write: %v",
+			len(lost), writers, lost)
 	}
 }

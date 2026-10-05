@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ezcdlabs/clarity/internal/core"
@@ -50,6 +51,10 @@ import (
 // comparing trend. commitLimit bounds the read itself; 0 means unlimited, as it
 // does on every other entry point.
 func (c *Client) Metrics(repoID string, commitLimit, weeks int) ([]byte, error) {
+	l := c.lockFor(repoID)
+	l.Lock()
+	defer l.Unlock()
+
 	if weeks < 1 {
 		return nil, fmt.Errorf("weeks must be at least 1, got %d", weeks)
 	}
@@ -98,6 +103,36 @@ type Client struct {
 	identity *keys.Identity
 	repos    *registry.Registry
 	hosts    *hostkeys.Store
+
+	// One lock per repository, guarding its object store.
+	//
+	// go-git's filesystem storage is not written for two writers, and this
+	// client now has them routinely: the background check fetches while the
+	// screen is fetching, and the metrics screen's deepening fetch runs for
+	// seconds while the five-second pump keeps firing underneath it. Per
+	// repository rather than one lock for everything, so a slow fetch of one
+	// does not hold up a read of another.
+	//
+	// Reads take it too. A view read while a fetch is rewriting refs is a view
+	// of whichever half had landed.
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+// lockFor returns the lock guarding one repository's store, creating it on
+// first use.
+func (c *Client) lockFor(repoID string) *sync.Mutex {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locks == nil {
+		c.locks = map[string]*sync.Mutex{}
+	}
+	if l, ok := c.locks[repoID]; ok {
+		return l
+	}
+	l := &sync.Mutex{}
+	c.locks[repoID] = l
+	return l
 }
 
 // New prepares a client over a data directory. Nothing is read or generated
@@ -137,7 +172,15 @@ func (c *Client) AddRepo(url, branch string) (string, error) {
 // RemoveRepo forgets a repository. Its object store is left on disk for the
 // caller to delete, because deleting user data is not something a bridge
 // method should do as a side effect.
-func (c *Client) RemoveRepo(repoID string) error { return c.repos.Remove(repoID) }
+// RemoveRepo forgets a repository. Takes the repository's lock, because the
+// caller is about to delete the directory a fetch may be writing into.
+func (c *Client) RemoveRepo(repoID string) error {
+	l := c.lockFor(repoID)
+	l.Lock()
+	defer l.Unlock()
+
+	return c.repos.Remove(repoID)
+}
 
 // StorePath is where a repository's objects live, so an app that wants to
 // reclaim the space after RemoveRepo knows what to delete.
@@ -212,6 +255,10 @@ func summary(e registry.Entry) *v1.RepoSummary {
 // default; the view that follows holds a snapshot and has nothing left to
 // time out.
 func (c *Client) Sync(repoID string, depth, timeoutSeconds int) ([]byte, error) {
+	l := c.lockFor(repoID)
+	l.Lock()
+	defer l.Unlock()
+
 	repo, entry, err := c.open(repoID)
 	if err != nil {
 		return nil, err
@@ -277,6 +324,10 @@ func (c *Client) Check(timeoutSeconds int) ([]byte, error) {
 // The order matters: the comparison has to read the stored verdict before the
 // fresh one overwrites it, which is why this does not simply call View.
 func (c *Client) checkOne(entry registry.Entry, timeoutSeconds int) ([]watch.Change, error) {
+	l := c.lockFor(entry.ID)
+	l.Lock()
+	defer l.Unlock()
+
 	repo, _, err := c.open(entry.ID)
 	if err != nil {
 		return nil, err
@@ -391,6 +442,10 @@ func isAuthDenied(err error) bool {
 // View returns an encoded clarity.v1.View// View returns an encoded clarity.v1.View for a repository, read from what
 // the last Sync fetched. Never touches the network.
 func (c *Client) View(repoID string, limit int) ([]byte, error) {
+	l := c.lockFor(repoID)
+	l.Lock()
+	defer l.Unlock()
+
 	repo, _, err := c.open(repoID)
 	if err != nil {
 		return nil, err

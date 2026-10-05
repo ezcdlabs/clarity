@@ -46,7 +46,7 @@ val PageMargin = 20.dp
 fun App(model: ClarityModel, modifier: Modifier = Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
 
-    Box(modifier.fillMaxSize().background(Ink.surface)) {
+    Box(modifier.fillMaxSize().background(Ink.bg)) {
         when (state.overlay) {
             Overlay.Connect -> ConnectScreen(state, model)
             Overlay.Key -> KeyScreen(state, model)
@@ -56,11 +56,16 @@ fun App(model: ClarityModel, modifier: Modifier = Modifier) {
 }
 
 /**
- * The reading surface, laid on the chrome.
+ * The repository feed's reading surface, laid on the chrome.
  *
- * The turned corners are what make the two tones read as a sheet on a ground
- * rather than as a join between two panels that failed to match — the levels
- * are deliberately close in tone, so the shape has to do the explaining.
+ * Only the repository screen has one, and only because it has chrome to lay it
+ * on: a fixed bar, a summary strip and tabs that the feed scrolls under. The
+ * turned corners are what make two close tones read as a sheet on a ground
+ * rather than as a join between panels that failed to match.
+ *
+ * Every other screen is flat — a page the colour of the reading surface, with
+ * a bar on the same colour above it. Giving them all a sheet put a seam across
+ * screens that had nothing on the other side of it.
  *
  * [topStartRadius] is squared off when a selected tab sits directly above, so
  * the tab and the sheet read as one surface.

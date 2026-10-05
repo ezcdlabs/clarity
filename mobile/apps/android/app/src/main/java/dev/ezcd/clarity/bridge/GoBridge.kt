@@ -43,6 +43,8 @@ class GoBridge(private val client: Client) : ClarityBridge {
 
     override fun rename(repoId: String, name: String) = client.rename(repoId, name)
 
+    override fun setBranch(repoId: String, branch: String) = client.setBranch(repoId, branch)
+
     override fun view(repoId: String, limit: Int): View =
         View.parseFrom(client.view(repoId, limit.toLong()))
 

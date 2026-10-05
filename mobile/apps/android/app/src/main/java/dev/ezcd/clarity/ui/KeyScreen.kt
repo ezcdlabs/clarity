@@ -33,7 +33,7 @@ import dev.ezcd.clarity.ClarityModel
 fun KeyScreen(state: AppState, model: ClarityModel) {
     LaunchedEffect(Unit) { model.loadKey() }
 
-    Column(Modifier.fillMaxSize().background(Ink.surface)) {
+    Column(Modifier.fillMaxSize().background(Ink.bg)) {
         Row(
             Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 4.dp),
             horizontalArrangement = Arrangement.Start,
@@ -48,10 +48,9 @@ fun KeyScreen(state: AppState, model: ClarityModel) {
             )
         }
 
-        Sheet {
-            Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PageMargin),
-            ) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PageMargin),
+        ) {
                 ErrorBar(state.error) { model.dismissError() }
                 Text(
                     "Add this as a deploy key on a repository, or under your account's " +
@@ -60,13 +59,12 @@ fun KeyScreen(state: AppState, model: ClarityModel) {
                     color = Ink.dim,
                 )
                 Spacer(Modifier.height(20.dp))
-                KeyCard(
-                    publicKey = state.publicKey,
-                    fingerprint = state.fingerprint,
-                    startOpen = true,
-                    collapsible = false,
-                )
-            }
+            KeyCard(
+                publicKey = state.publicKey,
+                fingerprint = state.fingerprint,
+                startOpen = true,
+                collapsible = false,
+            )
         }
     }
 }

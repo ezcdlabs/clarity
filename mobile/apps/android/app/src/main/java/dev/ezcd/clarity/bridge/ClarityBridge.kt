@@ -51,6 +51,9 @@ interface ClarityBridge {
     /** Renames a repository on this device. A blank name clears the rename. */
     fun rename(repoId: String, name: String)
 
+    /** Changes which branch a repository watches. Blank means main. */
+    fun setBranch(repoId: String, branch: String)
+
     /** Reads what the last [sync] fetched. Never touches the network. */
     fun view(repoId: String, limit: Int): View
 

@@ -88,6 +88,13 @@ final class FakeBridge: ClarityBridge {
         calls.append("trustHost")
     }
 
+    func setBranch(repoID: String, branch: String) throws {
+        calls.append("setBranch")
+        if let i = repos.firstIndex(where: { $0.id == repoID }) {
+            repos[i].branch = branch.isEmpty ? "main" : branch
+        }
+    }
+
     func rename(repoID: String, name: String) throws {
         calls.append("rename")
         if let i = repos.firstIndex(where: { $0.id == repoID }) {

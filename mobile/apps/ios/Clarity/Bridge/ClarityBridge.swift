@@ -43,6 +43,9 @@ protocol ClarityBridge {
     /// Renames a repository on this device. A blank name clears the rename.
     func rename(repoID: String, name: String) throws
 
+    /// Changes which branch a repository watches. Blank means main.
+    func setBranch(repoID: String, branch: String) throws
+
     /// Reads what the last `sync` fetched. Never touches the network.
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View
 

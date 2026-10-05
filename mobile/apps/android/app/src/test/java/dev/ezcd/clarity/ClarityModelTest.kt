@@ -2,6 +2,7 @@ package dev.ezcd.clarity
 
 import dev.ezcd.clarity.bridge.FakeBridge
 import dev.ezcd.clarity.proto.Outcome
+import dev.ezcd.clarity.proto.Status
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -303,6 +304,42 @@ class ClarityModelTest {
         model.start()
 
         assertTrue(model.state.value.error!!.contains("permission denied"))
+    }
+
+    @Test
+    fun `the switcher sees what the last view said`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.views[id] = FakeBridge.viewOf("something")
+
+        model.refresh()
+
+        // The verdict is written down when a view is read, so the list that
+        // shows it has to be re-read afterwards. Without that the switcher
+        // says "nothing reported" about a repository whose own screen is
+        // showing a green tick.
+        assertEquals(Status.STATUS_PASSED, model.state.value.repos.single().ci)
+    }
+
+    @Test
+    fun `changing branch throws the old branch's commits away`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.views[id] = FakeBridge.viewOf("on main")
+        model.refresh()
+        assertEquals("on main", subjectOf(model.state.value))
+
+        bridge.views[id] = FakeBridge.viewOf("on release")
+        model.changeBranch(id, "release")
+
+        assertEquals("release", model.state.value.repos.single().branch)
+        // Leaving main's commits under release's name would be the most
+        // confusing possible outcome.
+        assertEquals("on release", subjectOf(model.state.value))
     }
 
     // --- the clock and the automatic refresh ---------------------------------

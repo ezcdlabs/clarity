@@ -75,6 +75,10 @@ struct GoBridge: ClarityBridge {
         try client.rename(repoID, name: name)
     }
 
+    func setBranch(repoID: String, branch: String) throws {
+        try client.setBranch(repoID, branch: branch)
+    }
+
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View {
         try Clarity_V1_View(serializedBytes: client.view(repoID, limit: limit))
     }

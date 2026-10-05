@@ -18,12 +18,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AltRoute
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -58,12 +62,20 @@ import dev.ezcd.clarity.subtitle
 import dev.ezcd.clarity.title
 import dev.ezcd.clarity.titlePrefix
 
-/** The row grid, so section labels and author names share a left edge the way
- *  the terminal's dividers do. */
-private val rowPadding = 16.dp
-private val iconWidth = 14.dp
-private val iconGap = 10.dp
-private val subjectColumn = rowPadding + iconWidth + iconGap
+/**
+ * The feed's grid, from the handoff.
+ *
+ * Everything sits inside a 20dp page margin. Within a row the status mark gets
+ * a 16dp column and everything else starts 26dp in, so authors, subjects and
+ * section labels share one left edge — the thing the terminal gets for free by
+ * counting characters.
+ *
+ * A batch label is the exception, deliberately: it aligns to the *glyph*
+ * column rather than the text, because it labels the marks below it rather
+ * than standing beside them. The terminal does the same.
+ */
+private val glyphColumn = 16.dp
+private val textInset = 26.dp
 
 /**
  * The vertical rhythm, which is the only thing saying what belongs to what.
@@ -71,16 +83,11 @@ private val subjectColumn = rowPadding + iconWidth + iconGap
  * The terminal separates a deploy from the one above it with a blank line and
  * binds it to its own commits by adjacency. On a phone those two gaps have to
  * be visibly different sizes or the subheader floats between the batch above
- * and the batch below, attached to neither — which is exactly how it read.
- *
- * So: a commit's own two lines touch — no gap at all, they are one commit —
- * commits in a batch are a small gap apart, and the gap before a deploy line is
- * bigger than both put together. The gap *after* it is the smallest on the
- * screen, because what follows it is what it describes.
+ * and the batch below, attached to neither.
  */
 private val commitGap = 14.dp
-private val batchGapAbove = 30.dp
-private val batchGapBelow = 3.dp
+private val batchGapAbove = 24.dp
+private val batchGapBelow = 6.dp
 
 /**
  * One repository, in the same three-band shape the TUI draws: what has landed,
@@ -166,7 +173,7 @@ private fun CommitList(view: View, flow: Flow?, state: AppState, model: ClarityM
                 "Showing the most recent ${view.limit} commits.",
                 color = Ink.dim,
                 fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth().padding(rowPadding),
+                modifier = Modifier.fillMaxWidth().padding(PageMargin),
             )
             }
         }
@@ -225,11 +232,18 @@ private fun AppBar(state: AppState, model: ClarityModel, onOpenSwitcher: () -> U
     }
 }
 
-/** The per-repository menu from 3a. No refresh button in the bar — pull to
- *  refresh, or the first item here. */
+/**
+ * The per-repository menu.
+ *
+ * No refresh button in the bar: the menu's first item does it and says how old
+ * the view is, which is the question that prompts a refresh in the first place.
+ */
 @Composable
 private fun RepoMenu(state: AppState, model: ClarityModel) {
     var open by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var changingBranch by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val repo = state.repo
 
@@ -241,30 +255,66 @@ private fun RepoMenu(state: AppState, model: ClarityModel) {
             containerColor = Ink.menu,
             modifier = Modifier.width(252.dp),
         ) {
-            DropdownMenuItem(
-                text = {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Refresh now", style = Type.bodySmall, color = Ink.text, modifier = Modifier.weight(1f))
-                        Text(viewAge(state, model), style = Type.mono, color = Ink.dim)
-                    }
-                },
-                leadingIcon = { Icon(Icons.Rounded.Refresh, null, tint = Ink.dim) },
-                onClick = {
-                    open = false
-                    model.refresh()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Copy clone address", style = Type.bodySmall, color = Ink.text) },
-                leadingIcon = { Icon(Icons.Rounded.ContentCopy, null, tint = Ink.dim) },
-                enabled = repo != null,
-                onClick = {
-                    open = false
-                    repo?.let { clipboard.setText(AnnotatedString(it.url)) }
-                },
-            )
+            Item(Icons.Rounded.Refresh, "Refresh now", trailing = viewAge(state, model)) {
+                open = false
+                model.refresh()
+            }
+            Item(Icons.Rounded.Edit, "Rename…", enabled = repo != null) {
+                open = false
+                renaming = true
+            }
+            Item(Icons.Rounded.AltRoute, "Change branch…", enabled = repo != null) {
+                open = false
+                changingBranch = true
+            }
+            Item(Icons.Rounded.ContentCopy, "Copy clone address", enabled = repo != null) {
+                open = false
+                repo?.let { clipboard.setText(AnnotatedString(it.url)) }
+            }
+            HorizontalDivider(color = Ink.line)
+            Item(Icons.Rounded.Delete, "Remove repository", danger = true, enabled = repo != null) {
+                open = false
+                removing = true
+            }
         }
     }
+
+    repo?.let {
+        if (renaming) RenameSheet(it, model) { renaming = false }
+        if (changingBranch) BranchSheet(it, model) { changingBranch = false }
+        if (removing) RemoveDialog(it, model) { removing = false }
+    }
+}
+
+/** One menu row: 48dp, a leading icon, and an optional trailing note. */
+@Composable
+private fun Item(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    trailing: String = "",
+    danger: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val tint = if (danger) Ink.red else Ink.dim
+    DropdownMenuItem(
+        text = {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    label,
+                    style = Type.bodySmall,
+                    color = if (danger) Ink.red else Ink.text,
+                    modifier = Modifier.weight(1f),
+                )
+                if (trailing.isNotEmpty()) {
+                    Text(trailing, style = Type.monoMeta, color = Ink.dim)
+                }
+            }
+        },
+        leadingIcon = { Icon(icon, null, tint = tint) },
+        enabled = enabled,
+        onClick = onClick,
+    )
 }
 
 /**
@@ -360,47 +410,62 @@ private fun accent(kind: SectionKind): Color = when (kind) {
 
 @Composable
 private fun SectionHeader(section: Section) {
-    Column(Modifier.fillMaxWidth().padding(top = batchGapAbove)) {
+    Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
         Row(
-            Modifier.fillMaxWidth().padding(start = subjectColumn, end = rowPadding, bottom = 3.dp),
+            Modifier.fillMaxWidth().padding(start = PageMargin + textInset, end = PageMargin),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Text(
-                section.label,
-                color = accent(section.kind),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
+            Text(section.label, style = Type.band, color = accent(section.kind), modifier = Modifier.weight(1f))
             // This week's throughput rides on the Deployed rule rather than
             // taking a row of its own, as it does in the terminal — this week
             // is the one a reader is asking about.
             if (section.summary.isNotEmpty()) {
-                Text(section.summary, color = Ink.dim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+                Text(
+                    section.summary,
+                    style = Type.monoMeta.copy(fontStyle = FontStyle.Italic),
+                    color = Ink.dim,
+                )
             }
         }
-        Box(Modifier.fillMaxWidth().padding(horizontal = rowPadding).background(Ink.line).padding(top = 1.dp))
+        Rule()
+        Spacer(Modifier.height(10.dp))
     }
+}
+
+/**
+ * The 1dp line under a band label or a week, spanning the page margins.
+ *
+ * It is what makes a label read as the head of what follows rather than as a
+ * stray line of text — the job the terminal gives to a run of dashes.
+ */
+@Composable
+private fun Rule() {
+    Box(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = PageMargin, vertical = 4.dp)
+            .height(1.dp)
+            .background(Ink.line),
+    )
 }
 
 /**
  * A week other than the current one, named above its first batch.
  *
- * The less-prominent sibling of the section rule, and right-aligned like it is
- * in the terminal: peripheral context about the rows below, not a row itself.
+ * The less-prominent sibling of the section rule: right-aligned, because it is
+ * peripheral context about the rows below rather than a heading for them. It
+ * gets the same rule, though — without one it floats between two batches,
+ * belonging to neither.
  */
 @Composable
 private fun WeekDivider(label: String) {
-    Row(
-        Modifier.fillMaxWidth().padding(
-            start = subjectColumn,
-            end = rowPadding,
-            top = batchGapAbove,
-            bottom = 0.dp,
-        ),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        Text(label, color = Ink.dim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = PageMargin),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(label, style = Type.monoMeta.copy(fontStyle = FontStyle.Italic), color = Ink.dim)
+        }
+        Rule()
     }
 }
 
@@ -426,8 +491,11 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel, tigh
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.fillMaxWidth().padding(
-            start = subjectColumn,
-            end = rowPadding,
+            // The glyph column, not the text column: it labels the marks below
+            // it rather than standing beside them, which is the edge the
+            // terminal uses too.
+            start = PageMargin,
+            end = PageMargin,
             // Something already separated this one: the section rule it opens,
             // or the week divider naming it. Spending the gap twice would push
             // the subheader away from the commits it describes.
@@ -453,13 +521,13 @@ private fun BatchHeader(batch: Batch, state: AppState, model: ClarityModel, tigh
 @Composable
 private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
     Column(
-        Modifier.fillMaxWidth().padding(start = rowPadding, end = rowPadding, bottom = commitGap),
+        Modifier.fillMaxWidth().padding(start = PageMargin, end = PageMargin, bottom = commitGap),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // One mark, not two. Whether this commit shipped is said by the band
             // and the batch it sits in, which is why the terminal has only ever
             // drawn the CI result here.
-            StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
+            StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(glyphColumn))
 
             Text(
                 commit.author,
@@ -469,7 +537,7 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
                 style = Tight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = iconGap),
+                modifier = Modifier.weight(1f).padding(start = 10.dp),
             )
 
             if (commit.hasLeadTime) {
@@ -503,7 +571,7 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
             overflow = TextOverflow.Ellipsis,
             // Nothing between the two lines. They are one commit, and the only
             // gap on this row that means anything is the one below it.
-            modifier = Modifier.padding(start = iconWidth + iconGap),
+            modifier = Modifier.padding(start = textInset),
         )
     }
 }

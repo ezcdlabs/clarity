@@ -235,3 +235,47 @@ func TestSetAlias_RejectsAnUnknownRepository(t *testing.T) {
 		t.Error("renaming a repository that is not tracked succeeded")
 	}
 }
+
+// TestSetBranch_KeepsEverythingElse covers "Change branch…". The repository is
+// the same repository — same id, same local store, same rename — so changing
+// which branch it watches must not look like removing it and adding it back.
+func TestSetBranch_KeepsEverythingElse(t *testing.T) {
+	r := registry.Open(t.TempDir())
+	e, err := r.Add("git@github.com:acme/web-platform.git", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetAlias(e.ID, "The Platform"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.SetBranch(e.ID, "  release  "); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Get(e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Branch != "release" {
+		t.Errorf("branch = %q", got.Branch)
+	}
+	if got.Alias != "The Platform" {
+		t.Errorf("the rename was lost: %q", got.Alias)
+	}
+	if got.ID != e.ID {
+		t.Errorf("the id changed, so the local store is orphaned")
+	}
+}
+
+// TestSetBranch_BlankMeansMain matches what adding does, so the two ways of
+// setting a branch agree about what an empty box means.
+func TestSetBranch_BlankMeansMain(t *testing.T) {
+	r := registry.Open(t.TempDir())
+	e, _ := r.Add("git@github.com:acme/thing.git", "release")
+	if err := r.SetBranch(e.ID, "   "); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := r.Get(e.ID); got.Branch != "main" {
+		t.Errorf("branch = %q, want main", got.Branch)
+	}
+}

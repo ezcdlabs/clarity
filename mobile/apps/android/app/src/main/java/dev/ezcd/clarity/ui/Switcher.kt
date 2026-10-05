@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ezcd.clarity.AppState
@@ -126,10 +127,22 @@ fun Switcher(state: AppState, model: ClarityModel, onDismiss: () -> Unit) {
                     "Device key",
                     style = Type.bodySmall,
                     color = Ink.text,
-                    modifier = Modifier.weight(1f).padding(start = 10.dp),
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 10.dp),
                 )
+                // The fingerprint takes what is left and truncates. It used to
+                // be the weighted one, and a 50-character string with nowhere
+                // to go squeezed the label out of existence.
                 state.fingerprint?.let {
-                    Text(it, style = Type.mono, color = Ink.dim, maxLines = 1)
+                    Text(
+                        it,
+                        style = Type.mono,
+                        color = Ink.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    )
                 }
             }
         }
@@ -251,81 +264,3 @@ private fun spoken(status: dev.ezcd.clarity.proto.Status) = when (status) {
  *  passed, web passed, ios failed" rather than four unexplained marks. */
 private fun Modifier.describedAs(description: String) =
     this.semantics(mergeDescendants = true) { contentDescription = description }
-
-/** Renaming, which is local to this phone and clearable. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun RenameSheet(repo: RepoSummary, model: ClarityModel, onDismiss: () -> Unit) {
-    var name by remember(repo.id) { mutableStateOf(repo.alias) }
-    val derived = (if (repo.namespace.isNotEmpty()) "${repo.namespace}/" else "") + repo.name
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Ink.surface,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        Column(Modifier.padding(PageMargin).padding(bottom = 24.dp).imePadding()) {
-            Text("Rename", style = Type.title, color = Ink.text)
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Display name", style = Type.supporting) },
-                singleLine = true,
-                textStyle = Type.body,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Only on this phone. Leave it empty to go back to $derived.",
-                style = Type.supporting,
-                color = Ink.dim,
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel", style = Type.buttonSmall, color = Ink.dim)
-                }
-                Spacer(Modifier.size(8.dp))
-                PrimaryButton("Save") {
-                    model.rename(repo.id, name)
-                    onDismiss()
-                }
-            }
-        }
-    }
-}
-
-/** Removing, which deletes the local copy and nothing on the host. */
-@Composable
-private fun RemoveDialog(repo: RepoSummary, model: ClarityModel, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Rounded.Delete, null, tint = Ink.red) },
-        title = { Text("Remove ${repo.title}?", style = Type.dialogTitle, color = Ink.text) },
-        text = {
-            Text(
-                "Clarity stops watching it and deletes its local copy from this phone. " +
-                    "Nothing changes on the host, and the device key stays authorised " +
-                    "until you remove it there.",
-                style = Type.bodySmall,
-                color = Ink.dim,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                model.removeRepo(repo.id)
-                onDismiss()
-            }) { Text("Remove", style = Type.buttonSmall, color = Ink.red) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", style = Type.buttonSmall, color = Ink.dim)
-            }
-        },
-        containerColor = Ink.surface,
-        shape = RoundedCornerShape(28.dp),
-    )
-}

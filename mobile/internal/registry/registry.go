@@ -211,6 +211,20 @@ func (r *Registry) SetAlias(id, alias string) error {
 	return r.update(id, func(e *Entry) { e.Alias = strings.TrimSpace(alias) })
 }
 
+// SetBranch changes which branch a repository watches, keeping its id, its
+// local store and its rename. Blank means main, as adding one does.
+func (r *Registry) SetBranch(id, branch string) error {
+	return r.update(id, func(e *Entry) {
+		if branch = strings.TrimSpace(branch); branch == "" {
+			branch = "main"
+		}
+		e.Branch = branch
+		// What it last said is about the old branch, and saying it about the
+		// new one would be a verdict nothing has reached yet.
+		e.Status = nil
+	})
+}
+
 // SetStatus records what the last view said about a repository.
 func (r *Registry) SetStatus(id string, s Status) error {
 	return r.update(id, func(e *Entry) { e.Status = &s })

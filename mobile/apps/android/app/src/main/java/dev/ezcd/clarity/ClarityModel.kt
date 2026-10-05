@@ -200,6 +200,28 @@ class ClarityModel(
         loadRepos()
     }
 
+    /**
+     * Changes which branch a repository watches, then re-reads it.
+     *
+     * The fetch is not optional: the view on screen is of the old branch, and
+     * leaving it there under a new branch's name would be the most confusing
+     * possible outcome.
+     */
+    fun changeBranch(repoId: String, branch: String) {
+        scope.launch {
+            try {
+                withContext(io) { bridge.setBranch(repoId, branch) }
+                withContext(io) { loadRepos() }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = message(e)) }
+                return@launch
+            }
+            _state.update { it.copy(view = null) }
+            fetch(repoId, background = false)
+            readView(repoId)?.let { v -> _state.update { it.copy(view = v) } }
+        }
+    }
+
     fun removeRepo(repoId: String) = act {
         bridge.removeRepo(repoId)
         loadRepos()
@@ -284,6 +306,11 @@ class ClarityModel(
             return
         }
         val fresh = readView(repoId)
+        // Reading a view is also what records its verdict, so the list that
+        // shows those verdicts has to be re-read afterwards. Without this the
+        // switcher keeps saying "nothing reported" about a repository whose
+        // own screen is showing a green tick.
+        runCatching { withContext(io) { loadRepos() } }
         _state.update {
             // A fetch that finished after the user moved on belongs to a
             // repository that is no longer on screen.

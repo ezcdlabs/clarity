@@ -2,13 +2,14 @@ package dev.ezcd.clarity.bridge
 
 import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
-import dev.ezcd.clarity.proto.Section
-import dev.ezcd.clarity.proto.SectionKind
 import dev.ezcd.clarity.proto.HostKey
 import dev.ezcd.clarity.proto.Outcome
 import dev.ezcd.clarity.proto.RepoList
-import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.RepoSummary
+import dev.ezcd.clarity.proto.Section
+import dev.ezcd.clarity.proto.SectionKind
+import dev.ezcd.clarity.proto.Status
+import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
 
 /**
@@ -113,6 +114,12 @@ class FakeBridge : ClarityBridge {
         calls += "trustHost"
     }
 
+    override fun setBranch(repoId: String, branch: String) {
+        calls += "setBranch"
+        val i = repos.indexOfFirst { it.id == repoId }
+        if (i >= 0) repos[i] = repos[i].toBuilder().setBranch(branch.ifBlank { "main" }).build()
+    }
+
     override fun rename(repoId: String, name: String) {
         calls += "rename"
         val i = repos.indexOfFirst { it.id == repoId }
@@ -125,6 +132,12 @@ class FakeBridge : ClarityBridge {
 
     override fun view(repoId: String, limit: Int): View {
         calls += "view"
+        // Reading a view is what records its verdict, as the core does — so a
+        // test can check that the list picks the verdict up.
+        val i = repos.indexOfFirst { it.id == repoId }
+        if (i >= 0 && views.containsKey(repoId)) {
+            repos[i] = repos[i].toBuilder().setCi(Status.STATUS_PASSED).build()
+        }
         return views[repoId]
             // What a repo that has never been fetched gives you: go-git has no
             // branch to resolve, so the read fails rather than returning empty.

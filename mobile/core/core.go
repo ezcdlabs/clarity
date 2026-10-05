@@ -127,6 +127,11 @@ func (c *Client) Rename(repoID, name string) error {
 	return c.repos.SetAlias(repoID, name)
 }
 
+// SetBranch changes which branch a repository watches.
+func (c *Client) SetBranch(repoID, branch string) error {
+	return c.repos.SetBranch(repoID, branch)
+}
+
 // summary labels a tracked repository for a list.
 //
 // The name, namespace and host are derived here rather than stored, so a

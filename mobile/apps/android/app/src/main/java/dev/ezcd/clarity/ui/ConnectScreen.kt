@@ -61,15 +61,16 @@ fun ConnectScreen(state: AppState, model: ClarityModel) {
     val working = state.connect is Connect.Working
     val denied = state.connect as? Connect.Denied
 
-    Column(Modifier.fillMaxSize().background(Ink.surface).imePadding()) {
+    Column(Modifier.fillMaxSize().background(Ink.bg).imePadding()) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp), Arrangement.Start, Alignment.CenterVertically) {
             // Cancel stays live while connecting: a fetch that is going nowhere
             // is exactly when someone wants out.
             GlyphButton(Icons.Rounded.Close, "Cancel") { model.cancelConnect() }
         }
 
-        Sheet {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = PageMargin)) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = PageMargin),
+        ) {
                 Spacer(Modifier.height(8.dp))
                 Text("Connect a repository", style = Type.pageTitle, color = Ink.text)
                 Spacer(Modifier.height(8.dp))
@@ -154,8 +155,7 @@ fun ConnectScreen(state: AppState, model: ClarityModel) {
                 ) {
                     if (denied != null) model.retryConnect() else model.connect(url, branch)
                 }
-                Spacer(Modifier.height(24.dp))
-            }
+            Spacer(Modifier.height(24.dp))
         }
     }
 

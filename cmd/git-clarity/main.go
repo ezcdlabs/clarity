@@ -135,7 +135,7 @@ func runMetrics(args []string) error {
 	if err != nil {
 		return err
 	}
-	view = trimToWholeWeeks(view, *weeks)
+	view = core.TrimToWholeWeeks(view, *weeks)
 
 	if *plain || !isTerminal(os.Stdout) {
 		out, err := renderMetricsOnce(view, *deploy, metricsPlainWidth)
@@ -201,31 +201,6 @@ func firstFreshView(ctx context.Context, views <-chan core.View) (core.View, err
 					"check the remote is reachable: %w", metricsTimeout, ctx.Err())
 		}
 	}
-}
-
-// trimToWholeWeeks keeps the newest n weeks on every flow.
-//
-// The window is weeks rather than commits so that how far back you can see
-// does not depend on how busy the repository was. Weeks the data window cut
-// through are already dropped upstream, in weeklyStats.
-func trimToWholeWeeks(view core.View, n int) core.View {
-	// Flows is copied before anything is written through it. The function
-	// returns a View by value, which reads as non-mutating, but a slice field
-	// carries writes straight back to the caller.
-	flows := make([]core.FlowView, len(view.Flows))
-	copy(flows, view.Flows)
-
-	for i := range flows {
-		if len(flows[i].Weekly) > n {
-			flows[i].Weekly = flows[i].Weekly[:n]
-		}
-		// The axis was chosen from the whole read window, so after narrowing
-		// it could claim "+" — some lead time is beyond this scale — while
-		// every remaining row fitted, describing weeks nobody can see.
-		flows[i].LeadAxis = core.AxisForWeeks(flows[i].Weekly)
-	}
-	view.Flows = flows
-	return view
 }
 
 // renderMetricsOnce is the non-interactive path.

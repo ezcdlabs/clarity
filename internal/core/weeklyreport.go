@@ -270,3 +270,32 @@ func AxisForWeeks(weeks []WeekStat) LeadAxis {
 	}
 	return LeadAxis{Max: axis}
 }
+
+// TrimToWholeWeeks keeps the newest n weeks on every flow.
+//
+// Here rather than in the command that takes --weeks, because the phone's
+// metrics screen asks for the same window and the axis recompute below is the
+// kind of subtlety that survives in one copy of a function and not the other.
+//
+// The window is weeks rather than commits so that how far back you can see
+// does not depend on how busy the repository was. Weeks the data window cut
+// through are already dropped upstream, in weeklyStats.
+func TrimToWholeWeeks(view View, n int) View {
+	// Flows is copied before anything is written through it. The function
+	// returns a View by value, which reads as non-mutating, but a slice field
+	// carries writes straight back to the caller.
+	flows := make([]FlowView, len(view.Flows))
+	copy(flows, view.Flows)
+
+	for i := range flows {
+		if len(flows[i].Weekly) > n {
+			flows[i].Weekly = flows[i].Weekly[:n]
+		}
+		// The axis was chosen from the whole read window, so after narrowing
+		// it could claim "+" — some lead time is beyond this scale — while
+		// every remaining row fitted, describing weeks nobody can see.
+		flows[i].LeadAxis = AxisForWeeks(flows[i].Weekly)
+	}
+	view.Flows = flows
+	return view
+}

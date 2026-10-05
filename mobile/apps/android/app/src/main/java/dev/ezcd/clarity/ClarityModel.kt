@@ -114,8 +114,7 @@ class ClarityModel(
      */
     fun loadKey() = act {
         val key = bridge.publicKey("clarity on android")
-        val fingerprint = bridge.keyFingerprint()
-        _state.update { it.copy(publicKey = key, fingerprint = fingerprint) }
+        _state.update { it.copy(publicKey = key) }
     }
 
     /** Closes whatever is over the repository, leaving the selection alone. */

@@ -133,7 +133,6 @@ fun ConnectScreen(state: AppState, model: ClarityModel) {
                     Spacer(Modifier.height(20.dp))
                     KeyCard(
                         publicKey = state.publicKey,
-                        fingerprint = state.fingerprint,
                         // Forced open when the host has just refused it: that
                         // is the moment the key is the whole answer.
                         startOpen = denied != null || !state.keyHasConnected,

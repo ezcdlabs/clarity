@@ -23,10 +23,6 @@ interface ClarityBridge {
     /** The authorized_keys line for this device, generating the key if needed. */
     fun publicKey(comment: String): String
 
-    /** The key's SHA256 fingerprint, for showing beside it rather than instead
-     *  of it. Does not create a key. */
-    fun keyFingerprint(): String
-
     /** Tracks a repository, returning its id. The URL is the one you'd clone. */
     fun addRepo(url: String, branch: String): String
 

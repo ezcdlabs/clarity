@@ -61,7 +61,6 @@ fun KeyScreen(state: AppState, model: ClarityModel) {
                 Spacer(Modifier.height(20.dp))
             KeyCard(
                 publicKey = state.publicKey,
-                fingerprint = state.fingerprint,
                 startOpen = true,
                 collapsible = false,
             )

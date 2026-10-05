@@ -21,8 +21,6 @@ class GoBridge(private val client: Client) : ClarityBridge {
 
     override fun publicKey(comment: String): String = client.publicKey(comment)
 
-    override fun keyFingerprint(): String = client.keyFingerprint()
-
     override fun addRepo(url: String, branch: String): String = client.addRepo(url, branch)
 
     override fun removeRepo(repoId: String) {

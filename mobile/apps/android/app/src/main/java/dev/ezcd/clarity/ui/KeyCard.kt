@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
@@ -46,7 +45,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun KeyCard(
     publicKey: String?,
-    fingerprint: String?,
     startOpen: Boolean,
     collapsible: Boolean = true,
 ) {
@@ -71,14 +69,12 @@ fun KeyCard(
                     style = Type.cardTitle,
                     color = Ink.text,
                 )
-                if (!open && collapsible && fingerprint != null) {
-                    Text(
-                        "ed25519 · $fingerprint",
-                        style = Type.mono,
-                        color = Ink.dim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                if (!open && collapsible) {
+                    // The kind of key, and nothing else. The handoff puts the
+                    // fingerprint here too, but at this width it is always a
+                    // fragment — and a hash you cannot compare is not a fact,
+                    // it is the shape of one.
+                    Text("ed25519", style = Type.mono, color = Ink.dim)
                 }
             }
             if (collapsible) {

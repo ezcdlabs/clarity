@@ -17,10 +17,6 @@ protocol ClarityBridge {
     /// The `authorized_keys` line for this device, generating the key if needed.
     func publicKey(comment: String) throws -> String
 
-    /// The key's SHA256 fingerprint, for showing beside it rather than instead
-    /// of it. Does not create a key.
-    func keyFingerprint() throws -> String
-
     /// Tracks a repository, returning its id. The URL is the one you'd clone.
     func addRepo(url: String, branch: String) throws -> String
 

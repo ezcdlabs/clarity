@@ -82,10 +82,6 @@ func (c *Client) PublicKey(comment string) (string, error) {
 	return c.identity.PublicKey(comment)
 }
 
-// KeyFingerprint is the SHA256 form a host publishes, for showing beside the
-// key rather than instead of it. Does not create an identity.
-func (c *Client) KeyFingerprint() (string, error) { return c.identity.Fingerprint() }
-
 // HasKey reports whether an identity exists yet, without creating one.
 func (c *Client) HasKey() bool { return c.identity.Exists() }
 

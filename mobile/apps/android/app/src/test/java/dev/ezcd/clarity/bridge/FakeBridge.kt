@@ -61,11 +61,6 @@ class FakeBridge : ClarityBridge {
         return "$key $comment"
     }
 
-    override fun keyFingerprint(): String {
-        calls += "keyFingerprint"
-        return "SHA256:fake"
-    }
-
     override fun addRepo(url: String, branch: String): String {
         calls += "addRepo"
         failAddRepo?.let { throw RuntimeException(it) }

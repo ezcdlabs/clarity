@@ -40,11 +40,6 @@ final class FakeBridge: ClarityBridge {
         return "\(key) \(comment)"
     }
 
-    func keyFingerprint() throws -> String {
-        calls.append("keyFingerprint")
-        return "SHA256:fake"
-    }
-
     func addRepo(url: String, branch: String) throws -> String {
         calls.append("addRepo")
         if let failAddRepo { throw FakeError(failAddRepo) }

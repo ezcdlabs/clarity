@@ -68,21 +68,6 @@ func (i *Identity) Ensure() (ssh.Signer, error) {
 	return i.load()
 }
 
-// Fingerprint is the SHA256 form a host publishes, for showing beside a key
-// without showing the key — and for comparing by eye against what the host
-// says.
-//
-// It does not create an identity. A label is not a reason to generate a
-// keypair, and a caller asking what the key is called before there is one
-// deserves to be told so.
-func (i *Identity) Fingerprint() (string, error) {
-	signer, err := i.load()
-	if err != nil {
-		return "", err
-	}
-	return ssh.FingerprintSHA256(signer.PublicKey()), nil
-}
-
 // PublicKey returns the authorized_keys line to paste into a git host,
 // generating the key if this is the first time.
 func (i *Identity) PublicKey(comment string) (string, error) {

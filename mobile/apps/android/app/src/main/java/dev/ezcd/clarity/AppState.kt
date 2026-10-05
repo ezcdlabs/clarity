@@ -57,7 +57,6 @@ data class AppState(
     /** True while a local action (add, remove, key generation) is in flight. */
     val busy: Boolean = false,
     val publicKey: String? = null,
-    val fingerprint: String? = null,
     /**
      * Whether any repository has ever connected with this device's key. It
      * decides whether the connect screen opens with the key on show or folded

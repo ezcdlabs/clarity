@@ -28,8 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,11 +67,9 @@ import kotlin.math.roundToInt
 fun MetricsScreen(state: AppState, model: ClarityModel) {
     val metrics = state.metrics
     val flows = metrics?.flowsList.orEmpty()
-    // Read off the payload before the chart is drawn, so the window's limits
-    // are available without the compiler having to prove that a flow implies a
-    // payload.
+    // Read off the payload before the chart is drawn, so it is available
+    // without the compiler having to prove that a flow implies a payload.
     val truncated = metrics?.truncated == true
-    val commitLimit = metrics?.limit ?: 0
     val tab = state.metricsFlow.coerceIn(0, max(flows.size - 1, 0))
     val flow = flows.getOrNull(tab)
 
@@ -101,19 +99,21 @@ fun MetricsScreen(state: AppState, model: ClarityModel) {
                 }
 
                 Legend()
-                LazyColumn(Modifier.weight(1f)) {
+                // fill = false, so the list is only as tall as its rows and the
+                // scale follows them. A few weeks should not leave the axis
+                // stranded at the foot of an empty screen, and a year of them
+                // should not push it off the bottom — this gives the first case
+                // a scale under the rows and the second a scale pinned below a
+                // list that scrolls under it.
+                LazyColumn(Modifier.weight(1f, fill = false)) {
                     items(flow.weeksCount, key = { i -> flow.getWeeks(i).label }) { i ->
                         WeekRow(flow.getWeeks(i), flow)
                     }
-                    if (truncated) {
-                        item { TruncationNotice(commitLimit) }
-                    }
                 }
-                // Pinned rather than placed after the last row, which is where
-                // the terminal puts it: a terminal shows every row at once, and
-                // a scale you have to scroll to is a scale you cannot read the
-                // rows against.
                 Axis(flow)
+                if (truncated) {
+                    TruncationNotice()
+                }
             }
         }
     }
@@ -195,10 +195,13 @@ private const val BAR_WEIGHT = 1f
 private val rowHeight = 26.dp
 
 /** How tall the interquartile box is drawn, within [rowHeight]. */
-private val boxHeight = 11.dp
+private val boxHeight = 12.dp
 
 /** The mark that says a week runs past the end of the scale. */
 private val clampWidth = 7.dp
+
+/** How far the axis ticks drop below the rule. */
+private val tickHeight = 4.dp
 
 @Composable
 private fun Legend() {
@@ -271,90 +274,130 @@ private fun WeekRow(week: Week, flow: MetricsFlow) {
  * decision and arrives in [Week.getPlot]: below the floor the quartiles are
  * interpolations between two or three real values, so drawing them would put a
  * smear on screen where there were only two deploys.
+ *
+ * Drawn the way a box plot actually looks: a hairline whisker with square caps,
+ * a stroked rectangle across the interquartile range, and one crisp rule at the
+ * median. The terminal fills its box with ▓ and caps its median with █ because
+ * those are the marks a character cell can hold — a half-shaded block is what a
+ * box and a fill look like when the smallest unit you have is a letter. None of
+ * that is a decision worth carrying to a surface that can draw a hairline.
  */
 @Composable
 private fun LeadPlot(week: Week, axisMaxSeconds: Long) {
-    val dim = Ink.dim
+    val hairline = Ink.dim
     val blue = Ink.blue
     val clamp = Ink.yellow
     Canvas(Modifier.fillMaxSize()) {
-        // The mark takes the end of the scale and the plot draws into what is
-        // left, rather than being drawn over: at this width an overlaid mark
-        // would cover whatever landed under it, including the median.
-        val clampPx = if (week.beyondAxis) clampWidth.toPx() else 0f
+        // The chevron's room is reserved on every row, not only the rows that
+        // use it. The terminal takes a column back from the clamped row alone,
+        // which it can afford because a row is read against the rows above it;
+        // here the rows are read against a scale drawn once underneath them,
+        // and a row that quietly rescaled itself by seven points would put its
+        // median in a different place from an identical median next to it.
+        //
+        // Reserved rather than drawn over, for the terminal's reason: an
+        // overlaid mark covers whatever landed under it, including the median.
+        val clampPx = clampWidth.toPx()
         val span = size.width - clampPx
         if (span <= 0f) return@Canvas
 
         fun x(seconds: Long): Float =
-            if (axisMaxSeconds <= 0) 0f
-            else (seconds.toFloat() / axisMaxSeconds.toFloat()).coerceIn(0f, 1f) * span
+            if (axisMaxSeconds <= 0) {
+                0f
+            } else {
+                (seconds.toFloat() / axisMaxSeconds.toFloat()).coerceIn(0f, 1f) * span
+            }
 
         val mid = size.height / 2f
         val box = boxHeight.toPx()
+        val hair = 1.dp.toPx()
+        val whisker = box * 0.52f
 
         if (week.plot == Plot.PLOT_POINTS) {
-            for (s in week.sampleSecondsList) {
-                drawCircle(blue, radius = box / 4f, center = Offset(x(s), mid))
-            }
-        } else {
-            // Whiskers to the extremes. Spread matters as much as the middle: a
-            // two-hour median with a three-day p75 is a problem the median
-            // alone hides.
-            drawLine(
-                dim,
-                Offset(x(week.minSeconds), mid),
-                Offset(x(week.maxSeconds), mid),
-                strokeWidth = 1.dp.toPx(),
-            )
-            for (end in listOf(week.minSeconds, week.maxSeconds)) {
-                drawLine(
-                    dim,
-                    Offset(x(end), mid - box / 2.6f),
-                    Offset(x(end), mid + box / 2.6f),
-                    strokeWidth = 1.dp.toPx(),
+            // Hollow, as the terminal's ▫ is: these are the individual deploys
+            // rather than a summary, and an outline says "one of these" where a
+            // filled dot reads as a quantity.
+            for (sec in week.sampleSecondsList) {
+                drawCircle(
+                    blue,
+                    radius = box / 3.4f,
+                    center = Offset(x(sec), mid),
+                    style = Stroke(width = 1.4.dp.toPx()),
                 )
             }
-            val left = x(week.p25Seconds)
-            val right = x(week.p75Seconds)
-            drawRoundedBox(blue.copy(alpha = 0.38f), left, right, mid, box)
+        } else {
+            val lo = x(week.minSeconds)
+            val hi = x(week.maxSeconds)
+            val q1 = x(week.p25Seconds)
+            val q3 = x(week.p75Seconds)
+
+            // Whiskers to the extremes, with square caps. Spread matters as
+            // much as the middle: a two-hour median with a three-day p75 is a
+            // problem the median alone hides.
+            drawLine(hairline, Offset(lo, mid), Offset(hi, mid), strokeWidth = hair)
+            for (end in listOf(lo, hi)) {
+                drawLine(
+                    hairline,
+                    Offset(end, mid - whisker / 2f),
+                    Offset(end, mid + whisker / 2f),
+                    strokeWidth = hair,
+                )
+            }
+
+            // The interquartile range: a stroked rectangle over a wash, so its
+            // edges are the quartiles rather than the edges of a blob. Floored
+            // at a couple of hairs so a week where everything shipped within
+            // ten minutes is still a box rather than a line.
+            val width = max(q3 - q1, hair * 2f)
+            drawRect(
+                blue.copy(alpha = 0.16f),
+                topLeft = Offset(q1, mid - box / 2f),
+                size = Size(width, box),
+            )
+            drawRect(
+                blue,
+                topLeft = Offset(q1, mid - box / 2f),
+                size = Size(width, box),
+                style = Stroke(width = 1.2.dp.toPx()),
+            )
+
             // The median is the headline, not the mean: lead times are strongly
             // right-skewed, so one commit that sat over a weekend drags an
-            // average badly.
+            // average badly. One rule, the height of the box and no taller — a
+            // cap that overhangs reads as a second mark.
             drawLine(
                 blue,
                 Offset(x(week.p50Seconds), mid - box / 2f),
                 Offset(x(week.p50Seconds), mid + box / 2f),
-                strokeWidth = 2.5.dp.toPx(),
-                cap = StrokeCap.Round,
+                strokeWidth = 2.dp.toPx(),
             )
         }
 
         if (week.beyondAxis) {
-            drawClampMark(clamp, size.width, mid, clampPx)
+            drawClampMark(clamp, size.width, mid, clampPx, whisker)
         }
     }
 }
 
-/** The interquartile range, with a minimum so a tight week is still a shape. */
-private fun DrawScope.drawRoundedBox(colour: Color, left: Float, right: Float, mid: Float, box: Float) {
-    val minimum = box / 2.5f
-    val width = max(right - left, minimum)
-    drawRoundRect(
-        colour,
-        topLeft = Offset(left, mid - box / 2f),
-        size = Size(width, box),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.5f.dp.toPx()),
-    )
-}
-
-/** A small chevron, for a week with a lead time past the end of the scale. */
-private fun DrawScope.drawClampMark(colour: Color, rightEdge: Float, mid: Float, room: Float) {
+/**
+ * A chevron, for a week with a lead time past the end of the scale.
+ *
+ * Sized to the whisker it continues rather than to the row, so it reads as the
+ * line carrying on off the edge rather than as a separate symbol parked there.
+ */
+private fun DrawScope.drawClampMark(
+    colour: Color,
+    rightEdge: Float,
+    mid: Float,
+    room: Float,
+    whisker: Float,
+) {
     if (room <= 0f) return
     val tip = rightEdge - 1.dp.toPx()
-    val back = tip - room / 2f
-    val arm = room / 2f
-    drawLine(colour, Offset(back, mid - arm), Offset(tip, mid), strokeWidth = 1.5.dp.toPx(), cap = StrokeCap.Round)
-    drawLine(colour, Offset(back, mid + arm), Offset(tip, mid), strokeWidth = 1.5.dp.toPx(), cap = StrokeCap.Round)
+    val back = tip - room * 0.6f
+    val arm = whisker / 2f
+    drawLine(colour, Offset(back, mid - arm), Offset(tip, mid), strokeWidth = 1.4.dp.toPx())
+    drawLine(colour, Offset(back, mid + arm), Offset(tip, mid), strokeWidth = 1.4.dp.toPx())
 }
 
 /**
@@ -382,43 +425,68 @@ private fun DeployBar(deploys: Int, maxDeploys: Int, modifier: Modifier = Modifi
 }
 
 /**
- * The shared scale, labelled.
+ * The shared scale: a rule, a tick at every fraction, and the labels that fit.
  *
- * Every label crosses the boundary; how many of them fit does not. A phone is
- * narrow in a different way from a terminal, so this keeps the ends and drops
- * the quarters rather than the terminal's three-step degradation — and the
- * labels themselves come from Go, so a half hour reads "1.5h" here exactly as
- * it does there.
+ * Every label crosses the boundary; how many of them to draw does not. A phone
+ * is narrow in a different way from a terminal, so this keeps the ends and the
+ * midpoint and drops the quarters, rather than the terminal's three-step
+ * degradation — but the ticks themselves stay at all five, because a mark costs
+ * a hairline and knowing where the quarters fall is most of what a scale is
+ * for. The labels come from Go, so a half hour reads "1.5h" here exactly as it
+ * does there.
  */
 @Composable
 private fun Axis(flow: MetricsFlow) {
     val ticks = flow.axis.ticksList
     if (ticks.isEmpty()) return
-    Rule()
     Row(
-        Modifier.fillMaxWidth()
-            .padding(start = PageMargin, end = PageMargin, top = 2.dp, bottom = 14.dp),
+        Modifier.fillMaxWidth().padding(start = PageMargin, end = PageMargin, top = 6.dp),
     ) {
         Spacer(Modifier.width(weekLabelWidth))
-        Box(Modifier.weight(PLOT_WEIGHT)) {
-            // Laid out by fraction rather than spaced evenly, so a label sits
-            // over the place on the scale it names.
-            ticks.forEachIndexed { i, tick ->
-                val keep = i == 0 || i == ticks.size - 1 || i == ticks.size / 2
-                if (keep) {
-                    Text(
-                        tick.label,
-                        style = Type.monoMeta,
-                        color = Ink.dim,
-                        maxLines = 1,
-                        modifier = Modifier.offsetByFraction(tick.fraction.toFloat()),
-                    )
+        // Inset by the same room every row reserves for its clamp chevron, so
+        // the scale spans exactly the range the plots are drawn into.
+        Column(Modifier.weight(PLOT_WEIGHT).padding(end = clampWidth)) {
+            TickRule(ticks.map { it.fraction.toFloat() })
+            Box(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                ticks.forEachIndexed { i, tick ->
+                    if (labelled(i, ticks.size)) {
+                        Text(
+                            tick.label,
+                            style = Type.monoMeta,
+                            color = Ink.dim,
+                            maxLines = 1,
+                            modifier = Modifier.offsetByFraction(tick.fraction.toFloat()),
+                        )
+                    }
                 }
             }
         }
         Spacer(Modifier.width(columnGap))
         Spacer(Modifier.weight(BAR_WEIGHT))
         Spacer(Modifier.width(countWidth))
+    }
+    Spacer(Modifier.height(14.dp))
+}
+
+/** The ends and the middle, which is as many labels as this width holds. */
+private fun labelled(i: Int, count: Int): Boolean = i == 0 || i == count - 1 || i == count / 2
+
+/**
+ * The axis line, with a tick dropped at each fraction.
+ *
+ * The end ticks are pulled inside by half their width so neither hangs off the
+ * rule it belongs to — the same reason the first and last labels are pulled in.
+ */
+@Composable
+private fun TickRule(fractions: List<Float>) {
+    val colour = Ink.line
+    Canvas(Modifier.fillMaxWidth().height(tickHeight)) {
+        val hair = 1.dp.toPx()
+        drawLine(colour, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = hair)
+        for (fraction in fractions) {
+            val x = (size.width - hair) * fraction + hair / 2f
+            drawLine(colour, Offset(x, 0f), Offset(x, size.height), strokeWidth = hair)
+        }
     }
 }
 
@@ -437,18 +505,24 @@ private fun Modifier.offsetByFraction(fraction: Float): Modifier = layout { meas
 }
 
 /**
- * What the commit window cut short.
+ * What the window cut short.
  *
  * Worth more here than in the commit list, which already says it: a reader can
  * see the bottom of a scroll, but nothing on a chart says it is short a few
  * deploys, and an aggregate missing some is wrong in a way that looks right.
+ *
+ * It names no number, deliberately. Two different things end the history — the
+ * commit window this screen reads over, and how much of the branch has ever
+ * been fetched to the device — and the snapshot reports them as one flag. An
+ * earlier version named the commit window and was usually wrong: a shallow
+ * clone is what runs out first, and no limit can read past it.
  */
 @Composable
-private fun TruncationNotice(limit: Int) {
+private fun TruncationNotice() {
     Text(
-        "Read the most recent $limit commits — weeks before that are not shown.",
+        "The repository goes back further than the history on this device.",
         style = Type.supporting,
         color = Ink.dim,
-        modifier = Modifier.fillMaxWidth().padding(PageMargin),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PageMargin, vertical = 10.dp),
     )
 }

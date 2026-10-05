@@ -501,6 +501,43 @@ class ClarityModelTest {
     }
 
     @Test
+    fun `opening metrics deepens the history before reading it`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.weekly[id] = FakeBridge.metricsOf(12, 7)
+        bridge.calls.clear()
+        bridge.syncDepths.clear()
+
+        model.showMetrics(flowIndex = 0)
+
+        // The feed's clone is shallow — a couple of hundred commits, which on a
+        // busy repository is a fortnight. No commit limit can reach past that,
+        // so a trend view has to ask for more history before it can read any.
+        assertEquals(listOf("sync", "metrics"), bridge.calls.filter { it != "listRepos" })
+        assertTrue("fetched at the feed's depth: ${bridge.syncDepths}", bridge.syncDepths.all { it > 200 })
+    }
+
+    @Test
+    fun `a deepen that fails still shows the history already on the device`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.weekly[id] = FakeBridge.metricsOf(4, 9)
+        bridge.failSync = "dial tcp: network is unreachable"
+
+        model.showMetrics(flowIndex = 0)
+
+        // Offline on a train, the weeks already fetched are still a trend. An
+        // error over a chart that reads perfectly well would be the same
+        // mistake the feed avoids by keeping its last view.
+        assertEquals(listOf(4, 9), model.state.value.metrics!!.getFlows(0).weeksList.map { it.deploys })
+        assertNull(model.state.value.error)
+    }
+
+    @Test
     fun `metrics remembers which flow you were reading`() = test {
         val model = model()
         model.start()

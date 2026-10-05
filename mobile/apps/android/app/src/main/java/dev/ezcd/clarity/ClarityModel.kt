@@ -55,6 +55,20 @@ class ClarityModel(
     private val metricsCommitLimit = 2000
 
     /**
+     * How much branch history the metrics screen fetches before it reads.
+     *
+     * The feed's clone is shallow — [gitsource.DefaultDepth] commits, which on
+     * a busy repository is a fortnight — and no commit limit can reach past a
+     * shallow boundary, so without this the chart has two rows on it whatever
+     * window it asks for.
+     *
+     * Deliberately not the feed's depth, and deliberately not on the refresh
+     * tick: this is one deepening fetch when the screen opens, and once the
+     * device holds the history the next one has nothing to bring.
+     */
+    private val metricsDepth = 2000
+
+    /**
      * How often the open repository re-fetches.
      *
      * The same five seconds refsource polls at, so the phone and the terminal
@@ -153,9 +167,22 @@ class ClarityModel(
             it.copy(overlay = Overlay.Metrics, metricsFlow = flowIndex, error = null)
         }
         val id = _state.value.selected ?: return
-        act {
-            val metrics = bridge.metrics(id, metricsCommitLimit, metricsWeeks)
-            _state.update { it.copy(metrics = metrics) }
+        scope.launch {
+            // Deepen first, and do not let it stop the read. Offline, the weeks
+            // already on the device are still a trend — reporting the fetch
+            // over a chart that reads perfectly well would be the mistake the
+            // feed avoids by keeping its last view.
+            _state.update { it.copy(syncing = true) }
+            try {
+                withContext(io) { bridge.sync(id, metricsDepth, fetchTimeoutSeconds) }
+            } catch (_: Exception) {
+            }
+            _state.update { it.copy(syncing = false) }
+
+            act {
+                val metrics = bridge.metrics(id, metricsCommitLimit, metricsWeeks)
+                _state.update { it.copy(metrics = metrics) }
+            }
         }
     }
 

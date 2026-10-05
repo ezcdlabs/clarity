@@ -56,6 +56,9 @@ class FakeBridge : ClarityBridge {
     /** The arguments the last [metrics] call was made with. */
     var metricsWindow: Pair<Int, Int>? = null
 
+    /** The depths [sync] has been asked for, in call order. */
+    val syncDepths = mutableListOf<Int>()
+
     /**
      * Runs inside [sync], before it succeeds or fails. A test uses it to observe
      * the state a fetch starts from, or to make a fetch deliver new commits.
@@ -108,6 +111,7 @@ class FakeBridge : ClarityBridge {
 
     override fun sync(repoId: String, depth: Int, timeoutSeconds: Int): SyncResult {
         calls += "sync"
+        syncDepths += depth
         onSync(repoId)
         val builder = SyncResult.newBuilder()
         failSync?.let {

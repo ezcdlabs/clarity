@@ -111,7 +111,7 @@ struct ConnectView: View {
     private var askingHost: Binding<Bool> {
         Binding(
             get: { if case .askHost = model.state.connect { return true } else { return false } },
-            set: { shown in if !shown { model.closeOverlay() } },
+            set: { shown in if !shown { model.closeOverlay() } }
         )
     }
 

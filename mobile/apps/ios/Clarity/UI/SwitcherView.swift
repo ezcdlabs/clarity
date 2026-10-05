@@ -67,9 +67,13 @@ struct SwitcherView: View {
                     Button {
                         model.showConnect()
                     } label: {
-                        Label("Add", systemImage: "plus")
+                        // The glyph alone: a `Label` in a navigation bar draws
+                        // its title too, and "Add" beside a plus says nothing
+                        // the plus has not already said.
+                        Image(systemName: "plus")
                     }
                     .tint(Ink.blue)
+                    .accessibilityLabel("Add a repository")
                 }
             }
         }
@@ -78,7 +82,7 @@ struct SwitcherView: View {
         .alert(
             "Remove \(removing?.title ?? "")?",
             isPresented: presenting($removing),
-            presenting: removing,
+            presenting: removing
         ) { repo in
             Button("Remove", role: .destructive) {
                 Task { await model.removeRepo(repo.id) }
@@ -168,7 +172,7 @@ let removalWarning =
 func presenting<T>(_ value: Binding<T?>) -> Binding<Bool> {
     Binding(
         get: { value.wrappedValue != nil },
-        set: { shown in if !shown { value.wrappedValue = nil } },
+        set: { shown in if !shown { value.wrappedValue = nil } }
     )
 }
 

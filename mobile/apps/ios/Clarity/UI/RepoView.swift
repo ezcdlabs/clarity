@@ -51,7 +51,7 @@ struct RepoView: View {
         .alert(
             "Remove \(removing?.title ?? "")?",
             isPresented: presenting($removing),
-            presenting: removing,
+            presenting: removing
         ) { repo in
             Button("Remove", role: .destructive) { Task { await model.removeRepo(repo.id) } }
             Button("Cancel", role: .cancel) {}
@@ -264,7 +264,7 @@ struct RepoView: View {
                             // rule it opens, or the week divider naming it.
                             // Spending the gap twice would push the subheader
                             // away from the commits it describes.
-                            tight: !batch.weekLabel.isEmpty || b == 0,
+                            tight: !batch.weekLabel.isEmpty || b == 0
                         ).feedRow()
                         ForEach(batch.commits, id: \.sha) { commit in
                             CommitRow(commit: commit, model: model).feedRow()
@@ -497,7 +497,7 @@ private struct CommitRow: View {
 
                 Spacer(minLength: 8)
 
-                if commit.hasLeadTime {
+                if commit.leadTimeKnown {
                     // Grey while it runs, blue once the deploy that stopped the
                     // clock landed — so a lead time blooms blue exactly when it
                     // freezes, matching the Deployed band it came to rest in.
@@ -533,12 +533,17 @@ private struct CommitRow: View {
  against the model's clock; without one — or before the clock has started — it
  falls back to what the view said, which is never worse than what the last fetch
  showed.
+
+ `@MainActor` because it reads the model, which is: a free function is
+ nonisolated unless it says otherwise, and `View.body` being isolated does not
+ reach into what it calls.
  */
+@MainActor
 private func ticking(
     _ model: ClarityModel,
     _ anchorUnixSeconds: Int64,
     _ fallback: String,
-    _ format: (String) -> String,
+    _ format: (String) -> String
 ) -> String {
     guard anchorUnixSeconds > 0, model.state.nowSeconds > 0 else { return fallback }
     return format(model.elapsed(model.state.nowSeconds - anchorUnixSeconds))

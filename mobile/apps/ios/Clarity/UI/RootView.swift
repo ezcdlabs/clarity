@@ -50,7 +50,7 @@ struct RootView: View {
     private var presented: Binding<Overlay?> {
         Binding(
             get: { model.state.overlay },
-            set: { shown in if shown == nil { model.closeOverlay() } },
+            set: { shown in if shown == nil { model.closeOverlay() } }
         )
     }
 }

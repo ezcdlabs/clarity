@@ -1088,6 +1088,44 @@ One row per ISO week, newest first: a box plot of that week's lead times on the 
 
 The two halves are one signal. A bad week pushes the box right *and* pulls the bar back, so degradation reads as ink migrating rightward across the whole row — which is the entire reason the bars are mirrored rather than growing from a shared left edge.
 
+### On a phone
+
+The Android app draws the same view, reached from a chart icon in the repository
+bar — left of the menu rather than inside it, because the chart is a place you
+go and a destination behind a menu is one you forget exists. Everything in that
+menu is an action on the repository; this is not one.
+
+It is a screen with a back arrow rather than a sheet. A sheet is for a short
+interaction, and this is a surface you scroll, compare rows on, and switch flows
+within.
+
+The split of labour is the proto boundary's usual one, and this view is the
+clearest case of it. What crosses is the numbers and the words: each week's
+five-number summary in seconds, its deploy count, the shared axis, the tick
+labels, and the core's decision about whether a week has enough deploys for a
+box plot to mean anything. What does not cross is a single thing the terminal
+does about being a terminal — no cell reserved for the clamp mark, no one-cell
+minimum bar, no three-step tick shedding. The phone reserves pixels for the
+clamp chevron, floors the bar at 2dp, and keeps the ends and the midpoint of the
+axis, because it is narrow in a different way.
+
+Three decisions moved into `core` to get there, and the test that drove one of
+them found a bug in the terminal's axis: `FormatAxisTick` rounded to whole
+hours, so a 2h axis labelled its three-quarter tick `2h` and then labelled its
+end `2h` as well — the exact collision the function's doc claimed to prevent.
+Hours now carry a decimal where they need one, as days already did.
+
+It is read when the screen opens and never again. The refresh pump leaves it
+alone, for the same reason the command does not poll: re-reading two thousand
+commits every five seconds spends a phone's battery to learn nothing about
+history. Closing the screen drops the chart rather than keeping it, which is the
+opposite of what the commit feed does with its view — a stale feed still answers
+"is main green?" usefully, but a chart held over from before a fetch answers
+"are we getting better?" with an older answer than the one on disk, and nothing
+on it would say so.
+
+iOS does not have this screen yet.
+
 ### Interactive, but not live
 
 Two different things, easily conflated: **live** means a watcher polling the remote; **interactive** means an event loop responding to keys. This view is the second without the first.

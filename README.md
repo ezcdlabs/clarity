@@ -1510,8 +1510,8 @@ diff.
 
 ### A bridge interface, so the UI is testable without a device
 
-Each app talks to an interface — `ClarityBridge` on Android — not to the
-generated bindings. Behind it sits either the real bound core or a fake, and the
+Each app talks to an interface — `ClarityBridge`, in Kotlin and in Swift — not
+to the generated bindings. Behind it sits either the real bound core or a fake, and the
 screens cannot tell which.
 
 This is what makes the interesting behaviour testable on a laptop. The state
@@ -1529,6 +1529,45 @@ What the fake deliberately does *not* do is re-decide anything the core already
 decided. The registry validates URLs and writes the message explaining a
 rejection; the app surfaces that message verbatim. A second opinion in Kotlin
 could only disagree with it.
+
+### Two apps, one set of decisions
+
+Android and iOS draw the same screens from the same view, and how alike they
+should be answers itself once you ask what two teams working from one brief
+would have in common anyway: the proto, the model's shape, every status and
+grouping decision, the palette roles, the feed's grid and its vertical rhythm.
+Those are shared. The state machine in front of the bridge is a near
+line-for-line port with the same test suite behind it, because the two make the
+same decisions and asking both the same questions is the cheapest way to find
+out when one of them has stopped.
+
+What is deliberately *not* shared is any component. Each app uses what its
+platform has already taught the reader to read:
+
+| the decision | Android | iOS |
+| --- | --- | --- |
+| the repository switcher | `ModalBottomSheet`, remove behind a long press | `List` in a sheet, remove behind a swipe |
+| refreshing | `PullToRefreshBox` | `.refreshable` |
+| the per-repository menu | `DropdownMenu` with a trailing note per row | `Menu`, the note folded into the label |
+| the host-key prompt | `AlertDialog` | a sheet |
+| the deploy targets | tabs cut out of the chrome, flush with the feed | capsule chips |
+| feed against chrome | a rounded sheet that slides under the bar | two tones |
+| type and marks | Roboto Flex, JetBrains Mono, Material Symbols | SF Pro, SF Mono, SF Symbols |
+
+Two of those are worth saying why. The host-key prompt is a sheet on iOS
+because a UIKit alert takes a title, a message and buttons, and this one has a
+fingerprint block that has to be read character by character — an alert would
+flatten it into prose exactly where it must not be. And the deploy targets are
+chips rather than the obvious segmented `Picker` because a segmented control
+takes a label *or* an image, never both: the per-flow result would have had to
+leave the control, and then nothing would say which flow the failing mark
+belonged to.
+
+The one thing the platform forced rather than suggested: iOS presents all three
+overlays through a single `sheet(item:)`. Three sheets with a boolean each
+cannot swap — going from the switcher straight to the connect flow dismisses one
+and presents another in the same frame, SwiftUI reconciles one presentation per
+turn, and the second is simply lost.
 
 ### Authentication: a key per device
 

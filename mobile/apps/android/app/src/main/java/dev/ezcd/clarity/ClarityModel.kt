@@ -164,9 +164,18 @@ class ClarityModel(
      */
     fun showMetrics(flowIndex: Int) {
         _state.update {
-            it.copy(overlay = Overlay.Metrics, metricsFlow = flowIndex, error = null)
+            it.copy(
+                overlay = Overlay.Metrics,
+                metricsFlow = flowIndex,
+                error = null,
+                metricsLoading = true,
+            )
         }
-        val id = _state.value.selected ?: return
+        val id = _state.value.selected
+        if (id == null) {
+            _state.update { it.copy(metricsLoading = false) }
+            return
+        }
         scope.launch {
             // Deepen first, and do not let it stop the read. Offline, the weeks
             // already on the device are still a trend — reporting the fetch
@@ -183,6 +192,9 @@ class ClarityModel(
                 val metrics = bridge.metrics(id, metricsCommitLimit, metricsWeeks)
                 _state.update { it.copy(metrics = metrics) }
             }
+            // After the read, however it went: a chart, or the reason there
+            // isn't one. Either is an answer, and neither is "still loading".
+            _state.update { it.copy(metricsLoading = false) }
         }
     }
 

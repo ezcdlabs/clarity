@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -84,17 +85,7 @@ fun MetricsScreen(state: AppState, model: ClarityModel) {
                 ErrorBar(state.error) { model.dismissError() }
 
                 if (flow == null || flow.weeksCount == 0) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            when {
-                                state.busy -> "Reading the history…"
-                                state.error != null -> ""
-                                else -> "No deploys recorded yet."
-                            },
-                            style = Type.bodySmall,
-                            color = Ink.dim,
-                        )
-                    }
+                    Waiting(state)
                     return@Column
                 }
 
@@ -202,6 +193,39 @@ private val clampWidth = 7.dp
 
 /** How far the axis ticks drop below the rule. */
 private val tickHeight = 4.dp
+
+/**
+ * The screen before there is a chart on it.
+ *
+ * Three different states, and telling them apart matters more here than it
+ * looks. The first open does a deepening fetch that takes seconds, and during
+ * it there are no weeks to draw — which is indistinguishable, to the layout,
+ * from a repository that has never deployed anything. Saying the second while
+ * the first is happening is a flat lie about the repository.
+ */
+@Composable
+private fun Waiting(state: AppState) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (state.metricsLoading) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(
+                    Modifier.size(18.dp),
+                    color = Ink.dim,
+                    strokeWidth = 2.dp,
+                )
+                Text(
+                    "Reading the history…",
+                    style = Type.bodySmall,
+                    color = Ink.dim,
+                    modifier = Modifier.padding(top = 14.dp),
+                )
+            }
+        } else if (state.error == null) {
+            // The error, when there is one, is already in the bar above.
+            Text("No deploys recorded yet.", style = Type.bodySmall, color = Ink.dim)
+        }
+    }
+}
 
 @Composable
 private fun Legend() {

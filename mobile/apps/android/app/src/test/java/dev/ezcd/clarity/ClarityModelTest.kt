@@ -520,6 +520,26 @@ class ClarityModelTest {
     }
 
     @Test
+    fun `the chart says it is loading rather than that there is nothing`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.weekly[id] = FakeBridge.metricsOf(6, 3)
+
+        // Caught mid-fetch. The deepening read is the slow part — seconds on a
+        // phone — and it is exactly when there are no weeks to draw yet, so
+        // without a flag of its own the screen spends that time announcing that
+        // the repository has never deployed anything.
+        var duringFetch: Boolean? = null
+        bridge.onSync = { duringFetch = model.state.value.metricsLoading }
+        model.showMetrics(flowIndex = 0)
+
+        assertEquals(true, duringFetch)
+        assertEquals(false, model.state.value.metricsLoading)
+    }
+
+    @Test
     fun `a deepen that fails still shows the history already on the device`() = test {
         val model = model()
         model.start()

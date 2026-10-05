@@ -67,6 +67,17 @@ data class AppState(
     val metrics: Metrics? = null,
     /** Which flow the metrics screen is showing, carried in from the feed. */
     val metricsFlow: Int = 0,
+    /**
+     * True from the moment the metrics screen opens until it has something to
+     * draw or a reason it has not.
+     *
+     * Its own flag rather than [syncing] or [busy]: the deepening fetch is the
+     * slow part and it sets [syncing], the read after it sets [busy], and the
+     * screen needs one answer covering both. Sharing [syncing] with the feed's
+     * pump would also let a background refresh of the commit list speak for a
+     * chart it knows nothing about.
+     */
+    val metricsLoading: Boolean = false,
     val overlay: Overlay? = null,
     val connect: Connect = Connect.Idle,
     /** True while a network fetch is in flight. */

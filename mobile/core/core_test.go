@@ -494,3 +494,100 @@ func TestClient_Metrics_WindowIsWeeksNotCommits(t *testing.T) {
 		t.Errorf("asked for one week and got %d", n)
 	}
 }
+
+// TestClient_Check walks a background check across the bridge: the first one
+// records a baseline in silence, and a later one reports what moved.
+func TestClient_Check(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+	head := clone.LogBranch("main")[0].Hash
+	// Increasing times, explicitly. Events are collapsed newest-wins and are
+	// filed by the second they carry, so two written in the same second leave
+	// which one is current up to the tie-break rather than to the test.
+	at := time.Now().Add(-time.Hour)
+	write := func(stage, status string) {
+		at = at.Add(time.Minute)
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
+			Stage: stage, Status: status, Time: at,
+		}); err != nil {
+			t.Fatalf("seed event: %v", err)
+		}
+	}
+	write("ci", "passed")
+
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.AddRepo("file://"+remote.URL(), "main"); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+
+	first := check(t, c)
+	if len(first.Changes) != 0 {
+		t.Errorf("the first check announced %+v; there was nothing to move from", first.Changes)
+	}
+	if first.Checked != 1 {
+		t.Errorf("checked = %d, want the one tracked repository", first.Checked)
+	}
+
+	// Nothing has happened since.
+	if quiet := check(t, c); len(quiet.Changes) != 0 {
+		t.Errorf("an unchanged repository announced %+v", quiet.Changes)
+	}
+
+	write("ci", "failed")
+	broke := check(t, c)
+	if len(broke.Changes) != 1 {
+		t.Fatalf("got %+v, want the CI failure", broke.Changes)
+	}
+	if !broke.Changes[0].Broke || broke.Changes[0].Stage != "CI" {
+		t.Errorf("change = %+v, want CI breaking", broke.Changes[0])
+	}
+	if broke.Changes[0].RepoName == "" {
+		t.Error("the change does not say which repository, so a notification cannot either")
+	}
+
+	write("ci", "passed")
+	fixed := check(t, c)
+	if len(fixed.Changes) != 1 || fixed.Changes[0].Broke {
+		t.Fatalf("got %+v, want the recovery", fixed.Changes)
+	}
+}
+
+// TestClient_Check_AnUnreachableRepositoryIsCountedNotFatal. A check that
+// quietly failed for every repository looks exactly like one that found nothing
+// wrong, and the difference is the whole value of the feature.
+func TestClient_Check_AnUnreachableRepositoryIsCountedNotFatal(t *testing.T) {
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.AddRepo("ssh://git@nowhere.invalid/acme/thing.git", "main"); err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+
+	got := check(t, c)
+	if got.Unreachable != 1 {
+		t.Errorf("unreachable = %d, want the one that could not be fetched", got.Unreachable)
+	}
+	if len(got.Changes) != 0 {
+		t.Errorf("a repository that could not be reached announced %+v", got.Changes)
+	}
+}
+
+func check(t *testing.T, c *mobilecore.Client) *v1.Changes {
+	t.Helper()
+	raw, err := c.Check(30)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	var out v1.Changes
+	if err := proto.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("the bytes crossing the bridge did not decode: %v", err)
+	}
+	return &out
+}

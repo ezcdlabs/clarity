@@ -26,6 +26,7 @@ import (
 	"github.com/ezcdlabs/clarity/mobile/internal/present"
 	"github.com/ezcdlabs/clarity/mobile/internal/registry"
 	"github.com/ezcdlabs/clarity/mobile/internal/remote"
+	"github.com/ezcdlabs/clarity/mobile/internal/watch"
 	v1 "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/cache"
@@ -228,6 +229,101 @@ func (c *Client) Sync(repoID string, depth, timeoutSeconds int) ([]byte, error) 
 	return proto.Marshal(outcome(repo.Sync(ctx, gitsource.SyncOptions{Depth: depth, Auth: auth})))
 }
 
+// Check fetches every tracked repository and reports the pipelines that have
+// crossed between green and red since the last check.
+//
+// This is what a background worker calls. It returns transitions rather than
+// state on purpose: a check runs on a timer whether or not anything happened,
+// and a notification keyed on state fires for as long as a build stays broken.
+//
+// One repository failing does not fail the check. A phone is offline half the
+// time and a host can be down; the repositories that were reached still have
+// news worth hearing, and the count of those that were not is carried so a
+// caller can tell "nothing is wrong" from "nothing could be read".
+func (c *Client) Check(timeoutSeconds int) ([]byte, error) {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 60
+	}
+	entries, err := c.repos.List()
+	if err != nil {
+		return nil, err
+	}
+
+	out := &v1.Changes{GeneratedUnixSeconds: time.Now().Unix()}
+	for _, entry := range entries {
+		changes, err := c.checkOne(entry, timeoutSeconds)
+		if err != nil {
+			out.Unreachable++
+			continue
+		}
+		out.Checked++
+		for _, ch := range changes {
+			out.Changes = append(out.Changes, &v1.Change{
+				RepoId:   entry.ID,
+				RepoName: label(entry),
+				Stage:    ch.Stage,
+				Broke:    ch.Broke,
+				From:     present.Status(ch.From),
+				To:       present.Status(ch.To),
+			})
+		}
+	}
+	return proto.Marshal(out)
+}
+
+// checkOne fetches a repository and compares what it now says to what was
+// recorded last time, then records the new verdict.
+//
+// The order matters: the comparison has to read the stored verdict before the
+// fresh one overwrites it, which is why this does not simply call View.
+func (c *Client) checkOne(entry registry.Entry, timeoutSeconds int) ([]watch.Change, error) {
+	repo, _, err := c.open(entry.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	auth, err := c.auth(entry.URL)
+	if err != nil {
+		return nil, err
+	}
+	if err := repo.Sync(ctx, gitsource.SyncOptions{Auth: auth}); err != nil {
+		return nil, err
+	}
+
+	snap, err := repo.Snapshot(checkCommitWindow)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	view := core.DeriveView(snap, cfg.LeadTimeMode(), cfg.Deploys())
+
+	changes := watch.Compare(entry.Status, verdict(view))
+	c.remember(entry.ID, view)
+	return changes, nil
+}
+
+// checkCommitWindow is how much history a background check reads. Small: it
+// only needs the head of each pipeline, and this runs on a timer.
+const checkCommitWindow = 50
+
+// label is what a notification calls a repository: its rename if it has one,
+// otherwise the name derived from the URL — the same label the switcher shows.
+func label(e registry.Entry) string {
+	if e.Alias != "" {
+		return e.Alias
+	}
+	ref := remote.Parse(e.URL)
+	if ref.Namespace == "" {
+		return ref.Name
+	}
+	return ref.Namespace + "/" + ref.Name
+}
+
 // TrustHost records a host key the user agreed to in the prompt, so the fetch
 // that was refused can be retried.
 func (c *Client) TrustHost(host, fingerprint string) error {
@@ -320,11 +416,19 @@ func (c *Client) View(repoID string, limit int) ([]byte, error) {
 // Best effort on purpose: a label in a list is not worth failing the view the
 // user actually asked for.
 func (c *Client) remember(repoID string, view core.View) {
+	_ = c.repos.SetStatus(repoID, verdict(view))
+}
+
+// verdict is what a view says, in the shape the registry stores and the
+// background check compares. One function, because a verdict recorded in one
+// shape and compared in another would report a change every time the app and
+// the worker took turns.
+func verdict(view core.View) registry.Status {
 	st := registry.Status{CI: view.Header.CI, Deploy: view.Header.Deploy}
 	for _, f := range view.Flows {
 		st.Flows = append(st.Flows, registry.FlowStatus{Name: f.Name, Deploy: f.Deploy})
 	}
-	_ = c.repos.SetStatus(repoID, st)
+	return st
 }
 
 // open prepares the git store for a tracked repository.

@@ -396,3 +396,44 @@ message Week {
   // exactly on the axis is drawn rather than marked as excluded.
   bool beyond_axis = 11;
 }
+
+// Changes is what a background check found worth telling someone about.
+//
+// Transitions rather than state, which is the whole design. A check runs every
+// quarter of an hour whether or not anything happened, and a notification keyed
+// on state is one that fires four times an hour for as long as a build stays
+// broken — which is a notification the user turns off, taking the useful ones
+// with it.
+message Changes {
+  repeated Change changes = 1;
+
+  // How many repositories were reached, and how many could not be. A check that
+  // quietly failed for every repository looks exactly like a check that found
+  // nothing wrong, and the difference is the whole value of the feature.
+  int32 checked = 2;
+  int32 unreachable = 3;
+
+  // Always set, for the reason View.generated_unix_seconds explains.
+  int64 generated_unix_seconds = 4;
+}
+
+// Change is one pipeline crossing between green and red.
+message Change {
+  string repo_id = 1;
+
+  // What to call the repository: its rename if it has one, otherwise the name
+  // derived from the URL — the same label its row in the switcher carries.
+  string repo_name = 2;
+
+  // What moved, in the words a notification uses: "CI", or "deploy to ios".
+  // Here rather than in each app so two clients cannot disagree about what to
+  // call a deploy target.
+  string stage = 3;
+
+  // Which direction. Both are worth saying and they are not worth saying the
+  // same way — one interrupts, the other can wait for you to look.
+  bool broke = 4;
+
+  Status from = 5;
+  Status to = 6;
+}

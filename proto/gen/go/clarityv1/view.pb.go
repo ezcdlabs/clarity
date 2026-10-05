@@ -1603,6 +1603,177 @@ func (x *Week) GetBeyondAxis() bool {
 	return false
 }
 
+// Changes is what a background check found worth telling someone about.
+//
+// Transitions rather than state, which is the whole design. A check runs every
+// quarter of an hour whether or not anything happened, and a notification keyed
+// on state is one that fires four times an hour for as long as a build stays
+// broken — which is a notification the user turns off, taking the useful ones
+// with it.
+type Changes struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Changes []*Change              `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
+	// How many repositories were reached, and how many could not be. A check that
+	// quietly failed for every repository looks exactly like a check that found
+	// nothing wrong, and the difference is the whole value of the feature.
+	Checked     int32 `protobuf:"varint,2,opt,name=checked,proto3" json:"checked,omitempty"`
+	Unreachable int32 `protobuf:"varint,3,opt,name=unreachable,proto3" json:"unreachable,omitempty"`
+	// Always set, for the reason View.generated_unix_seconds explains.
+	GeneratedUnixSeconds int64 `protobuf:"varint,4,opt,name=generated_unix_seconds,json=generatedUnixSeconds,proto3" json:"generated_unix_seconds,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *Changes) Reset() {
+	*x = Changes{}
+	mi := &file_clarity_v1_view_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Changes) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Changes) ProtoMessage() {}
+
+func (x *Changes) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Changes.ProtoReflect.Descriptor instead.
+func (*Changes) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *Changes) GetChanges() []*Change {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+func (x *Changes) GetChecked() int32 {
+	if x != nil {
+		return x.Checked
+	}
+	return 0
+}
+
+func (x *Changes) GetUnreachable() int32 {
+	if x != nil {
+		return x.Unreachable
+	}
+	return 0
+}
+
+func (x *Changes) GetGeneratedUnixSeconds() int64 {
+	if x != nil {
+		return x.GeneratedUnixSeconds
+	}
+	return 0
+}
+
+// Change is one pipeline crossing between green and red.
+type Change struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	RepoId string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	// What to call the repository: its rename if it has one, otherwise the name
+	// derived from the URL — the same label its row in the switcher carries.
+	RepoName string `protobuf:"bytes,2,opt,name=repo_name,json=repoName,proto3" json:"repo_name,omitempty"`
+	// What moved, in the words a notification uses: "CI", or "deploy to ios".
+	// Here rather than in each app so two clients cannot disagree about what to
+	// call a deploy target.
+	Stage string `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
+	// Which direction. Both are worth saying and they are not worth saying the
+	// same way — one interrupts, the other can wait for you to look.
+	Broke         bool   `protobuf:"varint,4,opt,name=broke,proto3" json:"broke,omitempty"`
+	From          Status `protobuf:"varint,5,opt,name=from,proto3,enum=clarity.v1.Status" json:"from,omitempty"`
+	To            Status `protobuf:"varint,6,opt,name=to,proto3,enum=clarity.v1.Status" json:"to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Change) Reset() {
+	*x = Change{}
+	mi := &file_clarity_v1_view_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Change) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Change) ProtoMessage() {}
+
+func (x *Change) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Change.ProtoReflect.Descriptor instead.
+func (*Change) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *Change) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+func (x *Change) GetRepoName() string {
+	if x != nil {
+		return x.RepoName
+	}
+	return ""
+}
+
+func (x *Change) GetStage() string {
+	if x != nil {
+		return x.Stage
+	}
+	return ""
+}
+
+func (x *Change) GetBroke() bool {
+	if x != nil {
+		return x.Broke
+	}
+	return false
+}
+
+func (x *Change) GetFrom() Status {
+	if x != nil {
+		return x.From
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
+func (x *Change) GetTo() Status {
+	if x != nil {
+		return x.To
+	}
+	return Status_STATUS_UNSPECIFIED
+}
+
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
 
 const file_clarity_v1_view_proto_rawDesc = "" +
@@ -1722,7 +1893,19 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x0esample_seconds\x18\n" +
 	" \x03(\x03R\rsampleSeconds\x12\x1f\n" +
 	"\vbeyond_axis\x18\v \x01(\bR\n" +
-	"beyondAxis*\x7f\n" +
+	"beyondAxis\"\xa9\x01\n" +
+	"\aChanges\x12,\n" +
+	"\achanges\x18\x01 \x03(\v2\x12.clarity.v1.ChangeR\achanges\x12\x18\n" +
+	"\achecked\x18\x02 \x01(\x05R\achecked\x12 \n" +
+	"\vunreachable\x18\x03 \x01(\x05R\vunreachable\x124\n" +
+	"\x16generated_unix_seconds\x18\x04 \x01(\x03R\x14generatedUnixSeconds\"\xb6\x01\n" +
+	"\x06Change\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x1b\n" +
+	"\trepo_name\x18\x02 \x01(\tR\brepoName\x12\x14\n" +
+	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x14\n" +
+	"\x05broke\x18\x04 \x01(\bR\x05broke\x12&\n" +
+	"\x04from\x18\x05 \x01(\x0e2\x12.clarity.v1.StatusR\x04from\x12\"\n" +
+	"\x02to\x18\x06 \x01(\x0e2\x12.clarity.v1.StatusR\x02to*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -1763,7 +1946,7 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
@@ -1784,6 +1967,8 @@ var file_clarity_v1_view_proto_goTypes = []any{
 	(*LeadAxis)(nil),    // 16: clarity.v1.LeadAxis
 	(*AxisTick)(nil),    // 17: clarity.v1.AxisTick
 	(*Week)(nil),        // 18: clarity.v1.Week
+	(*Changes)(nil),     // 19: clarity.v1.Changes
+	(*Change)(nil),      // 20: clarity.v1.Change
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
@@ -1809,11 +1994,14 @@ var file_clarity_v1_view_proto_depIdxs = []int32{
 	18, // 20: clarity.v1.MetricsFlow.weeks:type_name -> clarity.v1.Week
 	17, // 21: clarity.v1.LeadAxis.ticks:type_name -> clarity.v1.AxisTick
 	3,  // 22: clarity.v1.Week.plot:type_name -> clarity.v1.Plot
-	23, // [23:23] is the sub-list for method output_type
-	23, // [23:23] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	20, // 23: clarity.v1.Changes.changes:type_name -> clarity.v1.Change
+	0,  // 24: clarity.v1.Change.from:type_name -> clarity.v1.Status
+	0,  // 25: clarity.v1.Change.to:type_name -> clarity.v1.Status
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -1827,7 +2015,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

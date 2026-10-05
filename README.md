@@ -1623,6 +1623,54 @@ cannot swap — going from the switcher straight to the connect flow dismisses o
 and presents another in the same frame, SwiftUI reconciles one presentation per
 turn, and the second is simply lost.
 
+### Telling you when it breaks
+
+The Android app checks in the background and notifies when a pipeline crosses
+between green and red.
+
+**Transitions, not state.** A check runs on a timer whether or not anything
+happened, so a notification keyed on state is one that fires four times an hour
+for as long as a build stays broken — which is a notification the user turns
+off, taking the useful ones with it. `mobile/internal/watch` compares the
+verdict the registry already caches for the switcher against the fresh one and
+reports only the crossings.
+
+Only `passed` ↔ `failed` counts. A build in flight is not an answer, and
+treating the gap between a push and a green tick as a recovery would fire on
+every commit. It also gives the common shape of a broken pipeline the right
+behaviour for free: red, someone pushes a fix, it runs, it fails again — the
+second failure arrives from `started` rather than from `passed`, so it is
+announced once. A repository with no recorded verdict is silent too: it did not
+break, it was always like that.
+
+**Fifteen minutes, and that is a floor rather than a choice.** WorkManager will
+not schedule periodic work more often, and Doze routinely stretches it further
+when the phone is idle. The alternative is a foreground service holding a
+permanent notification, which is a steep price for a dashboard. There is no push
+channel to fall back on, and there should not be: that would need a server, and
+clarity does not have one.
+
+**Two channels, and no alarm.** Breaking is `IMPORTANCE_HIGH` — a heads-up with
+a sound, because it is the thing the feature exists for. Recovering is
+`IMPORTANCE_DEFAULT`, silent, because good news can wait until you look.
+Splitting them puts the dial where Android wants it: the user mutes one and
+keeps the other from system settings, and the app needs no preferences screen.
+
+What it deliberately does not do is ring like an alarm or bring itself to the
+foreground. Android has a mechanism for that — a full-screen intent — and since
+14 the permission for it is granted by default only to calling and alarm apps.
+That restriction is right. A check that is up to forty minutes behind cannot
+honestly claim the urgency an alarm claims, and waking someone at three in the
+morning over something that broke twenty minutes ago is the behaviour of an
+alarm clock rather than of a dashboard.
+
+The status bar icon is generated from the mark like every other icon, but as the
+check alone: a small icon is drawn as a white mask, and at 24dp three
+overlapping checks are mud once the colours that tell them apart are gone.
+
+iOS does not have this yet. Its equivalent is `BGAppRefreshTask`, which is
+scheduled at the system's discretion rather than on an interval.
+
 ### Authentication: a key per device
 
 The app generates an ed25519 keypair on first use and shows the

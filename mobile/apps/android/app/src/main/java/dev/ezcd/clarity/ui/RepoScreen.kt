@@ -7,30 +7,39 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +54,9 @@ import dev.ezcd.clarity.proto.Section
 import dev.ezcd.clarity.proto.SectionKind
 import dev.ezcd.clarity.proto.Status
 import dev.ezcd.clarity.proto.View
+import dev.ezcd.clarity.subtitle
+import dev.ezcd.clarity.title
+import dev.ezcd.clarity.titlePrefix
 
 /** The row grid, so section labels and author names share a left edge the way
  *  the terminal's dividers do. */
@@ -78,64 +90,22 @@ private val batchGapBelow = 3.dp
  * file decides is how wide things are and which colour they take, which is the
  * half of the job the proto boundary leaves to the platform.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
+fun RepoScreen(state: AppState, model: ClarityModel) {
     var tab by rememberSaveable(state.selected) { mutableIntStateOf(0) }
+    var switcher by remember { mutableStateOf(false) }
     val view = state.view
     val flows = view?.flowsList.orEmpty()
     val flow = flows.getOrNull(tab.coerceAtMost((flows.size - 1).coerceAtLeast(0)))
 
-    // The title starts tall and shrinks into the bar as the list comes up to
-    // meet it — the sheet rising to sit under a compact bar is what makes the
-    // two levels read as layers rather than as two stacked panels.
-    //
-    // The lifecycle strip is deliberately not part of what collapses. "Is it
-    // green?" is the question the app exists to answer, and an answer that
-    // scrolls away is one you have to go back for.
-    val collapsing = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    if (switcher) {
+        Switcher(state, model) { switcher = false }
+    }
 
-    Column(
-        Modifier.fillMaxSize()
-            .background(Ink.surface)
-            .nestedScroll(collapsing.nestedScrollConnection),
-    ) {
-        LargeTopAppBar(
-            title = {
-                Text(
-                    state.repo?.name ?: view?.repoName ?: "clarity",
-                    // Red when something is broken, as the terminal does with
-                    // the repository name.
-                    color = if (broken(view)) Ink.red else Ink.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            navigationIcon = {
-                // The list is a swipe away; this is for anyone who does not find
-                // a gesture that has no affordance.
-                IconButton(onClick = onOpenList) {
-                    Text("≡", style = Mono.copy(fontSize = 20.sp), color = Ink.dim)
-                }
-            },
-            actions = {
-                GlyphButton(
-                    Icons.Default.Refresh,
-                    "Refresh",
-                    tint = Ink.blue,
-                    enabled = !state.syncing,
-                    onClick = { model.refresh() },
-                )
-            },
-            colors = TopAppBarDefaults.largeTopAppBarColors(
-                containerColor = Ink.surface,
-                scrolledContainerColor = Ink.surface,
-            ),
-            scrollBehavior = collapsing,
-        )
-
+    Column(Modifier.fillMaxSize().background(Ink.surface)) {
+        AppBar(state, model) { switcher = true }
         if (view != null) {
-            Header(view, tab) { tab = it }
+            Strip(state, model, view, tab) { tab = it }
         }
         // On the chrome, not the sheet: a fetch belongs to the bar that started
         // it, and the sheet's turned corners would clip the ends off it.
@@ -143,7 +113,7 @@ fun RepoScreen(state: AppState, model: ClarityModel, onOpenList: () -> Unit) {
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = Ink.blue, trackColor = Ink.line)
         }
 
-        Sheet {
+        Sheet(topStartRadius = if (flows.size > 1 && tab == 0) 0 else 20) {
             Column(Modifier.fillMaxSize()) {
                 ErrorBar(state.error) { model.dismissError() }
 
@@ -204,74 +174,175 @@ private fun CommitList(view: View, flow: Flow?, state: AppState, model: ClarityM
 }
 
 /**
- * The header answers two questions with different scopes: CI is repo-wide,
- * deploys are per-flow. Naming the group is what says so — `deploy:` labels the
- * strip, so the flows read as sub-items of deploy rather than as peers of `ci`.
+ * The bar, fixed at 64dp.
  *
- * One flow renders flat, with no bar, because a lone raised tab looks like a
- * control and is not one.
+ * The title is the switcher: two lines, the namespace stepped back in front of
+ * the name, with the branch and host underneath. It does not collapse — the
+ * whole title is a tap target, and a target that changes size and position as
+ * you scroll is one you have to look at before you can hit it.
  */
 @Composable
-private fun Header(view: View, tab: Int, onPick: (Int) -> Unit) {
-    val flows = view.flowsList
-    if (flows.size <= 1) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = rowPadding, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Badge("ci:", view.ci)
-            Badge("deploy:", flows.firstOrNull()?.deploy ?: view.deploy)
-        }
-        return
-    }
-
-    // The selected flow is cut out of the chrome rather than raised above it:
-    // the bar is painted one step off the background and the selected tab in the
-    // background itself, so it is the only thing on the row sharing the body's
-    // colour. That reads as a tab continuous with what it controls.
+private fun AppBar(state: AppState, model: ClarityModel, onOpenSwitcher: () -> Unit) {
+    val repo = state.repo
     Row(
-        Modifier.fillMaxWidth().background(Ink.surface).horizontalScroll(rememberScrollState()),
+        Modifier.fillMaxWidth().height(64.dp).padding(start = PageMargin, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Badge("ci:", view.ci, Modifier.padding(start = rowPadding, end = 16.dp))
-        Text("deploy:", color = Ink.dim, fontSize = 13.sp)
-        flows.forEachIndexed { i, f ->
-            Row(
-            Modifier
-                .background(if (i == tab) Ink.bg else Color.Transparent)
-                .clickable { onPick(i) }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-            // Undeclared: seen in the events but absent from .ezcd.json.
-            Text(
-                if (f.undeclared) "${f.name} ?" else f.name,
-                color = if (i == tab) Ink.text else Ink.dim,
-                fontSize = 13.sp,
+        Column(
+            Modifier.weight(1f).clickable(onClick = onOpenSwitcher),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (repo != null && repo.titlePrefix.isNotEmpty()) {
+                    Text(
+                        repo.titlePrefix,
+                        style = Type.titleNamespace,
+                        color = Ink.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                Text(
+                    repo?.title ?: state.view?.repoName ?: "clarity",
+                    style = Type.title,
+                    // Red when something is broken, as the terminal does with
+                    // the repository name.
+                    color = if (broken(state.view)) Ink.red else Ink.text,
+                    maxLines = 1,
+                )
+                Icon(
+                    Icons.Rounded.ExpandMore,
+                    contentDescription = "Switch repository",
+                    tint = Ink.dim,
+                    modifier = Modifier.size(20.dp).padding(start = 2.dp),
+                )
+            }
+            repo?.let {
+                Text(it.subtitle, style = Type.mono, color = Ink.dim, maxLines = 1)
+            }
+        }
+        RepoMenu(state, model)
+    }
+}
+
+/** The per-repository menu from 3a. No refresh button in the bar — pull to
+ *  refresh, or the first item here. */
+@Composable
+private fun RepoMenu(state: AppState, model: ClarityModel) {
+    var open by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    val repo = state.repo
+
+    Box {
+        GlyphButton(Icons.Rounded.MoreVert, "More") { open = true }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            containerColor = Ink.menu,
+            modifier = Modifier.width(252.dp),
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Refresh now", style = Type.bodySmall, color = Ink.text, modifier = Modifier.weight(1f))
+                        Text(viewAge(state, model), style = Type.mono, color = Ink.dim)
+                    }
+                },
+                leadingIcon = { Icon(Icons.Rounded.Refresh, null, tint = Ink.dim) },
+                onClick = {
+                    open = false
+                    model.refresh()
+                },
             )
-            // Status sits after the name, matching `ci: ✓`.
-            StatusGlyph(f.deploy, prominent = true)
+            DropdownMenuItem(
+                text = { Text("Copy clone address", style = Type.bodySmall, color = Ink.text) },
+                leadingIcon = { Icon(Icons.Rounded.ContentCopy, null, tint = Ink.dim) },
+                enabled = repo != null,
+                onClick = {
+                    open = false
+                    repo?.let { clipboard.setText(AnnotatedString(it.url)) }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * The summary strip: CI for the repository, deploy per flow.
+ *
+ * Naming the group is what says the two have different scopes — `deploy:`
+ * labels the tabs, so they read as sub-items of deploy rather than as peers of
+ * `ci`. The age of the view sits on the right and ticks, because a dashboard
+ * that cannot say how old it is is a dashboard you have to trust.
+ */
+@Composable
+private fun Strip(state: AppState, model: ClarityModel, view: View, tab: Int, onPick: (Int) -> Unit) {
+    val flows = view.flowsList
+    Row(
+        Modifier.fillMaxWidth()
+            .then(if (flows.size > 1) Modifier else Modifier.padding(bottom = 12.dp))
+            .padding(start = PageMargin, end = PageMargin),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ci:", style = Type.monoMeta, color = Ink.dim)
+            Spacer(Modifier.size(6.dp))
+            StatusGlyph(view.ci, prominent = true, size = 16)
+            Spacer(Modifier.size(18.dp))
+            Text("deploy:", style = Type.monoMeta, color = Ink.dim)
+        }
+
+        if (flows.size <= 1) {
+            Spacer(Modifier.size(6.dp))
+            StatusGlyph(flows.firstOrNull()?.deploy ?: view.deploy, prominent = true, size = 16)
+        }
+
+        Spacer(Modifier.weight(1f))
+        Text(viewAge(state, model), style = Type.monoMeta, color = Ink.dim, modifier = Modifier.padding(bottom = 2.dp))
+    }
+
+    if (flows.size > 1) {
+        Row(
+            Modifier.fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(start = PageMargin, top = 4.dp),
+        ) {
+            flows.forEachIndexed { i, f ->
+                val selected = i == tab
+                Row(
+                    Modifier
+                        // The selected tab is cut out of the chrome and flush
+                        // with the sheet below, so it reads as continuous with
+                        // what it controls.
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                        .background(if (selected) Ink.bg else Color.Transparent)
+                        .clickable { onPick(i) }
+                        .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        if (f.undeclared) "${f.name} ?" else f.name,
+                        style = Type.monoMeta,
+                        color = if (selected) Ink.text else Ink.dim,
+                    )
+                    StatusGlyph(f.deploy, prominent = true, size = 16)
+                }
             }
         }
     }
 }
 
+/** How old what you are looking at is, ticking. */
 @Composable
-private fun Badge(label: String, status: Status, modifier: Modifier = Modifier) {
-    Row(
-        modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        // Lowercase, as the header has always shipped.
-        Text(label, color = Ink.dim, fontSize = 13.sp)
-        StatusGlyph(status, prominent = true)
-    }
+private fun viewAge(state: AppState, model: ClarityModel): String {
+    val view = state.view ?: return ""
+    val anchor = view.generatedUnixSeconds
+    if (anchor <= 0L || state.nowSeconds <= 0L) return ""
+    return "${model.elapsed(state.nowSeconds - anchor)} ago"
 }
 
-/** Whether anything in this repository is currently failing. */
+/** Whether anything in this repository is currently failing. *//** Whether anything in this repository is currently failing. */
 private fun broken(view: View?): Boolean =
     view != null && (view.ci == Status.STATUS_FAILED || view.deploy == Status.STATUS_FAILED)
 
@@ -388,12 +459,7 @@ private fun CommitRow(commit: Commit, state: AppState, model: ClarityModel) {
             // One mark, not two. Whether this commit shipped is said by the band
             // and the batch it sits in, which is why the terminal has only ever
             // drawn the CI result here.
-            StatusGlyph(
-                commit.ci,
-                stale = commit.ciStale,
-                tight = true,
-                modifier = Modifier.width(iconWidth),
-            )
+            StatusGlyph(commit.ci, stale = commit.ciStale, modifier = Modifier.width(iconWidth))
 
             Text(
                 commit.author,

@@ -1,65 +1,72 @@
 package dev.ezcd.clarity.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.ezcd.clarity.AppState
 import dev.ezcd.clarity.ClarityModel
 
 /**
- * This device's public key, for pasting into whichever host the user uses.
+ * This device's public key, on its own.
  *
- * There is no provider integration and no OAuth app, because clarity is not a
- * GitHub tool — a key the user installs themselves works on GitHub, GitLab, and
- * a box in a cupboard equally.
+ * Reached from the switcher once there are repositories, and from the empty
+ * state's overflow before there are — because the key is the thing you need
+ * *before* the first connection, and the host wants it pasted in.
  */
 @Composable
-fun KeyScreen(state: AppState, model: ClarityModel, modifier: Modifier = Modifier) {
-    val clipboard = LocalClipboardManager.current
+fun KeyScreen(state: AppState, model: ClarityModel) {
+    LaunchedEffect(Unit) { model.loadKey() }
 
-    Column(modifier.fillMaxSize().background(Ink.surface)) {
-        TopBar("Device key", leading = { BackArrow { model.closeOverlay() } })
+    Column(Modifier.fillMaxSize().background(Ink.surface)) {
+        Row(
+            Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 4.dp),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GlyphButton(Icons.Rounded.Close, "Close") { model.closeOverlay() }
+            Text(
+                "Device key",
+                style = Type.appBarTitle,
+                color = Ink.text,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
 
         Sheet {
-        Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-            ErrorBar(state.error) { model.dismissError() }
-            Text(
-                "Add this as a deploy key or an account key on the host, with read " +
-                    "access. The private half never leaves this device.",
-                color = Ink.dim,
-                fontSize = 13.sp,
-            )
-            val key = state.publicKey
-            if (key == null) {
-                Text("Generating…", color = Ink.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 16.dp))
-            } else {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(PageMargin),
+            ) {
+                ErrorBar(state.error) { model.dismissError() }
                 Text(
-                    key,
-                    style = Mono.copy(fontSize = 12.sp),
-                    color = Ink.text,
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(top = 16.dp)
-                        .background(Ink.surface)
-                        .padding(12.dp),
+                    "Add this as a deploy key on a repository, or under your account's " +
+                        "SSH keys, with read access. The private half never leaves this phone.",
+                    style = Type.bodySmall,
+                    color = Ink.dim,
                 )
-                Button(
-                    onClick = { clipboard.setText(AnnotatedString(key)) },
-                    modifier = Modifier.padding(top = 16.dp),
-                ) { Text("Copy") }
+                Spacer(Modifier.height(20.dp))
+                KeyCard(
+                    publicKey = state.publicKey,
+                    fingerprint = state.fingerprint,
+                    startOpen = true,
+                    collapsible = false,
+                )
             }
-        }
         }
     }
 }

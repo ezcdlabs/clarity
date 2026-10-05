@@ -34,6 +34,13 @@ struct GoBridge: ClarityBridge {
         return key
     }
 
+    func keyFingerprint() throws -> String {
+        var failure: NSError?
+        let fp = client.keyFingerprint(&failure)
+        if let failure { throw failure }
+        return fp
+    }
+
     func addRepo(url: String, branch: String) throws -> String {
         var failure: NSError?
         let id = client.addRepo(url, branch: branch, error: &failure)

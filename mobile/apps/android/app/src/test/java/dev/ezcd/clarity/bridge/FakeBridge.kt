@@ -4,6 +4,7 @@ import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.Section
 import dev.ezcd.clarity.proto.SectionKind
+import dev.ezcd.clarity.proto.HostKey
 import dev.ezcd.clarity.proto.Outcome
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.SyncResult
@@ -34,6 +35,10 @@ class FakeBridge : ClarityBridge {
     /** Set to make the matching call throw with this message. */
     var failAddRepo: String? = null
     var failSync: String? = null
+
+    /** What a fetch comes back with, for the flows that branch on it. */
+    var syncOutcome: Outcome = Outcome.OUTCOME_OK
+    var gitOutput: String = ""
     var failList: String? = null
     var failKey: String? = null
 
@@ -53,6 +58,11 @@ class FakeBridge : ClarityBridge {
         failKey?.let { throw RuntimeException(it) }
         keyExists = true
         return "$key $comment"
+    }
+
+    override fun keyFingerprint(): String {
+        calls += "keyFingerprint"
+        return "SHA256:fake"
     }
 
     override fun addRepo(url: String, branch: String): String {
@@ -87,7 +97,16 @@ class FakeBridge : ClarityBridge {
         failSync?.let {
             return builder.setOutcome(Outcome.OUTCOME_FAILED).setMessage(it).build()
         }
-        return builder.setOutcome(Outcome.OUTCOME_OK).build()
+        if (syncOutcome == Outcome.OUTCOME_HOST_KEY_UNKNOWN ||
+            syncOutcome == Outcome.OUTCOME_HOST_KEY_CHANGED
+        ) {
+            builder.hostKey = HostKey.newBuilder()
+                .setHost("git.acme.dev")
+                .setType("ED25519")
+                .setFingerprint("SHA256:fake-fingerprint")
+                .build()
+        }
+        return builder.setOutcome(syncOutcome).setGitOutput(gitOutput).build()
     }
 
     override fun trustHost(host: String, fingerprint: String) {

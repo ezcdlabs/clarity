@@ -1320,19 +1320,36 @@ by mistake.
 Every glyph carries a label that is never drawn. It is what a screen reader
 announces, and an unlabelled icon button is a button only sighted users have.
 
-### Two pages, not a stack
+### One screen, with everything else in front of it
 
-The repository is the app. The list of repositories is the page beside it, the
-way Slack puts its channel list beside the conversation: swipeable from anywhere
-on the screen in either direction, with a button for anyone who does not go
-looking for a gesture.
+The repository is the app. The switcher is a bottom sheet opened from the title
+you are already looking at, and connect and the device key are full-screen
+flows. An earlier version put the list beside the repository as a two-page
+pager — a nice gesture, and the wrong trade: a list of three rows does not earn
+half the screen's horizontal swipe, and that swipe is wanted for changing deploy
+target.
 
-Deliberately not a drawer, and not a navigation stack. A drawer opens from an
-edge and sits over what it covers; a stack makes the list a place you travel to
-and the repository a place you come back from. Here they are peers, and the
-selection is model state rather than navigation state — so sliding to the list
-and back puts you where you were, and the first launch, a tap, and the fallback
-after removing a repository all land you in a repository by the same route.
+The bar is fixed at 64dp with a two-line title, and deliberately does not
+collapse. A large title that shrinks as you scroll is a tap target that moves,
+and this one opens the switcher — a control you have to look at before you can
+hit it is a worse control than a smaller one that stays put.
+
+What does not scroll away either is the lifecycle strip. "Is it green?" is the
+question the app exists to answer, and an answer you have to scroll back for is
+one you stop trusting.
+
+### Connecting is a flow, not a form
+
+Everything that can go wrong on a first connection is a step on the way rather
+than an error thrown back at a text field. An unknown host is a question with an
+answer and a fingerprint to check; a refused key is something to go and fix,
+with the key right there to copy and git's own words behind a disclosure for
+whoever wants them.
+
+That shape is only possible because the core reports outcomes rather than
+throwing: `SyncResult` distinguishes an unknown host, a changed host key and a
+rejected key from everything else, so three clients can draw three screens
+without any of them parsing prose.
 
 ### What ticks, and what refetches
 

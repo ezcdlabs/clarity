@@ -47,6 +47,10 @@ data class Palette(
     val blue: Color,
     /** The error bar's ground — a tint of red, not red. */
     val errorBg: Color,
+    /** A dropdown's container, which floats above both tones. */
+    val menu: Color,
+    /** A tonal button's fill: the primary, heavily diluted. */
+    val tonal: Color,
 )
 
 // Two tones: a chrome the bars sit on, and a darker sheet the commits are read
@@ -70,6 +74,8 @@ private val DarkInk = Palette(
     yellow = Color(0xFFF7C421),  // the mark's yellow
     blue = Color(0xFF6AA2FF),    // the mark's blue
     errorBg = Color(0xFF2A1416),
+    menu = Color(0xFF2B2B2C),
+    tonal = Color(0x296AA2FF),
 )
 
 // Light cannot take the brand's colours at their own values: the mark's yellow
@@ -88,6 +94,8 @@ private val LightInk = Palette(
     yellow = Color(0xFF8A6D00),
     blue = Color(0xFF1565C0),
     errorBg = Color(0xFFFBE9E9),
+    menu = Color(0xFFFFFFFF),
+    tonal = Color(0x1A1565C0),
 )
 
 private val LocalInk = staticCompositionLocalOf { DarkInk }

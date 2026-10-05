@@ -90,26 +90,114 @@ class ClarityModel(
         pump = null
     }
 
-    fun showAddRepo() = _state.update { it.copy(overlay = Overlay.AddRepo, error = null) }
+    /** Opens the connect flow, from the empty state or from the switcher. */
+    fun showConnect() = _state.update {
+        it.copy(overlay = Overlay.Connect, connect = Connect.Idle, error = null)
+    }
 
     fun showKey() {
         _state.update { it.copy(overlay = Overlay.Key, error = null) }
-        act {
-            // Asking for the key is what creates it. There is no point generating
-            // one on first launch for a user who never adds an ssh remote.
-            val key = bridge.publicKey("clarity on android")
-            _state.update { it.copy(publicKey = key) }
-        }
+        loadKey()
+    }
+
+    /**
+     * Fetches the device key, generating it on first call.
+     *
+     * Asking for it is what creates it, so this is not done at launch: a user
+     * who never adds an ssh remote never needs one.
+     */
+    fun loadKey() = act {
+        val key = bridge.publicKey("clarity on android")
+        val fingerprint = bridge.keyFingerprint()
+        _state.update { it.copy(publicKey = key, fingerprint = fingerprint) }
     }
 
     /** Closes whatever is over the repository, leaving the selection alone. */
-    fun closeOverlay() = _state.update { it.copy(overlay = null, error = null) }
+    fun closeOverlay() = _state.update { it.copy(overlay = null, connect = Connect.Idle, error = null) }
 
-    fun addRepo(url: String, branch: String) = act {
-        val id = bridge.addRepo(url, branch)
+    /**
+     * Connects a repository: track it, then fetch it once.
+     *
+     * The two are one action from the user's side — a repository that was added
+     * but never reached is not connected — so a fetch that comes back asking
+     * about a host key or refusing the device key leaves the flow open on the
+     * screen that explains it, rather than dropping them into an empty feed.
+     */
+    fun connect(url: String, branch: String) {
+        scope.launch {
+            _state.update { it.copy(connect = Connect.Working, error = null) }
+            val id = try {
+                withContext(io) { bridge.addRepo(url, branch) }
+            } catch (e: Exception) {
+                _state.update { it.copy(connect = Connect.Failed(message(e))) }
+                return@launch
+            }
+            act { loadRepos() }
+            attempt(id)
+        }
+    }
+
+    /** Records the host key the prompt showed, then picks up where it stopped. */
+    fun trustHost() {
+        val asking = _state.value.connect as? Connect.AskHost ?: return
+        val id = _state.value.repos.lastOrNull()?.id ?: return
+        scope.launch {
+            _state.update { it.copy(connect = Connect.Working) }
+            try {
+                withContext(io) { bridge.trustHost(asking.key.host, asking.key.fingerprint) }
+            } catch (e: Exception) {
+                _state.update { it.copy(connect = Connect.Failed(message(e))) }
+                return@launch
+            }
+            attempt(id)
+        }
+    }
+
+    /** Tries the fetch again after the user has fixed something on the host. */
+    fun retryConnect() {
+        val id = _state.value.repos.lastOrNull()?.id ?: return
+        scope.launch {
+            _state.update { it.copy(connect = Connect.Working) }
+            attempt(id)
+        }
+    }
+
+    /** Abandons the flow. The repository stays tracked if it was added. */
+    fun cancelConnect() = _state.update { it.copy(overlay = null, connect = Connect.Idle) }
+
+    /**
+     * One fetch of a repository being connected, sorted into the screen it
+     * should leave behind.
+     */
+    private suspend fun attempt(repoId: String) {
+        val result = try {
+            withContext(io) { bridge.sync(repoId, fetchDepth, fetchTimeoutSeconds) }
+        } catch (e: Exception) {
+            _state.update { it.copy(connect = Connect.Failed(message(e))) }
+            return
+        }
+        when (result.outcome) {
+            Outcome.OUTCOME_OK -> {
+                // The key has now been accepted by a host at least once, which
+                // is what folds the key card away on the next connect.
+                _state.update { it.copy(connect = Connect.Idle, overlay = null, keyHasConnected = true) }
+                open(repoId)
+            }
+            Outcome.OUTCOME_HOST_KEY_UNKNOWN ->
+                _state.update { it.copy(connect = Connect.AskHost(result.hostKey, changed = false)) }
+            Outcome.OUTCOME_HOST_KEY_CHANGED ->
+                _state.update { it.copy(connect = Connect.AskHost(result.hostKey, changed = true)) }
+            Outcome.OUTCOME_AUTH_DENIED ->
+                _state.update { it.copy(connect = Connect.Denied(result.gitOutput)) }
+            else ->
+                _state.update { it.copy(connect = Connect.Failed(result.message)) }
+        }
+    }
+
+    /** Renames a repository on this device. A blank name clears the rename. */
+    fun rename(repoId: String, name: String) = act {
+        bridge.rename(repoId, name)
         loadRepos()
-        _state.update { it.copy(overlay = null) }
-        open(id)
     }
 
     fun removeRepo(repoId: String) = act {
@@ -183,9 +271,9 @@ class ClarityModel(
         try {
             val result = withContext(io) { bridge.sync(repoId, fetchDepth, fetchTimeoutSeconds) }
             if (result.outcome != Outcome.OUTCOME_OK) {
-                // Everything that is not success is reported the same way for
-                // now; the screens that tell an unknown host from a refused
-                // key arrive with the connect flow.
+                // A refresh is not the place to ask about a host key: this
+                // repository has connected before, so anything unexpected now
+                // is news rather than a setup step.
                 throw RuntimeException(result.message)
             }
         } catch (e: Exception) {

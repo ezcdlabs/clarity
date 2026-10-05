@@ -88,3 +88,40 @@ func TestEnsure_PrivateKeyIsNotReadableByOthers(t *testing.T) {
 		t.Errorf("private key mode is %04o; group and other must have nothing", perm)
 	}
 }
+
+// TestFingerprint is what the UI shows beside a key without showing the key.
+// The same SHA256 form a host publishes, so the two can be compared by eye.
+func TestFingerprint(t *testing.T) {
+	id := keys.Open(filepath.Join(t.TempDir(), "identity"))
+	if _, err := id.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := id.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "SHA256:") {
+		t.Errorf("fingerprint = %q, want the SHA256 form", got)
+	}
+	// Stable: the same key has to produce the same string every time, or it is
+	// not something anyone can compare against what their host shows.
+	again, err := id.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != again {
+		t.Errorf("two reads gave %q then %q", got, again)
+	}
+}
+
+// TestFingerprintDoesNotCreateAKey keeps a label from being a side effect.
+func TestFingerprintDoesNotCreateAKey(t *testing.T) {
+	id := keys.Open(filepath.Join(t.TempDir(), "identity"))
+	if _, err := id.Fingerprint(); err == nil {
+		t.Error("asking for a fingerprint generated an identity")
+	}
+	if id.Exists() {
+		t.Error("a key was written just by asking what it is called")
+	}
+}

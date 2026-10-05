@@ -1,6 +1,7 @@
 package dev.ezcd.clarity
 
 import dev.ezcd.clarity.bridge.FakeBridge
+import dev.ezcd.clarity.proto.Outcome
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,12 +34,12 @@ class ClarityModelTest {
     }
 
     @Test
-    fun `adding a repository selects it and closes the form`() = test {
+    fun `connecting a repository selects it and closes the flow`() = test {
         val model = model()
         model.start()
-        model.showAddRepo()
+        model.showConnect()
 
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "")
 
         assertNull(model.state.value.overlay)
         assertEquals(listOf("clarity"), model.state.value.repos.map { it.name })
@@ -48,18 +49,20 @@ class ClarityModelTest {
     }
 
     @Test
-    fun `a rejected URL keeps the form open with the reason`() = test {
+    fun `a rejected URL keeps the flow open with the reason`() = test {
         bridge.failAddRepo = "\"nonsense\" does not look like a git remote — paste the URL you would clone"
 
         val model = model()
         model.start()
-        model.showAddRepo()
-        model.addRepo("nonsense", "")
+        model.showConnect()
+        model.connect("nonsense", "")
 
         // Closing it would throw away what was typed, and a paste of a clone
-        // URL is not something anyone wants to redo.
-        assertEquals(Overlay.AddRepo, model.state.value.overlay)
-        assertTrue(model.state.value.error!!.contains("does not look like a git remote"))
+        // URL is not something anyone wants to redo. The reason belongs to the
+        // flow rather than to the error bar, which is behind it.
+        assertEquals(Overlay.Connect, model.state.value.overlay)
+        val failed = model.state.value.connect as Connect.Failed
+        assertTrue(failed.message.contains("does not look like a git remote"))
         assertTrue(model.state.value.repos.isEmpty())
     }
 
@@ -67,8 +70,8 @@ class ClarityModelTest {
     fun `opening a repository shows what is on disk before it fetches`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
-        model.addRepo("git@github.com:ezcdlabs/other.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/other.git", "main")
         val first = model.state.value.repos.first().id
         bridge.views[first] = FakeBridge.viewOf("what we already had")
 
@@ -85,7 +88,7 @@ class ClarityModelTest {
     fun `a failed refresh keeps the last view and says what happened`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         val id = model.state.value.repos.single().id
         bridge.views[id] = FakeBridge.viewOf("yesterday")
         model.refresh()
@@ -104,12 +107,18 @@ class ClarityModelTest {
 
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.showConnect()
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
 
-        // Reading a never-fetched repo fails too, but "reference not found" is
-        // not news on a first open — it is the expected state, and surfacing it
-        // would bury the reason the fetch did not fix it.
-        assertEquals("dial tcp: network is unreachable", model.state.value.error)
+        // The flow stays open on the reason. Reading a never-fetched repo fails
+        // too, but "reference not found" is not news on a first connection —
+        // it is the expected state, and surfacing it would bury the reason the
+        // fetch did not fix it.
+        assertEquals(Overlay.Connect, model.state.value.overlay)
+        assertEquals(
+            "dial tcp: network is unreachable",
+            (model.state.value.connect as Connect.Failed).message,
+        )
         assertNull(model.state.value.view)
     }
 
@@ -117,7 +126,7 @@ class ClarityModelTest {
     fun `a fetch that brings new commits replaces the view`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         val id = model.state.value.repos.single().id
         bridge.views[id] = FakeBridge.viewOf("yesterday")
         model.refresh()
@@ -132,8 +141,8 @@ class ClarityModelTest {
     fun `switching repositories drops the previous one's commits`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
-        model.addRepo("git@github.com:ezcdlabs/other.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/other.git", "main")
         val (first, second) = model.state.value.repos.map { it.id }
         bridge.views[first] = FakeBridge.viewOf("clarity's work")
         model.select(first)
@@ -151,7 +160,7 @@ class ClarityModelTest {
     fun `the selection survives opening the repository list`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         val id = model.state.value.repos.single().id
         bridge.views[id] = FakeBridge.viewOf("still here")
         model.select(id)
@@ -159,7 +168,7 @@ class ClarityModelTest {
 
         // The list is a drawer, not a destination: there is no model call for
         // opening it, and nothing about the repository changes when it does.
-        model.showAddRepo()
+        model.showConnect()
         model.closeOverlay()
 
         assertEquals(id, model.state.value.selected)
@@ -170,8 +179,8 @@ class ClarityModelTest {
     fun `removing the open repository falls back to another`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
-        model.addRepo("git@github.com:ezcdlabs/other.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/other.git", "main")
         val open = model.state.value.selected!!
 
         model.removeRepo(open)
@@ -195,18 +204,95 @@ class ClarityModelTest {
     }
 
     @Test
-    fun `the next thing that works clears the error`() = test {
+    fun `the next attempt that works clears the reason the last one failed`() = test {
         bridge.failAddRepo = "nope"
         val model = model()
         model.start()
-        model.showAddRepo()
-        model.addRepo("nonsense", "")
-        assertEquals("nope", model.state.value.error)
+        model.showConnect()
+        model.connect("nonsense", "")
+        assertEquals("nope", (model.state.value.connect as Connect.Failed).message)
 
         bridge.failAddRepo = null
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
 
+        // Connected: the flow closes, and nothing is left saying it did not.
+        assertEquals(Connect.Idle, model.state.value.connect)
+        assertNull(model.state.value.overlay)
         assertNull(model.state.value.error)
+    }
+
+    @Test
+    fun `an unknown host stops the flow and offers the fingerprint`() = test {
+        bridge.syncOutcome = Outcome.OUTCOME_HOST_KEY_UNKNOWN
+
+        val model = model()
+        model.start()
+        model.showConnect()
+        model.connect("git@git.acme.dev:acme/thing.git", "main")
+
+        // Nothing is trusted yet — the whole point of asking is that it can be
+        // answered no.
+        val asking = model.state.value.connect as Connect.AskHost
+        assertEquals("git.acme.dev", asking.key.host)
+        assertTrue(asking.key.fingerprint.startsWith("SHA256:"))
+        assertTrue("trusted without being asked", !bridge.calls.contains("trustHost"))
+
+        bridge.syncOutcome = Outcome.OUTCOME_OK
+        model.trustHost()
+
+        assertTrue(bridge.calls.contains("trustHost"))
+        assertEquals(Connect.Idle, model.state.value.connect)
+        assertNull(model.state.value.overlay)
+        assertEquals(model.state.value.repos.single().id, model.state.value.selected)
+    }
+
+    @Test
+    fun `a refused key lands on the screen that explains it`() = test {
+        bridge.syncOutcome = Outcome.OUTCOME_AUTH_DENIED
+        bridge.gitOutput = "Permission denied (publickey)."
+
+        val model = model()
+        model.start()
+        model.showConnect()
+        model.connect("git@github.com:acme/thing.git", "main")
+
+        // The raw words, so whoever is debugging a key sees what the host said.
+        val denied = model.state.value.connect as Connect.Denied
+        assertEquals("Permission denied (publickey).", denied.gitOutput)
+        assertEquals(Overlay.Connect, model.state.value.overlay)
+
+        // Retrying after fixing it on the host picks up where it stopped.
+        bridge.syncOutcome = Outcome.OUTCOME_OK
+        model.retryConnect()
+        assertNull(model.state.value.overlay)
+    }
+
+    @Test
+    fun `connecting once is what folds the key away next time`() = test {
+        val model = model()
+        model.start()
+        assertTrue("the key should start on show", !model.state.value.keyHasConnected)
+
+        model.showConnect()
+        model.connect("git@github.com:acme/thing.git", "main")
+
+        // After a host has accepted it, the key is a fact you occasionally
+        // check rather than the thing you are here to copy.
+        assertTrue(model.state.value.keyHasConnected)
+    }
+
+    @Test
+    fun `renaming is local and clearable`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/web-platform.git", "main")
+        val id = model.state.value.repos.single().id
+
+        model.rename(id, "The Platform")
+        assertEquals("The Platform", model.state.value.repos.single().alias)
+
+        model.rename(id, "")
+        assertEquals("", model.state.value.repos.single().alias)
     }
 
     @Test
@@ -241,7 +327,7 @@ class ClarityModelTest {
     fun `the open repository refetches on its own`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         model.resume()
         bridge.calls.clear()
 
@@ -255,7 +341,7 @@ class ClarityModelTest {
     fun `nothing ticks or fetches while the app is in the background`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         model.resume()
         val frozen = model.state.value.nowSeconds
 
@@ -275,7 +361,7 @@ class ClarityModelTest {
     fun `an automatic refresh that fails does not nag over data you can read`() = test {
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
         val id = model.state.value.selected!!
         bridge.views[id] = FakeBridge.viewOf("yesterday")
         model.refresh()
@@ -293,10 +379,12 @@ class ClarityModelTest {
 
     @Test
     fun `an automatic refresh that fails is reported when there is nothing to read`() = test {
-        bridge.failSync = "dial tcp: network is unreachable"
         val model = model()
         model.start()
-        model.addRepo("git@github.com:ezcdlabs/clarity.git", "main")
+        // Connected, but nothing on disk to read — so the screen behind the
+        // failure is empty, which is the case that has to speak up.
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        bridge.failSync = "dial tcp: network is unreachable"
         model.dismissError()
 
         model.resume()

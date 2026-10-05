@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
@@ -71,7 +72,13 @@ fun KeyCard(
                     color = Ink.text,
                 )
                 if (!open && collapsible && fingerprint != null) {
-                    Text("ed25519 · $fingerprint", style = Type.mono, color = Ink.dim, maxLines = 1)
+                    Text(
+                        "ed25519 · $fingerprint",
+                        style = Type.mono,
+                        color = Ink.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (collapsible) {
@@ -105,18 +112,17 @@ fun KeyCard(
         )
 
         Spacer(Modifier.height(12.dp))
+        // No fingerprint beside the button. With the whole key three lines
+        // above it, a fingerprint here identifies something already on screen
+        // — and at this width it could only ever be shown as a fragment, which
+        // is a hash you cannot check against anything. It earns its place in
+        // the collapsed row above, where the key is hidden, and in the
+        // switcher, where there is no key at all.
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.End,
         ) {
-            Text(
-                fingerprint.orEmpty(),
-                style = Type.mono,
-                color = Ink.dim,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
             TextButton(
                 onClick = { publicKey?.let { clipboard.setText(AnnotatedString(it)) } },
                 enabled = publicKey != null,

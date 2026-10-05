@@ -437,3 +437,23 @@ message Change {
   Status from = 5;
   Status to = 6;
 }
+
+// ViewResult is a read of one repository: what to draw, and what moved since
+// the last read.
+//
+// The two travel together because reading is what advances the baseline. A
+// plain View records the verdict it derived as a side effect, so a pipeline
+// that breaks while its own screen is open has its transition consumed by the
+// very read that drew it red — invisible to the background check afterwards.
+// That is the right outcome for a notification, which would be telling the user
+// something they watched happen, and the wrong one for silence: the app is
+// holding the news and saying nothing.
+message ViewResult {
+  View view = 1;
+
+  // The crossings this read observed, for the client to announce however suits
+  // a screen that is already showing them — a short tone rather than a
+  // notification, in the way a messaging app chimes for the conversation you
+  // are already in.
+  repeated Change changes = 2;
+}

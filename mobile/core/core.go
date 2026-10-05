@@ -442,10 +442,39 @@ func isAuthDenied(err error) bool {
 // View returns an encoded clarity.v1.View// View returns an encoded clarity.v1.View for a repository, read from what
 // the last Sync fetched. Never touches the network.
 func (c *Client) View(repoID string, limit int) ([]byte, error) {
+	result, err := c.read(repoID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(result.View)
+}
+
+// Read is View plus what moved since the last read, as a clarity.v1.ViewResult.
+//
+// Reading is what advances the baseline — a view records the verdict it derived
+// so the switcher can show it — which means a pipeline that breaks while its
+// own screen is open has its crossing consumed by the read that drew it red,
+// and the background check afterwards compares against a baseline that has
+// already moved. Handing the crossing back is what lets the app make the small
+// noise a screen you are looking at deserves, in the way a messaging app chimes
+// for the conversation you are already in.
+func (c *Client) Read(repoID string, limit int) ([]byte, error) {
+	result, err := c.read(repoID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(result)
+}
+
+func (c *Client) read(repoID string, limit int) (*v1.ViewResult, error) {
 	l := c.lockFor(repoID)
 	l.Lock()
 	defer l.Unlock()
 
+	entry, err := c.repos.Get(repoID)
+	if err != nil {
+		return nil, err
+	}
 	repo, _, err := c.open(repoID)
 	if err != nil {
 		return nil, err
@@ -461,8 +490,24 @@ func (c *Client) View(repoID string, limit int) ([]byte, error) {
 	// The same derivation the CLI runs, from the same config — so a repo
 	// reads the same on a phone as it does in a terminal.
 	view := core.DeriveView(snap, cfg.LeadTimeMode(), cfg.Deploys())
+
+	// Compared before it is recorded, which is the whole point: afterwards
+	// there is nothing left to compare against.
+	changes := watch.Compare(entry.Status, verdict(view))
 	c.remember(repoID, view)
-	return proto.Marshal(present.View(view, time.Now()))
+
+	out := &v1.ViewResult{View: present.View(view, time.Now())}
+	for _, ch := range changes {
+		out.Changes = append(out.Changes, &v1.Change{
+			RepoId:   entry.ID,
+			RepoName: label(entry),
+			Stage:    ch.Stage,
+			Broke:    ch.Broke,
+			From:     present.Status(ch.From),
+			To:       present.Status(ch.To),
+		})
+	}
+	return out, nil
 }
 
 // remember writes down what a view said, so a switcher can label every

@@ -654,3 +654,80 @@ func TestClient_Check_LeavesTheStoreWarm(t *testing.T) {
 		t.Errorf("a read straight after a check does not see what the check fetched: %v", subjects)
 	}
 }
+
+// TestClient_Read_ReportsWhatMovedSinceTheLastRead covers the open repository's
+// own transitions.
+//
+// A plain View records the verdict it derived as a side effect, so a pipeline
+// that breaks while its screen is open has its crossing consumed by the read
+// that drew it red — and the background check, comparing against a baseline
+// already advanced, finds nothing. Read hands the crossing back instead, so the
+// app can make the small noise a screen you are looking at deserves.
+func TestClient_Read_ReportsWhatMovedSinceTheLastRead(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+	head := clone.LogBranch("main")[0].Hash
+	at := time.Now().Add(-time.Hour)
+	write := func(status string) {
+		at = at.Add(time.Minute)
+		if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
+			Stage: "ci", Status: status, Time: at,
+		}); err != nil {
+			t.Fatalf("seed event: %v", err)
+		}
+	}
+	write("passed")
+
+	c, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	id, err := c.AddRepo("file://"+remote.URL(), "main")
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if err := syncOK(t, c, id); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	// The first read establishes the baseline and has nothing to report.
+	if got := read(t, c, id); len(got.Changes) != 0 {
+		t.Errorf("the first read announced %+v", got.Changes)
+	}
+	if got := read(t, c, id); len(got.Changes) != 0 {
+		t.Errorf("an unchanged read announced %+v", got.Changes)
+	}
+
+	write("failed")
+	if err := syncOK(t, c, id); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got := read(t, c, id)
+	if len(got.Changes) != 1 || !got.Changes[0].Broke {
+		t.Fatalf("got %+v, want CI breaking", got.Changes)
+	}
+	if got.View == nil || len(got.View.Flows) == 0 {
+		t.Error("the view came back empty; a read has to draw as well as report")
+	}
+	// And it is consumed: the screen has been told once.
+	if again := read(t, c, id); len(again.Changes) != 0 {
+		t.Errorf("the same crossing was reported twice: %+v", again.Changes)
+	}
+}
+
+func read(t *testing.T, c *mobilecore.Client, id string) *v1.ViewResult {
+	t.Helper()
+	raw, err := c.Read(id, 50)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	var out v1.ViewResult
+	if err := proto.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("the bytes crossing the bridge did not decode: %v", err)
+	}
+	return &out
+}

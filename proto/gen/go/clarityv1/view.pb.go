@@ -1774,6 +1774,72 @@ func (x *Change) GetTo() Status {
 	return Status_STATUS_UNSPECIFIED
 }
 
+// ViewResult is a read of one repository: what to draw, and what moved since
+// the last read.
+//
+// The two travel together because reading is what advances the baseline. A
+// plain View records the verdict it derived as a side effect, so a pipeline
+// that breaks while its own screen is open has its transition consumed by the
+// very read that drew it red — invisible to the background check afterwards.
+// That is the right outcome for a notification, which would be telling the user
+// something they watched happen, and the wrong one for silence: the app is
+// holding the news and saying nothing.
+type ViewResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	View  *View                  `protobuf:"bytes,1,opt,name=view,proto3" json:"view,omitempty"`
+	// The crossings this read observed, for the client to announce however suits
+	// a screen that is already showing them — a short tone rather than a
+	// notification, in the way a messaging app chimes for the conversation you
+	// are already in.
+	Changes       []*Change `protobuf:"bytes,2,rep,name=changes,proto3" json:"changes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ViewResult) Reset() {
+	*x = ViewResult{}
+	mi := &file_clarity_v1_view_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ViewResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ViewResult) ProtoMessage() {}
+
+func (x *ViewResult) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ViewResult.ProtoReflect.Descriptor instead.
+func (*ViewResult) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ViewResult) GetView() *View {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
+func (x *ViewResult) GetChanges() []*Change {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
 
 const file_clarity_v1_view_proto_rawDesc = "" +
@@ -1905,7 +1971,11 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x14\n" +
 	"\x05broke\x18\x04 \x01(\bR\x05broke\x12&\n" +
 	"\x04from\x18\x05 \x01(\x0e2\x12.clarity.v1.StatusR\x04from\x12\"\n" +
-	"\x02to\x18\x06 \x01(\x0e2\x12.clarity.v1.StatusR\x02to*\x7f\n" +
+	"\x02to\x18\x06 \x01(\x0e2\x12.clarity.v1.StatusR\x02to\"`\n" +
+	"\n" +
+	"ViewResult\x12$\n" +
+	"\x04view\x18\x01 \x01(\v2\x10.clarity.v1.ViewR\x04view\x12,\n" +
+	"\achanges\x18\x02 \x03(\v2\x12.clarity.v1.ChangeR\achanges*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -1946,7 +2016,7 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
@@ -1969,6 +2039,7 @@ var file_clarity_v1_view_proto_goTypes = []any{
 	(*Week)(nil),        // 18: clarity.v1.Week
 	(*Changes)(nil),     // 19: clarity.v1.Changes
 	(*Change)(nil),      // 20: clarity.v1.Change
+	(*ViewResult)(nil),  // 21: clarity.v1.ViewResult
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
@@ -1997,11 +2068,13 @@ var file_clarity_v1_view_proto_depIdxs = []int32{
 	20, // 23: clarity.v1.Changes.changes:type_name -> clarity.v1.Change
 	0,  // 24: clarity.v1.Change.from:type_name -> clarity.v1.Status
 	0,  // 25: clarity.v1.Change.to:type_name -> clarity.v1.Status
-	26, // [26:26] is the sub-list for method output_type
-	26, // [26:26] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	4,  // 26: clarity.v1.ViewResult.view:type_name -> clarity.v1.View
+	20, // 27: clarity.v1.ViewResult.changes:type_name -> clarity.v1.Change
+	28, // [28:28] is the sub-list for method output_type
+	28, // [28:28] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -2015,7 +2088,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

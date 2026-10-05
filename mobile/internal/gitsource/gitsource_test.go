@@ -197,3 +197,110 @@ func TestSync_IsRepeatable(t *testing.T) {
 		t.Fatalf("Snapshot: %v", err)
 	}
 }
+
+// TestSync_DeepensAnAlreadyShallowClone is the assumption the metrics screen
+// rests on.
+//
+// The feed clones shallow, which on a busy repository is a fortnight of
+// history, and no commit limit can read past a shallow boundary. A trend view
+// therefore asks for a deeper fetch when it opens — and that is only useful if
+// a second fetch at a greater depth actually brings the rest, rather than
+// finding the ref up to date and returning nothing.
+func TestSync_DeepensAnAlreadyShallowClone(t *testing.T) {
+	remote := seed(t, 40)
+	r := open(t, remote)
+
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 5}); err != nil {
+		t.Fatalf("first Sync: %v", err)
+	}
+	shallow, err := r.Snapshot(500)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 30}); err != nil {
+		t.Fatalf("deepening Sync: %v", err)
+	}
+	deeper, err := r.Snapshot(500)
+	if err != nil {
+		t.Fatalf("Snapshot after deepening: %v — the walk ran past the new boundary", err)
+	}
+
+	if len(deeper.Commits) <= len(shallow.Commits) {
+		t.Fatalf("deepening from %d to 30 brought nothing: still %d commits. "+
+			"The metrics screen cannot show more weeks than the clone holds.",
+			len(shallow.Commits), len(deeper.Commits))
+	}
+	if len(deeper.Commits) < 25 {
+		t.Errorf("got %d commits after asking for 30; the deepen was partial",
+			len(deeper.Commits))
+	}
+}
+
+// TestSync_DeepeningPastTheRootCompletesTheHistory covers the end of it: once
+// everything has been fetched there is no boundary left, and a window that
+// reaches the first commit must stop claiming there is more behind it.
+func TestSync_DeepeningPastTheRootCompletesTheHistory(t *testing.T) {
+	remote := seed(t, 12)
+	r := open(t, remote)
+
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 3}); err != nil {
+		t.Fatalf("first Sync: %v", err)
+	}
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 500}); err != nil {
+		t.Fatalf("deepening Sync: %v", err)
+	}
+
+	snap, err := r.Snapshot(500)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	// At least the twelve seeded, plus whatever the fixture's first commit is.
+	if len(snap.Commits) < 12 {
+		t.Errorf("got %d commits, want the whole history", len(snap.Commits))
+	}
+	// The real assertion: having reached the root, the window stops claiming
+	// there is more behind it. A root commit is in the shallow set like any
+	// other boundary, and it is the one boundary that is not one.
+	if snap.Truncated {
+		t.Error("the window reaches the first commit, so nothing is hidden behind it")
+	}
+}
+
+// TestSync_AShallowRefreshDoesNotUndoADeepening is the steady state on a
+// device, and the reason the graft filter has to ask about parents rather than
+// trust the shallow file.
+//
+// The feed refetches at its own shallow depth every few seconds. Each of those
+// records a fresh boundary near the tip, so a walk that took the shallow set at
+// face value would lose the history the metrics screen had just fetched — the
+// chart would fill in and then empty itself seconds later.
+func TestSync_AShallowRefreshDoesNotUndoADeepening(t *testing.T) {
+	remote := seed(t, 40)
+	r := open(t, remote)
+
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 5}); err != nil {
+		t.Fatalf("first Sync: %v", err)
+	}
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 30}); err != nil {
+		t.Fatalf("deepening Sync: %v", err)
+	}
+	deep, err := r.Snapshot(500)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	// And now the feed's next tick, at the feed's depth.
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{Depth: 5}); err != nil {
+		t.Fatalf("refreshing Sync: %v", err)
+	}
+	after, err := r.Snapshot(500)
+	if err != nil {
+		t.Fatalf("Snapshot after refresh: %v", err)
+	}
+
+	if len(after.Commits) < len(deep.Commits) {
+		t.Errorf("a shallow refresh cut the history back from %d commits to %d",
+			len(deep.Commits), len(after.Commits))
+	}
+}

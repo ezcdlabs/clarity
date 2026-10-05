@@ -32,11 +32,22 @@ final class ClarityModel: ObservableObject {
     private let fetchDepth = 0
     private let fetchTimeoutSeconds = 0
     /// How often the open repository re-fetches, like the TUI's watcher.
-    private let refreshSeconds = 30
+    /// The same five seconds refsource polls at, so the phone and the terminal
+    /// are the same freshness rather than approximately so.
+    private let refreshSeconds = 5
 
     /// The clock and the auto-refresh, running only while the UI is visible.
     private var pump: Task<Void, Never>?
     private var sinceFetch = 0
+
+    /// The repository the connect flow is working on.
+    ///
+    /// Held here rather than read back off the list, which is ordered by the
+    /// name a row shows: "the one just added" and "the last one" are the same
+    /// repository only until somebody connects one whose name sorts early, and
+    /// then trusting a host would hand the answer to a different repository
+    /// entirely.
+    private var connecting: String?
 
     /// Whether the clock is running. Observable so a test can say "and then the
     /// app went to the background" without waiting a real second to prove it.
@@ -95,17 +106,28 @@ final class ClarityModel: ObservableObject {
         pump = nil
     }
 
-    func showAddRepo() {
-        state.overlay = .addRepo
+    /// Opens the connect flow, from the empty state or from the switcher.
+    func showConnect() {
+        state.overlay = .connect
+        state.connect = .idle
+        state.error = nil
+    }
+
+    func showSwitcher() {
+        state.overlay = .switcher
         state.error = nil
     }
 
     func showKey() async {
         state.overlay = .key
         state.error = nil
+        await loadKey()
+    }
+
+    /// Fetches the device key, generating it on first call. Asking for it is
+    /// what creates it, so a user who never adds an ssh remote never needs one.
+    func loadKey() async {
         await act {
-            // Asking for the key is what creates it. There is no point
-            // generating one for a user who never adds an ssh remote.
             self.state.publicKey = try self.bridge.publicKey(comment: "clarity on ios")
         }
     }
@@ -113,19 +135,111 @@ final class ClarityModel: ObservableObject {
     /// Closes whatever is over the repository, leaving the selection alone.
     func closeOverlay() {
         state.overlay = nil
+        state.connect = .idle
         state.error = nil
     }
 
-    func addRepo(url: String, branch: String) async {
+    /// Connects a repository: track it, then fetch it once.
+    ///
+    /// The two are one action from the user's side — a repository that was
+    /// added but never reached is not connected — so a fetch that comes back
+    /// asking about a host key, or refusing the device key, leaves the flow
+    /// open on the screen that explains it.
+    func connect(url: String, branch: String) async {
+        state.connect = .working
+        state.error = nil
+
         var added: String?
+        do {
+            let bridge = self.bridge
+            added = try await offMain { try bridge.addRepo(url: url, branch: branch) }
+        } catch {
+            state.connect = .failed(message: message(error))
+            return
+        }
+        connecting = added
+        await act { try self.loadRepos() }
+        if let added { await attempt(added) }
+    }
+
+    /// Records the host key the prompt showed, then picks up where it stopped.
+    func trustHost() async {
+        guard case let .askHost(key, _) = state.connect, let id = connecting else { return }
+        state.connect = .working
+        do {
+            let bridge = self.bridge
+            let host = key.host
+            let fingerprint = key.fingerprint
+            try await offMain { try bridge.trustHost(host: host, fingerprint: fingerprint) }
+        } catch {
+            state.connect = .failed(message: message(error))
+            return
+        }
+        await attempt(id)
+    }
+
+    /// Tries again after the user has fixed something on the host.
+    func retryConnect() async {
+        guard let id = connecting else { return }
+        state.connect = .working
+        await attempt(id)
+    }
+
+    /// One fetch of a repository being connected, sorted into the screen it
+    /// should leave behind.
+    private func attempt(_ repoID: String) async {
+        let result: Clarity_V1_SyncResult
+        do {
+            let bridge = self.bridge
+            let depth = fetchDepth
+            let timeout = fetchTimeoutSeconds
+            result = try await offMain {
+                try bridge.sync(repoID: repoID, depth: depth, timeoutSeconds: timeout)
+            }
+        } catch {
+            state.connect = .failed(message: message(error))
+            return
+        }
+
+        switch result.outcome {
+        case .ok:
+            // The key has now been accepted by a host at least once, which is
+            // what folds the key card away on the next connect.
+            state.connect = .idle
+            state.overlay = nil
+            state.keyHasConnected = true
+            await open(repoID)
+        case .hostKeyUnknown:
+            state.connect = .askHost(key: result.hostKey, changed: false)
+        case .hostKeyChanged:
+            state.connect = .askHost(key: result.hostKey, changed: true)
+        case .authDenied:
+            state.connect = .denied(gitOutput: result.gitOutput)
+        default:
+            state.connect = .failed(message: result.message)
+        }
+    }
+
+    /// Renames a repository on this device. A blank name clears the rename.
+    func rename(_ repoID: String, to name: String) async {
         await act {
-            added = try self.bridge.addRepo(url: url, branch: branch)
+            try self.bridge.rename(repoID: repoID, name: name)
             try self.loadRepos()
-            self.state.overlay = nil
         }
-        if let added {
-            await open(added)
+    }
+
+    /// Changes which branch a repository watches, then re-reads it.
+    ///
+    /// The fetch is not optional: the view on screen is of the old branch, and
+    /// leaving it there under a new branch's name would be the most confusing
+    /// possible outcome.
+    func changeBranch(_ repoID: String, to branch: String) async {
+        await act {
+            try self.bridge.setBranch(repoID: repoID, branch: branch)
+            try self.loadRepos()
         }
+        state.view = nil
+        await fetch(repoID, background: false)
     }
 
     func removeRepo(_ repoID: String) async {
@@ -224,6 +338,11 @@ final class ClarityModel: ObservableObject {
             return
         }
         let fresh = readView(repoID)
+        // Reading a view is also what records its verdict, so the list that
+        // shows those verdicts has to be re-read afterwards. Without this the
+        // switcher keeps saying "nothing reported" about a repository whose own
+        // screen is showing a green tick.
+        try? loadRepos()
         state.syncing = false
         // A fetch that finished after the user moved on belongs to a repository
         // that is no longer on screen.

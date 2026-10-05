@@ -1,175 +1,121 @@
 import SwiftUI
-import UIKit
 
-/// The repository list and the repository, in that order.
-private let pageRepos = 0
-private let pageRepo = 1
+/// The page margin, and the column everything that is not a mark starts at.
+let pageMargin: CGFloat = 20
 
-/// The whole app: two pages side by side, the way Slack puts its channel list
-/// beside the conversation.
-///
-/// Not a drawer. A drawer opens from an edge and sits over what it covers; this
-/// swipes from anywhere and the two pages are peers, so going back to the list
-/// is the same gesture as going back to the repository. The burger button does
-/// the same thing for anyone who does not go looking for a gesture.
-///
-/// That the selection survives the trip is the model's doing, not the pager's —
-/// moving to the list is not leaving the repository.
+/**
+ The whole app.
+
+ One repository, with everything else presented over it. On iOS "over" means
+ sheets rather than full-screen replacements: a sheet can be pulled down, which
+ is the gesture an iOS user reaches for before they look for a close button, and
+ it keeps the thing you were reading visible behind it.
+ */
 struct RootView: View {
     @ObservedObject var model: ClarityModel
-    @State private var page = pageRepo
 
     var body: some View {
-        ZStack {
-            Ink.surface.ignoresSafeArea()
-
-            switch model.state.overlay {
-            case .addRepo:
-                AddRepoView(model: model)
-            case .key:
-                KeyView(model: model)
-            case .none:
-                TabView(selection: $page) {
-                    ReposPane(model: model).tag(pageRepos)
-                    RepoView(model: model, onOpenList: { page = pageRepos }).tag(pageRepo)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+        Group {
+            if model.state.isEmpty {
+                EmptyStateView(model: model)
+            } else {
+                RepoView(model: model)
             }
         }
-        // Picking a repository carries you to it. Here rather than in the tap
-        // handler so it also happens when the selection changes for another
-        // reason — the first launch, or the fallback after a removal.
-        .onChange(of: model.state.selected) { _ in
-            if model.state.selected != nil { withAnimation { page = pageRepo } }
+        .background(Ink.bg)
+        // One sheet, not one per overlay.
+        //
+        // Three sheets with a boolean each cannot swap: going from the list
+        // straight to the connect flow dismisses one and presents another in a
+        // single frame, and SwiftUI reconciles one presentation per turn — the
+        // second is simply lost. `sheet(item:)` is the API for this. A change
+        // of identity is a swap it knows how to animate.
+        .sheet(item: presented) { overlay in
+            switch overlay {
+            case .connect:
+                ConnectView(model: model)
+            case .key:
+                KeyView(model: model)
+            case .switcher:
+                SwitcherView(model: model)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
         }
-        .onAppear {
-            // A fresh install has nothing to show on the repository page, so it
-            // opens on the list, where the only useful thing to do is add one.
-            if model.state.selected == nil { page = pageRepos }
-        }
     }
-}
 
-/// A title row with a leading action and trailing content.
-struct TopBar<Leading: View, Trailing: View>: View {
-    let title: String
-    var titleColor: Color = Ink.text
-    @ViewBuilder var leading: Leading
-    @ViewBuilder var trailing: Trailing
-
-    var body: some View {
-        HStack(spacing: 8) {
-            leading
-            Text(title).font(.system(size: 18)).foregroundColor(titleColor)
-            Spacer()
-            trailing
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-}
-
-extension TopBar where Leading == EmptyView {
-    init(title: String, @ViewBuilder trailing: () -> Trailing) {
-        self.init(title: title, titleColor: Ink.text, leading: { EmptyView() }, trailing: trailing)
-    }
-}
-
-/// The reading surface, laid on the chrome.
-///
-/// The turned corners are what make the two tones read as a sheet on a ground
-/// rather than as a join between two panels that failed to match — the levels
-/// are deliberately close in tone, so the shape has to do the explaining.
-struct Sheet<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Ink.bg)
-            .clipShape(TopRounded(radius: 14))
-    }
-}
-
-/// Rounded at the top only. UnevenRoundedRectangle would say this in one line
-/// and arrived in iOS 17; the deployment target is 16.
-private struct TopRounded: Shape {
-    let radius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        Path(
-            UIBezierPath(
-                roundedRect: rect,
-                byRoundingCorners: [.topLeft, .topRight],
-                cornerRadii: CGSize(width: radius, height: radius)
-            ).cgPath
+    /// What is over the repository, if anything. Dismissing it — including by
+    /// dragging it down, which no code of ours runs — clears the overlay, so
+    /// the model never believes a sheet is up that is not.
+    private var presented: Binding<Overlay?> {
+        Binding(
+            get: { model.state.overlay },
+            set: { shown in if shown == nil { model.closeOverlay() } },
         )
     }
 }
 
-struct BackArrow: View {
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Text("‹").font(.system(size: 26)).foregroundColor(Ink.dim)
-        }
-    }
-}
+/**
+ The error, if there is one, under whatever is on screen.
 
-/// An icon button sized and coloured like the rest of the chrome.
-///
-/// The label is not drawn, but it is what VoiceOver announces. An unlabelled
-/// icon button is a button only sighted users have.
-struct GlyphButton: View {
-    let symbol: String
-    let label: String
-    var tint: Color = Ink.dim
-    var enabled = true
-    let action: () -> Void
-
-    init(_ symbol: String, _ label: String, tint: Color = Ink.dim, enabled: Bool = true,
-         action: @escaping () -> Void) {
-        self.symbol = symbol
-        self.label = label
-        self.tint = tint
-        self.enabled = enabled
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 17))
-                .foregroundColor(enabled ? tint : Ink.line)
-        }
-        .disabled(!enabled)
-        .accessibilityLabel(label)
-    }
-}
-
-/// The error, if there is one, under whatever is on screen.
-///
-/// Deliberately not an alert: the messages come from the core and from git
-/// itself, they are often long, and they usually describe why the thing behind
-/// them is stale rather than why it is absent. Covering the data up to explain
-/// that it is old would be the wrong trade.
+ Deliberately not an alert: the messages come from the core and from git itself,
+ they are often long, and they usually describe why the thing behind them is
+ stale rather than why it is absent. Covering the data up to explain that it is
+ old would be the wrong trade.
+ */
 struct ErrorBar: View {
     let error: String?
     let onDismiss: () -> Void
 
     var body: some View {
         if let error {
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 8) {
                 Text(error)
-                    .font(.system(size: 13))
+                    .font(Type.supporting)
                     .foregroundColor(Ink.red)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                GlyphButton("xmark", "Dismiss", action: onDismiss)
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark").font(.system(size: 13))
+                }
+                .foregroundColor(Ink.dim)
+                .accessibilityLabel("Dismiss")
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, pageMargin)
             .padding(.vertical, 10)
-            .background(Color(red: 0x2A / 255, green: 0x14 / 255, blue: 0x16 / 255))
+            .background(Ink.errorBg)
         }
+    }
+}
+
+/// The one prominent button a screen is allowed.
+///
+/// `.borderedProminent` at `.large` rather than Android's fully-rounded pill:
+/// the pill is Material's shape, and a rounded rectangle is what every other
+/// button on this phone looks like.
+struct PrimaryButton: View {
+    let title: String
+    var systemImage: String?
+    var enabled = true
+    var working = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if working {
+                    ProgressView().controlSize(.small).tint(Ink.dim)
+                } else if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(title).font(Type.button)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(Ink.blue)
+        .foregroundColor(Ink.bg)
+        .disabled(!enabled || working)
     }
 }

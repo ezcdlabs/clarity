@@ -1,48 +1,41 @@
 import SwiftUI
 import UIKit
 
-/// This device's public key, for pasting into whichever host the user uses.
-///
-/// There is no provider integration and no OAuth app, because clarity is not a
-/// GitHub tool — a key the user installs themselves works on GitHub, GitLab and
-/// a box in a cupboard equally.
+/**
+ This device's public key, on its own.
+
+ Reached from the switcher once there are repositories, and from the empty
+ state's menu before there are — the key is the thing you need *before* the
+ first connection, and the host wants it pasted in.
+ */
 struct KeyView: View {
     @ObservedObject var model: ClarityModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            TopBar(title: "Device key", leading: { BackArrow { model.closeOverlay() } }, trailing: { EmptyView() })
-
-            Sheet {
-            VStack(spacing: 0) {
-            ErrorBar(error: model.state.error) { model.dismissError() }
-
+        NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Add this as a deploy key or an account key on the host, with read "
-                        + "access. The private half never leaves this device.")
-                        .font(.system(size: 13)).foregroundColor(Ink.dim)
+                VStack(alignment: .leading, spacing: 20) {
+                    ErrorBar(error: model.state.error) { model.dismissError() }
+                    Text(
+                        "Add this as a deploy key on a repository, or under your account's "
+                            + "SSH keys, with read access. The private half never leaves this phone."
+                    )
+                    .font(Type.bodySmall)
+                    .foregroundColor(Ink.dim)
 
-                    if let key = model.state.publicKey {
-                        Text(key)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Ink.text)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .background(Ink.surface)
-
-                        Button("Copy") { UIPasteboard.general.string = key }
-                            .foregroundColor(Ink.blue)
-                    } else {
-                        Text("Generating…").font(.system(size: 13)).foregroundColor(Ink.dim)
-                    }
+                    KeyCardView(publicKey: model.state.publicKey, startOpen: true, collapsible: false)
                 }
-                .padding(16)
+                .padding(pageMargin)
             }
-            }
+            .background(Ink.bg)
+            .navigationTitle("Device key")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { model.closeOverlay() }.tint(Ink.blue)
+                }
             }
         }
-        .background(Ink.surface)
+        .task { await model.loadKey() }
     }
 }

@@ -1,50 +1,66 @@
 import SwiftUI
 
-/// The glyph and colour for a status, following the terminal's two tables.
+/**
+ A status, as a mark.
+
+ SF Symbols rather than the ✓ and ✗ characters the terminal uses, and rather
+ than the Material Symbols Android draws. The shapes still carry the meaning —
+ that was the point of the terminal's choice and it survives both moves — but
+ the marks beside them in the navigation bar are SF Symbols, and one icon set
+ per screen is the whole of looking native.
+
+ `prominent` is where colour goes. The header is the summary and earns it; row
+ marks forgo it and spend red only on a failure still breaking something. A
+ screen of green ticks spends the one colour meaning "look at this" on the state
+ needing no attention at all.
+
+ `stale` mutes a result a newer commit has superseded: a build that broke three
+ commits ago and has since gone green is history, not an alarm.
+ */
+/// No status at all, as a value rather than as `.none`.
 ///
-/// The proto sends the status and not a glyph, because the TUI's ✓/✗ were chosen
-/// to survive a greyscale terminal. They survive here too — but colour is never
-/// the only signal, which is the part that actually mattered.
-///
-/// **In a row** nothing is green. A tick is grey, and red is spent only on a
-/// failure that is still breaking something: once a newer commit has gone green,
-/// the older failure is history and goes grey with everything else. A screen of
-/// green ticks spends the one colour that means "look at this" on the state that
-/// needs no attention at all.
-///
-/// **In the header** the tick is green, because that row is the summary and its
-/// whole job is answering "is the pipeline green?" at a glance. A started stage
-/// shows as unresolved rather than as progress, the same as the terminal: the
-/// header is a verdict, and "something is happening" is not one.
+/// `.none` beside an optional is the one place Swift's two meanings for that
+/// name meet, and the error it produces mentions neither.
+let unreported = Clarity_V1_Status()
+
 struct StatusGlyph: View {
     let status: Clarity_V1_Status
     var prominent = false
     var stale = false
-    var size: CGFloat = 13
+    var size: CGFloat = 16
 
     var body: some View {
-        let pair = prominent ? Self.summary(status) : Self.row(status, stale)
-        Text(pair.0)
-            .font(.system(size: size, design: .monospaced))
-            .foregroundColor(pair.1)
+        Group {
+            switch status {
+            case .passed:
+                Image(systemName: "checkmark").accessibilityLabel("passed")
+            case .failed:
+                Image(systemName: "xmark").accessibilityLabel("failed")
+            case .started:
+                Image(systemName: "ellipsis").accessibilityLabel("in progress")
+            default:
+                // Nothing reported. A small square rather than a shrunken
+                // symbol: it has to read as an empty slot, not as a mark too
+                // faint to make out, and at this size any symbol would.
+                Rectangle()
+                    .frame(width: 4, height: 4)
+                    .accessibilityLabel("none")
+            }
+        }
+        .font(.system(size: size, weight: .medium))
+        .foregroundColor(colour)
+        .frame(width: size, height: size)
     }
 
-    /// The header table: green, red, or nothing resolved yet.
-    private static func summary(_ status: Clarity_V1_Status) -> (String, Color) {
-        switch status {
-        case .passed: return ("✓", Ink.green)
-        case .failed: return ("✗", Ink.red)
-        default: return ("·", Ink.dim)
+    private var colour: Color {
+        if prominent {
+            switch status {
+            case .passed: return Ink.green
+            case .failed: return Ink.red
+            default: return Ink.dim
+            }
         }
-    }
-
-    /// The row table: shape carries the meaning, red carries the alarm.
-    private static func row(_ status: Clarity_V1_Status, _ stale: Bool) -> (String, Color) {
-        switch status {
-        case .passed: return ("✓", Ink.dim)
-        case .failed: return ("✗", stale ? Ink.dim : Ink.red)
-        case .started: return ("⋯", Ink.dim)
-        default: return ("·", Ink.dim)
-        }
+        if status == .failed && !stale { return Ink.red }
+        return Ink.dim
     }
 }

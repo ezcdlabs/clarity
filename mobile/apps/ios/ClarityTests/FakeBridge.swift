@@ -24,6 +24,11 @@ final class FakeBridge: ClarityBridge {
     var failAddRepo: String?
     var failSync: String?
     var failList: String?
+    var failKey: String?
+
+    /// What a fetch comes back with, for the flows that branch on it.
+    var syncOutcome: Clarity_V1_Outcome = .ok
+    var gitOutput = ""
 
     /// Runs inside `sync`, before it succeeds or fails. A test uses it to make a
     /// fetch deliver new commits.
@@ -36,6 +41,7 @@ final class FakeBridge: ClarityBridge {
 
     func publicKey(comment: String) throws -> String {
         calls.append("publicKey")
+        if let failKey { throw FakeError(failKey) }
         keyExists = true
         return "\(key) \(comment)"
     }
@@ -62,7 +68,12 @@ final class FakeBridge: ClarityBridge {
         calls.append("listRepos")
         if let failList { throw FakeError(failList) }
         var list = Clarity_V1_RepoList()
-        list.repos = repos
+        // Ordered the way the registry orders it: by the name a row shows, then
+        // by id. Returning insertion order instead would have been a fake that
+        // agreed with the model about something the real core disagrees with —
+        // and "the one just added" would look like "the last one" in tests and
+        // nowhere else.
+        list.repos = repos.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
         return list
     }
 
@@ -75,7 +86,15 @@ final class FakeBridge: ClarityBridge {
             result.message = failSync
             return result
         }
-        result.outcome = .ok
+        if syncOutcome == .hostKeyUnknown || syncOutcome == .hostKeyChanged {
+            var key = Clarity_V1_HostKey()
+            key.host = "git.acme.dev"
+            key.type = "ED25519"
+            key.fingerprint = "SHA256:fake-fingerprint"
+            result.hostKey = key
+        }
+        result.outcome = syncOutcome
+        result.gitOutput = gitOutput
         return result
     }
 
@@ -103,6 +122,11 @@ final class FakeBridge: ClarityBridge {
 
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View {
         calls.append("view")
+        // Reading a view is what records its verdict, as the core does — so a
+        // test can check that the list picks the verdict up.
+        if let i = repos.firstIndex(where: { $0.id == repoID }), views[repoID] != nil {
+            repos[i].ci = .passed
+        }
         guard let view = views[repoID] else {
             // What a repo that has never been fetched gives you: go-git has no
             // branch to resolve, so the read fails rather than returning empty.

@@ -462,6 +462,17 @@ func TestView_ALiveLeadTimeCarriesItsAnchor(t *testing.T) {
 	}
 }
 
+// midWeek is a fixed Wednesday, so "this week" and "nine days ago" are always
+// different ISO weeks.
+//
+// time.Now() was used here and it made these tests depend on the day they ran:
+// written on a Friday they passed, and on the following Monday nine days back
+// landed inside the same ISO week and the divider vanished. A test about weeks
+// cannot be allowed to ask which week it is.
+func midWeek() time.Time {
+	return time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+}
+
 // weeksApart builds two deploys in different ISO weeks, so the divider between
 // them has something to divide.
 func weeksApart(now time.Time) core.Snapshot {
@@ -485,7 +496,7 @@ func weeksApart(now time.Time) core.Snapshot {
 // it: on the right of the Deployed rule, saving a row, because this week is the
 // one a reader is asking about.
 func TestView_ThisWeeksThroughputRidesOnTheSection(t *testing.T) {
-	now := time.Now()
+	now := midWeek()
 	out := mapped(t, weeksApart(now), now)
 
 	shipped := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED)
@@ -505,7 +516,7 @@ func TestView_ThisWeeksThroughputRidesOnTheSection(t *testing.T) {
 // batch carries it is a decision — batches run by commit, not by deploy time —
 // so a client cannot work it out from position.
 func TestView_OlderWeeksAreNamedAboveTheirFirstBatch(t *testing.T) {
-	now := time.Now()
+	now := midWeek()
 	out := mapped(t, weeksApart(now), now)
 
 	batches := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED).Batches
@@ -529,7 +540,7 @@ func TestView_OlderWeeksAreNamedAboveTheirFirstBatch(t *testing.T) {
 // TestView_AWeekIsNamedOnlyOnce guards the repeat the TUI's weekShown map
 // exists to prevent.
 func TestView_AWeekIsNamedOnlyOnce(t *testing.T) {
-	now := time.Now()
+	now := midWeek()
 	lastWeek := now.AddDate(0, 0, -9)
 	snap := core.Snapshot{RepoName: "api", Commits: []core.CommitView{
 		{SHA: "bbbbbbbbbbbb", Subject: "feat: second", Time: lastWeek.Add(-time.Hour),

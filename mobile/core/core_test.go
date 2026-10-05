@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestClient_AddSyncView(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRepo: %v", err)
 	}
-	if err := c.Sync(id, 50, 30); err != nil {
+	if err := syncOK(t, c, id); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -142,7 +143,10 @@ func TestClient_PublicKeyIsStable(t *testing.T) {
 // removal, or a restore onto a device that never had it.
 func TestClient_UnknownRepoIsAnError(t *testing.T) {
 	c, _ := mobilecore.New(t.TempDir())
-	if err := c.Sync("nosuchrepo", 50, 5); err == nil {
+	// An untracked id is a programming error on the caller's side, not an
+	// outcome the UI draws — so it still comes back as an error rather than as
+	// a result.
+	if _, err := c.Sync("nosuchrepo", 50, 5); err == nil {
 		t.Error("syncing an untracked repository should fail")
 	}
 	if _, err := c.View("nosuchrepo", 50); err == nil {
@@ -266,7 +270,7 @@ func TestClient_ViewRemembersWhatItSaw(t *testing.T) {
 		t.Errorf("a never-read repository already has a verdict: %v", before.Ci)
 	}
 
-	if err := client.Sync(id, 0, 60); err != nil {
+	if err := syncOK(t, client, id); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
 	if _, err := client.View(id, 50); err != nil {
@@ -335,5 +339,57 @@ func repoByID(t *testing.T, client *mobilecore.Client, id string) *v1.RepoSummar
 		}
 	}
 	t.Fatalf("no repository %q in the list", id)
+	return nil
+}
+
+// TestClient_SyncSucceedsOverAnUnauthenticatedRemote keeps the ordinary path
+// honest: a file remote needs no key and no host, and must still come back OK.
+func TestClient_SyncSucceedsOverAnUnauthenticatedRemote(t *testing.T) {
+	remoteRepo := gittest.NewRemote(t)
+	clone := remoteRepo.NewClone(t)
+	clone.WriteFile("f.txt", "one")
+	clone.CommitAll("feat: first")
+	clone.Push("main")
+
+	client, err := mobilecore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := client.AddRepo("file://"+remoteRepo.URL(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := client.Sync(id, 0, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got v1.SyncResult
+	if err := proto.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Outcome != v1.Outcome_OUTCOME_OK {
+		t.Fatalf("outcome = %v, message %q", got.Outcome, got.Message)
+	}
+	if got.HostKey != nil {
+		t.Error("a file remote has no host key to ask about")
+	}
+}
+
+// syncOK fetches and insists the outcome was success, so a test that only
+// cares about what came back cannot pass on a fetch that quietly refused.
+func syncOK(t *testing.T, c *mobilecore.Client, id string) error {
+	t.Helper()
+	raw, err := c.Sync(id, 0, 60)
+	if err != nil {
+		return err
+	}
+	var got v1.SyncResult
+	if err := proto.Unmarshal(raw, &got); err != nil {
+		return err
+	}
+	if got.Outcome != v1.Outcome_OUTCOME_OK {
+		return fmt.Errorf("outcome %v: %s", got.Outcome, got.Message)
+	}
 	return nil
 }

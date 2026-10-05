@@ -1,6 +1,7 @@
 package dev.ezcd.clarity
 
 import dev.ezcd.clarity.bridge.ClarityBridge
+import dev.ezcd.clarity.proto.Outcome
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
@@ -180,7 +181,13 @@ class ClarityModel(
     private suspend fun fetch(repoId: String, background: Boolean) {
         _state.update { it.copy(syncing = true, error = if (background) it.error else null) }
         try {
-            withContext(io) { bridge.sync(repoId, fetchDepth, fetchTimeoutSeconds) }
+            val result = withContext(io) { bridge.sync(repoId, fetchDepth, fetchTimeoutSeconds) }
+            if (result.outcome != Outcome.OUTCOME_OK) {
+                // Everything that is not success is reported the same way for
+                // now; the screens that tell an unknown host from a refused
+                // key arrive with the connect flow.
+                throw RuntimeException(result.message)
+            }
         } catch (e: Exception) {
             _state.update {
                 val quiet = background && it.view != null

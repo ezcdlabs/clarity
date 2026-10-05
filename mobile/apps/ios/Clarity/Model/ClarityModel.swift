@@ -8,6 +8,13 @@ import Foundation
 ///
 /// Every method is `async` and completes before it returns, which is what makes
 /// a test a sequence of statements rather than a wait for an expectation.
+/// What a fetch said, when it did not succeed.
+struct FetchError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
+}
+
 @MainActor
 final class ClarityModel: ObservableObject {
     @Published private(set) var state = AppState()
@@ -200,7 +207,15 @@ final class ClarityModel: ObservableObject {
             let bridge = self.bridge
             let depth = fetchDepth
             let timeout = fetchTimeoutSeconds
-            try await offMain { try bridge.sync(repoID: repoID, depth: depth, timeoutSeconds: timeout) }
+            let result = try await offMain {
+                try bridge.sync(repoID: repoID, depth: depth, timeoutSeconds: timeout)
+            }
+            if result.outcome != .ok {
+                // Everything that is not success is reported the same way for
+                // now; the screens that tell an unknown host from a refused key
+                // arrive with the connect flow.
+                throw FetchError(result.message)
+            }
         } catch {
             state.syncing = false
             if !(background && state.view != nil) {
@@ -245,7 +260,7 @@ final class ClarityModel: ObservableObject {
 
     /// Runs blocking work off the main thread. Only the fetch needs it: it is a
     /// real network round trip, and the others are a file read or a write.
-    private nonisolated func offMain(_ work: @escaping () throws -> Void) async throws {
+    private nonisolated func offMain<T>(_ work: @escaping () throws -> T) async throws -> T {
         try await Task.detached(priority: .userInitiated) { try work() }.value
     }
 

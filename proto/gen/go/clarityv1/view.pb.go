@@ -138,6 +138,67 @@ func (SectionKind) EnumDescriptor() ([]byte, []int) {
 	return file_clarity_v1_view_proto_rawDescGZIP(), []int{1}
 }
 
+type Outcome int32
+
+const (
+	Outcome_OUTCOME_UNSPECIFIED Outcome = 0
+	Outcome_OUTCOME_OK          Outcome = 1
+	// The host is not in this device's known_hosts. Ask, then TrustHost.
+	Outcome_OUTCOME_HOST_KEY_UNKNOWN Outcome = 2
+	// It is, and it is presenting something else. Ask louder.
+	Outcome_OUTCOME_HOST_KEY_CHANGED Outcome = 3
+	// The host refused this device's key. The key needs adding on the host.
+	Outcome_OUTCOME_AUTH_DENIED Outcome = 4
+	Outcome_OUTCOME_FAILED      Outcome = 5
+)
+
+// Enum value maps for Outcome.
+var (
+	Outcome_name = map[int32]string{
+		0: "OUTCOME_UNSPECIFIED",
+		1: "OUTCOME_OK",
+		2: "OUTCOME_HOST_KEY_UNKNOWN",
+		3: "OUTCOME_HOST_KEY_CHANGED",
+		4: "OUTCOME_AUTH_DENIED",
+		5: "OUTCOME_FAILED",
+	}
+	Outcome_value = map[string]int32{
+		"OUTCOME_UNSPECIFIED":      0,
+		"OUTCOME_OK":               1,
+		"OUTCOME_HOST_KEY_UNKNOWN": 2,
+		"OUTCOME_HOST_KEY_CHANGED": 3,
+		"OUTCOME_AUTH_DENIED":      4,
+		"OUTCOME_FAILED":           5,
+	}
+)
+
+func (x Outcome) Enum() *Outcome {
+	p := new(Outcome)
+	*p = x
+	return p
+}
+
+func (x Outcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Outcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_clarity_v1_view_proto_enumTypes[2].Descriptor()
+}
+
+func (Outcome) Type() protoreflect.EnumType {
+	return &file_clarity_v1_view_proto_enumTypes[2]
+}
+
+func (x Outcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Outcome.Descriptor instead.
+func (Outcome) EnumDescriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{2}
+}
+
 type View struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	RepoName string                 `protobuf:"bytes,1,opt,name=repo_name,json=repoName,proto3" json:"repo_name,omitempty"`
@@ -903,6 +964,146 @@ func (x *FlowSummary) GetDeploy() Status {
 	return Status_STATUS_UNSPECIFIED
 }
 
+// SyncResult is what a fetch did, rather than whether it threw.
+//
+// A fetch has outcomes a UI must tell apart and an exception cannot: a host
+// nobody has agreed to yet is a question, a rejected key is a fixable setup
+// step with its own screen, and everything else is a message. Matching on the
+// text of an error to find out which would be a parser for prose, in three
+// clients, that breaks when git rewords something.
+type SyncResult struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Outcome Outcome                `protobuf:"varint,1,opt,name=outcome,proto3,enum=clarity.v1.Outcome" json:"outcome,omitempty"`
+	// Message is already written for a person to read — git's own diagnosis,
+	// usually — and is shown as-is rather than replaced with a category.
+	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Set when the outcome is about a host key, for the dialog that asks.
+	HostKey *HostKey `protobuf:"bytes,3,opt,name=host_key,json=hostKey,proto3" json:"host_key,omitempty"`
+	// The raw stderr behind an authentication failure, for the "Show git output"
+	// disclosure. Empty when there is nothing more to show than the message.
+	GitOutput     string `protobuf:"bytes,4,opt,name=git_output,json=gitOutput,proto3" json:"git_output,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncResult) Reset() {
+	*x = SyncResult{}
+	mi := &file_clarity_v1_view_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncResult) ProtoMessage() {}
+
+func (x *SyncResult) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncResult.ProtoReflect.Descriptor instead.
+func (*SyncResult) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SyncResult) GetOutcome() Outcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return Outcome_OUTCOME_UNSPECIFIED
+}
+
+func (x *SyncResult) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *SyncResult) GetHostKey() *HostKey {
+	if x != nil {
+		return x.HostKey
+	}
+	return nil
+}
+
+func (x *SyncResult) GetGitOutput() string {
+	if x != nil {
+		return x.GitOutput
+	}
+	return ""
+}
+
+type HostKey struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`               // "ED25519", as a host publishes it
+	Fingerprint   string                 `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"` // "SHA256:…", as a host publishes it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostKey) Reset() {
+	*x = HostKey{}
+	mi := &file_clarity_v1_view_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostKey) ProtoMessage() {}
+
+func (x *HostKey) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostKey.ProtoReflect.Descriptor instead.
+func (*HostKey) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *HostKey) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *HostKey) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *HostKey) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
 var File_clarity_v1_view_proto protoreflect.FileDescriptor
 
 const file_clarity_v1_view_proto_rawDesc = "" +
@@ -970,7 +1171,18 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x05flows\x18\v \x03(\v2\x17.clarity.v1.FlowSummaryR\x05flows\"M\n" +
 	"\vFlowSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12*\n" +
-	"\x06deploy\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy*\x7f\n" +
+	"\x06deploy\x18\x02 \x01(\x0e2\x12.clarity.v1.StatusR\x06deploy\"\xa4\x01\n" +
+	"\n" +
+	"SyncResult\x12-\n" +
+	"\aoutcome\x18\x01 \x01(\x0e2\x13.clarity.v1.OutcomeR\aoutcome\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12.\n" +
+	"\bhost_key\x18\x03 \x01(\v2\x13.clarity.v1.HostKeyR\ahostKey\x12\x1d\n" +
+	"\n" +
+	"git_output\x18\x04 \x01(\tR\tgitOutput\"S\n" +
+	"\aHostKey\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12 \n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint*\x7f\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
@@ -982,7 +1194,15 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\x18SECTION_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11SECTION_KIND_HEAD\x10\x01\x12\x1a\n" +
 	"\x16SECTION_KIND_CI_PASSED\x10\x02\x12\x19\n" +
-	"\x15SECTION_KIND_DEPLOYED\x10\x03Bf\n" +
+	"\x15SECTION_KIND_DEPLOYED\x10\x03*\x9b\x01\n" +
+	"\aOutcome\x12\x17\n" +
+	"\x13OUTCOME_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"OUTCOME_OK\x10\x01\x12\x1c\n" +
+	"\x18OUTCOME_HOST_KEY_UNKNOWN\x10\x02\x12\x1c\n" +
+	"\x18OUTCOME_HOST_KEY_CHANGED\x10\x03\x12\x17\n" +
+	"\x13OUTCOME_AUTH_DENIED\x10\x04\x12\x12\n" +
+	"\x0eOUTCOME_FAILED\x10\x05Bf\n" +
 	"\x16dev.ezcd.clarity.protoB\fClarityProtoP\x01Z<github.com/ezcdlabs/clarity/proto/gen/go/clarityv1;clarityv1b\x06proto3"
 
 var (
@@ -997,42 +1217,47 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 	return file_clarity_v1_view_proto_rawDescData
 }
 
-var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
-	(*View)(nil),        // 2: clarity.v1.View
-	(*Flow)(nil),        // 3: clarity.v1.Flow
-	(*Section)(nil),     // 4: clarity.v1.Section
-	(*Batch)(nil),       // 5: clarity.v1.Batch
-	(*Commit)(nil),      // 6: clarity.v1.Commit
-	(*RepoList)(nil),    // 7: clarity.v1.RepoList
-	(*RepoSummary)(nil), // 8: clarity.v1.RepoSummary
-	(*FlowSummary)(nil), // 9: clarity.v1.FlowSummary
+	(Outcome)(0),        // 2: clarity.v1.Outcome
+	(*View)(nil),        // 3: clarity.v1.View
+	(*Flow)(nil),        // 4: clarity.v1.Flow
+	(*Section)(nil),     // 5: clarity.v1.Section
+	(*Batch)(nil),       // 6: clarity.v1.Batch
+	(*Commit)(nil),      // 7: clarity.v1.Commit
+	(*RepoList)(nil),    // 8: clarity.v1.RepoList
+	(*RepoSummary)(nil), // 9: clarity.v1.RepoSummary
+	(*FlowSummary)(nil), // 10: clarity.v1.FlowSummary
+	(*SyncResult)(nil),  // 11: clarity.v1.SyncResult
+	(*HostKey)(nil),     // 12: clarity.v1.HostKey
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
 	0,  // 1: clarity.v1.View.deploy:type_name -> clarity.v1.Status
-	3,  // 2: clarity.v1.View.flows:type_name -> clarity.v1.Flow
+	4,  // 2: clarity.v1.View.flows:type_name -> clarity.v1.Flow
 	0,  // 3: clarity.v1.Flow.deploy:type_name -> clarity.v1.Status
-	4,  // 4: clarity.v1.Flow.sections:type_name -> clarity.v1.Section
+	5,  // 4: clarity.v1.Flow.sections:type_name -> clarity.v1.Section
 	1,  // 5: clarity.v1.Section.kind:type_name -> clarity.v1.SectionKind
-	6,  // 6: clarity.v1.Section.commits:type_name -> clarity.v1.Commit
-	5,  // 7: clarity.v1.Section.batches:type_name -> clarity.v1.Batch
+	7,  // 6: clarity.v1.Section.commits:type_name -> clarity.v1.Commit
+	6,  // 7: clarity.v1.Section.batches:type_name -> clarity.v1.Batch
 	0,  // 8: clarity.v1.Batch.status:type_name -> clarity.v1.Status
-	6,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
+	7,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
 	0,  // 10: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
-	8,  // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
+	9,  // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
 	0,  // 12: clarity.v1.RepoSummary.ci:type_name -> clarity.v1.Status
 	0,  // 13: clarity.v1.RepoSummary.deploy:type_name -> clarity.v1.Status
-	9,  // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
+	10, // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
 	0,  // 15: clarity.v1.FlowSummary.deploy:type_name -> clarity.v1.Status
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	2,  // 16: clarity.v1.SyncResult.outcome:type_name -> clarity.v1.Outcome
+	12, // 17: clarity.v1.SyncResult.host_key:type_name -> clarity.v1.HostKey
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_clarity_v1_view_proto_init() }
@@ -1045,8 +1270,8 @@ func file_clarity_v1_view_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   8,
+			NumEnums:      3,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

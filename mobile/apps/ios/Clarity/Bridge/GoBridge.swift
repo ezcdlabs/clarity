@@ -54,8 +54,18 @@ struct GoBridge: ClarityBridge {
         try Clarity_V1_RepoList(serializedBytes: client.listRepos())
     }
 
-    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws {
-        try client.sync(repoID, depth: depth, timeoutSeconds: timeoutSeconds)
+    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws -> Clarity_V1_SyncResult {
+        try Clarity_V1_SyncResult(
+            serializedBytes: client.sync(repoID, depth: depth, timeoutSeconds: timeoutSeconds)
+        )
+    }
+
+    func trustHost(host: String, fingerprint: String) throws {
+        try client.trustHost(host, fingerprint: fingerprint)
+    }
+
+    func rename(repoID: String, name: String) throws {
+        try client.rename(repoID, name: name)
     }
 
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View {

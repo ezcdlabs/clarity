@@ -66,10 +66,28 @@ final class FakeBridge: ClarityBridge {
         return list
     }
 
-    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws {
+    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws -> Clarity_V1_SyncResult {
         calls.append("sync")
         onSync(repoID)
-        if let failSync { throw FakeError(failSync) }
+        var result = Clarity_V1_SyncResult()
+        if let failSync {
+            result.outcome = .failed
+            result.message = failSync
+            return result
+        }
+        result.outcome = .ok
+        return result
+    }
+
+    func trustHost(host: String, fingerprint: String) throws {
+        calls.append("trustHost")
+    }
+
+    func rename(repoID: String, name: String) throws {
+        calls.append("rename")
+        if let i = repos.firstIndex(where: { $0.id == repoID }) {
+            repos[i].alias = name
+        }
     }
 
     // Not the real formatter — the model only passes through to it, so a test

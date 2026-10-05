@@ -13,8 +13,10 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ezcdlabs/clarity/internal/core"
@@ -150,16 +152,25 @@ func summary(e registry.Entry) *v1.RepoSummary {
 	return out
 }
 
-// Sync fetches a repository. Blocking: the caller runs it off the UI thread,
-// which every mobile platform requires of network work anyway.
+// Sync fetches a repository, returning an encoded clarity.v1.SyncResult.
+//
+// Outcomes rather than an exception, because a fetch has failures a UI must
+// tell apart and a thrown message cannot: a host nobody has agreed to yet is a
+// question with its own dialog, a rejected key is a fixable setup step with
+// its own screen, and everything else is a message. The alternative is each
+// client matching on the text of an error, which is a parser for prose that
+// breaks when git rewords something.
+//
+// Blocking: the caller runs it off the UI thread, which every mobile platform
+// requires of network work anyway.
 //
 // timeoutSeconds bounds the fetch rather than the session. Zero means a
 // default; the view that follows holds a snapshot and has nothing left to
 // time out.
-func (c *Client) Sync(repoID string, depth, timeoutSeconds int) error {
+func (c *Client) Sync(repoID string, depth, timeoutSeconds int) ([]byte, error) {
 	repo, entry, err := c.open(repoID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 60
@@ -169,12 +180,76 @@ func (c *Client) Sync(repoID string, depth, timeoutSeconds int) error {
 
 	auth, err := c.auth(entry.URL)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return repo.Sync(ctx, gitsource.SyncOptions{Depth: depth, Auth: auth})
+	return proto.Marshal(outcome(repo.Sync(ctx, gitsource.SyncOptions{Depth: depth, Auth: auth})))
 }
 
-// View returns an encoded clarity.v1.View for a repository, read from what
+// TrustHost records a host key the user agreed to in the prompt, so the fetch
+// that was refused can be retried.
+func (c *Client) TrustHost(host, fingerprint string) error {
+	return c.hosts.Trust(host, fingerprint)
+}
+
+// outcome sorts what a fetch returned into the cases a UI draws differently.
+func outcome(err error) *v1.SyncResult {
+	if err == nil {
+		return &v1.SyncResult{Outcome: v1.Outcome_OUTCOME_OK}
+	}
+
+	var unknown *hostkeys.UnknownHostError
+	if errors.As(err, &unknown) {
+		return &v1.SyncResult{
+			Outcome: v1.Outcome_OUTCOME_HOST_KEY_UNKNOWN,
+			Message: unknown.Error(),
+			HostKey: &v1.HostKey{
+				Host: unknown.Host, Type: unknown.Type, Fingerprint: unknown.Fingerprint,
+			},
+		}
+	}
+	var changed *hostkeys.ChangedHostError
+	if errors.As(err, &changed) {
+		return &v1.SyncResult{
+			Outcome: v1.Outcome_OUTCOME_HOST_KEY_CHANGED,
+			Message: changed.Error(),
+			HostKey: &v1.HostKey{
+				Host: changed.Host, Type: changed.Type, Fingerprint: changed.Fingerprint,
+			},
+		}
+	}
+	if isAuthDenied(err) {
+		return &v1.SyncResult{
+			Outcome: v1.Outcome_OUTCOME_AUTH_DENIED,
+			Message: "the host did not accept this device's key",
+			// The raw thing git said, for the disclosure. Shown rather than
+			// summarised: whoever is debugging a key wants the actual words.
+			GitOutput: err.Error(),
+		}
+	}
+	return &v1.SyncResult{Outcome: v1.Outcome_OUTCOME_FAILED, Message: err.Error()}
+}
+
+// isAuthDenied recognises the host refusing this device's key.
+//
+// By substring, which is not something to be proud of — but ssh's failure
+// arrives as a formatted string through two libraries, and there is no typed
+// error to match on. The strings are the stable parts of the message: the list
+// of attempted methods varies, the phrase does not.
+func isAuthDenied(err error) bool {
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "unable to authenticate"):
+		return true
+	case strings.Contains(s, "permission denied"):
+		return true
+	case strings.Contains(s, "handshake failed") && strings.Contains(s, "publickey"):
+		return true
+	default:
+		return false
+	}
+}
+
+// View returns an encoded clarity.v1.View// View returns an encoded clarity.v1.View for a repository, read from what
 // the last Sync fetched. Never touches the network.
 func (c *Client) View(repoID string, limit int) ([]byte, error) {
 	repo, _, err := c.open(repoID)

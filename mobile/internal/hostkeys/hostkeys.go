@@ -8,11 +8,14 @@
 // on port 22.
 //
 // So the app keeps its own known_hosts and does what an ssh client does on
-// first contact: trust the key it is shown, write it down, and refuse anything
-// different afterwards. That does not protect the very first fetch, which
-// nothing but a key the user types in ever could. It does mean a host whose key
-// changes under you is reported rather than silently accepted, which is the
-// case that actually happens.
+// first contact: stop, show the fingerprint, and go no further until somebody
+// says yes. An earlier version of this trusted the first key silently, which
+// is a prompt nobody can fail — this one refuses and hands the UI what a
+// person needs in order to answer.
+//
+// Refusals are typed rather than worded, because the two cases are not the
+// same: a host nobody has met is a question, and a host whose key has changed
+// since last time is an alarm.
 package hostkeys
 
 import (
@@ -21,6 +24,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -29,6 +34,49 @@ import (
 // Store is a known_hosts file in the app's own data directory.
 type Store struct {
 	path string
+	// pending holds what has been offered and not yet answered, keyed by the
+	// fingerprint the user is looking at.
+	pending sync.Map // fingerprint -> offer
+}
+
+// UnknownHostError is a host nobody has agreed to yet. It carries everything a
+// prompt has to show, because a prompt that cannot show the fingerprint is one
+// that can only be answered yes.
+type UnknownHostError struct {
+	Host        string
+	Type        string // "ED25519", as a host publishes it
+	Fingerprint string // "SHA256:…", as a host publishes it
+
+	key ssh.PublicKey
+}
+
+// offer is one unanswered prompt: what to show, and what to write down.
+//
+// They are not the same string. knownhosts matches on "[host]:port" for a
+// non-default port, while a person checking a fingerprint is checking it
+// against a host. Writing down the displayed name produced an entry that never
+// matched again.
+type offer struct {
+	addr string // the normalized form knownhosts matches on
+	key  ssh.PublicKey
+}
+
+func (e *UnknownHostError) Error() string {
+	return fmt.Sprintf("%s is not a host this device has trusted yet", e.Host)
+}
+
+// ChangedHostError is a host that has been agreed to before and is now
+// presenting something else.
+type ChangedHostError struct {
+	Host        string
+	Type        string
+	Fingerprint string
+}
+
+func (e *ChangedHostError) Error() string {
+	return fmt.Sprintf(
+		"the host key for %s has changed — it is not the key this device "+
+			"trusted before, so the connection was refused", e.Host)
 }
 
 // Open prepares a store at path. Nothing is read or created until a connection
@@ -56,20 +104,72 @@ func (s *Store) Callback() ssh.HostKeyCallback {
 		}
 
 		var mismatch *knownhosts.KeyError
-		if errors.As(err, &mismatch) && len(mismatch.Want) == 0 {
-			// Never seen this host. Trust it once, and write it down so that
-			// every connection after this one is checked.
-			return s.remember(hostname, key)
+		if !errors.As(err, &mismatch) {
+			return err
 		}
-		if errors.As(err, &mismatch) {
-			return fmt.Errorf(
-				"the host key for %s has changed — it is not the key this device "+
-					"trusted before, so the connection was refused",
-				knownhosts.Normalize(hostname),
-			)
+
+		name := knownhosts.Normalize(hostname)
+		if len(mismatch.Want) == 0 {
+			// Never seen. Remember the key alongside the question, so saying
+			// yes accepts the thing that was actually shown rather than
+			// whatever answers next.
+			s.pending.Store(fingerprint(key), offer{addr: name, key: key})
+			return &UnknownHostError{
+				Host:        hostFrom(name),
+				Type:        keyType(key),
+				Fingerprint: fingerprint(key),
+			}
 		}
+		return &ChangedHostError{
+			Host:        hostFrom(name),
+			Type:        keyType(key),
+			Fingerprint: fingerprint(key),
+		}
+	}
+}
+
+// Trust records a host key the user has agreed to.
+//
+// It takes the fingerprint rather than the key so that what gets written down
+// is the thing the user was shown. Answering yes to one fingerprint must not
+// accept a different key that happened to arrive in the same moment.
+func (s *Store) Trust(host, fingerprint string) error {
+	v, ok := s.pending.Load(fingerprint)
+	if !ok {
+		return fmt.Errorf("no host key with fingerprint %s was offered", fingerprint)
+	}
+	pending := v.(offer)
+	if hostFrom(pending.addr) != host {
+		return fmt.Errorf("that fingerprint was offered by %s, not %s", hostFrom(pending.addr), host)
+	}
+	if err := s.ensureFile(); err != nil {
 		return err
 	}
+	// The address rather than the host: what is written down has to be the
+	// thing knownhosts will match on next time.
+	return s.remember(pending.addr, pending.key)
+}
+
+// keyType is the name a host publishes its key under — "ED25519" rather than
+// ssh-ed25519, which is the wire name and not what anyone is comparing against.
+func keyType(key ssh.PublicKey) string {
+	return strings.ToUpper(strings.TrimPrefix(key.Type(), "ssh-"))
+}
+
+func fingerprint(key ssh.PublicKey) string { return ssh.FingerprintSHA256(key) }
+
+// hostFrom drops the port knownhosts.Normalize adds, because a person checking
+// a fingerprint is checking it against a host and not against a socket.
+//
+// Only the bracketed form needs handling: Normalize returns a bare host on the
+// default port and "[host]:port" otherwise, so there is no third shape to
+// unpick. A branch for one was here and was unreachable.
+func hostFrom(normalized string) string {
+	s := strings.TrimPrefix(normalized, "[")
+	if i := strings.Index(s, "]:"); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func (s *Store) ensureFile() error {

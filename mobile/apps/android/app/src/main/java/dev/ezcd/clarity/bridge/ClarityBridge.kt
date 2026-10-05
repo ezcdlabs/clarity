@@ -1,6 +1,7 @@
 package dev.ezcd.clarity.bridge
 
 import dev.ezcd.clarity.proto.RepoList
+import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
 
 /**
@@ -30,8 +31,21 @@ interface ClarityBridge {
 
     fun listRepos(): RepoList
 
-    /** Fetches a repository. Blocking, and the only method that uses network. */
-    fun sync(repoId: String, depth: Int, timeoutSeconds: Int)
+    /**
+     * Fetches a repository. Blocking, and the only method that uses network.
+     *
+     * Returns what the fetch did rather than throwing, because a fetch has
+     * failures the UI must tell apart: an unknown host is a question with its
+     * own dialog, a rejected key is a fixable setup step with its own screen,
+     * and everything else is a message.
+     */
+    fun sync(repoId: String, depth: Int, timeoutSeconds: Int): SyncResult
+
+    /** Records a host key the user agreed to, so a refused fetch can retry. */
+    fun trustHost(host: String, fingerprint: String)
+
+    /** Renames a repository on this device. A blank name clears the rename. */
+    fun rename(repoId: String, name: String)
 
     /** Reads what the last [sync] fetched. Never touches the network. */
     fun view(repoId: String, limit: Int): View

@@ -230,3 +230,43 @@ message FlowSummary {
   string name = 1;
   Status deploy = 2;
 }
+
+// SyncResult is what a fetch did, rather than whether it threw.
+//
+// A fetch has outcomes a UI must tell apart and an exception cannot: a host
+// nobody has agreed to yet is a question, a rejected key is a fixable setup
+// step with its own screen, and everything else is a message. Matching on the
+// text of an error to find out which would be a parser for prose, in three
+// clients, that breaks when git rewords something.
+message SyncResult {
+  Outcome outcome = 1;
+
+  // Message is already written for a person to read — git's own diagnosis,
+  // usually — and is shown as-is rather than replaced with a category.
+  string message = 2;
+
+  // Set when the outcome is about a host key, for the dialog that asks.
+  HostKey host_key = 3;
+
+  // The raw stderr behind an authentication failure, for the "Show git output"
+  // disclosure. Empty when there is nothing more to show than the message.
+  string git_output = 4;
+}
+
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  OUTCOME_OK = 1;
+  // The host is not in this device's known_hosts. Ask, then TrustHost.
+  OUTCOME_HOST_KEY_UNKNOWN = 2;
+  // It is, and it is presenting something else. Ask louder.
+  OUTCOME_HOST_KEY_CHANGED = 3;
+  // The host refused this device's key. The key needs adding on the host.
+  OUTCOME_AUTH_DENIED = 4;
+  OUTCOME_FAILED = 5;
+}
+
+message HostKey {
+  string host = 1;
+  string type = 2;         // "ED25519", as a host publishes it
+  string fingerprint = 3;  // "SHA256:…", as a host publishes it
+}

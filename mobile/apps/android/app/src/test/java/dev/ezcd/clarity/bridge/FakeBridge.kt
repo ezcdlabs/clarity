@@ -4,7 +4,9 @@ import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.Section
 import dev.ezcd.clarity.proto.SectionKind
+import dev.ezcd.clarity.proto.Outcome
 import dev.ezcd.clarity.proto.RepoList
+import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.RepoSummary
 import dev.ezcd.clarity.proto.View
 
@@ -78,10 +80,24 @@ class FakeBridge : ClarityBridge {
         return RepoList.newBuilder().addAllRepos(repos).build()
     }
 
-    override fun sync(repoId: String, depth: Int, timeoutSeconds: Int) {
+    override fun sync(repoId: String, depth: Int, timeoutSeconds: Int): SyncResult {
         calls += "sync"
         onSync(repoId)
-        failSync?.let { throw RuntimeException(it) }
+        val builder = SyncResult.newBuilder()
+        failSync?.let {
+            return builder.setOutcome(Outcome.OUTCOME_FAILED).setMessage(it).build()
+        }
+        return builder.setOutcome(Outcome.OUTCOME_OK).build()
+    }
+
+    override fun trustHost(host: String, fingerprint: String) {
+        calls += "trustHost"
+    }
+
+    override fun rename(repoId: String, name: String) {
+        calls += "rename"
+        val i = repos.indexOfFirst { it.id == repoId }
+        if (i >= 0) repos[i] = repos[i].toBuilder().setAlias(name).build()
     }
 
     // Not the real formatter — the model only passes through to it, so a test

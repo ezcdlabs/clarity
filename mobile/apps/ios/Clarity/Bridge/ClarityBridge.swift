@@ -26,7 +26,18 @@ protocol ClarityBridge {
     func listRepos() throws -> Clarity_V1_RepoList
 
     /// Fetches a repository. Blocking, and the only method that uses network.
-    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws
+    ///
+    /// Returns what the fetch did rather than throwing, because a fetch has
+    /// failures the UI must tell apart: an unknown host is a question with its
+    /// own dialog, a rejected key is a fixable setup step with its own screen,
+    /// and everything else is a message.
+    func sync(repoID: String, depth: Int, timeoutSeconds: Int) throws -> Clarity_V1_SyncResult
+
+    /// Records a host key the user agreed to, so a refused fetch can retry.
+    func trustHost(host: String, fingerprint: String) throws
+
+    /// Renames a repository on this device. A blank name clears the rename.
+    func rename(repoID: String, name: String) throws
 
     /// Reads what the last `sync` fetched. Never touches the network.
     func view(repoID: String, limit: Int) throws -> Clarity_V1_View

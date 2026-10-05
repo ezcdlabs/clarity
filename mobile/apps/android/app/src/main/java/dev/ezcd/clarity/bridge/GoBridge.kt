@@ -3,6 +3,7 @@ package dev.ezcd.clarity.bridge
 import dev.ezcd.clarity.core.Client
 import dev.ezcd.clarity.core.Core
 import dev.ezcd.clarity.proto.RepoList
+import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
 import java.io.File
 
@@ -33,8 +34,12 @@ class GoBridge(private val client: Client) : ClarityBridge {
 
     override fun listRepos(): RepoList = RepoList.parseFrom(client.listRepos())
 
-    override fun sync(repoId: String, depth: Int, timeoutSeconds: Int) =
-        client.sync(repoId, depth.toLong(), timeoutSeconds.toLong())
+    override fun sync(repoId: String, depth: Int, timeoutSeconds: Int): SyncResult =
+        SyncResult.parseFrom(client.sync(repoId, depth.toLong(), timeoutSeconds.toLong()))
+
+    override fun trustHost(host: String, fingerprint: String) = client.trustHost(host, fingerprint)
+
+    override fun rename(repoId: String, name: String) = client.rename(repoId, name)
 
     override fun view(repoId: String, limit: Int): View =
         View.parseFrom(client.view(repoId, limit.toLong()))

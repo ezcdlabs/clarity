@@ -1118,7 +1118,23 @@ Hours now carry a decimal where they need one, as days already did.
 It is read when the screen opens and never again. The refresh pump leaves it
 alone, for the same reason the command does not poll: re-reading two thousand
 commits every five seconds spends a phone's battery to learn nothing about
-history. Closing the screen drops the chart rather than keeping it, which is the
+history.
+
+Opening it does fetch, though, exactly once. The feed clones shallow — 200
+commits, which on a busy repository is a fortnight — and **no commit limit can
+read past a shallow boundary**, so the chart asks for a deeper branch before it
+reads anything. Once the device holds the history, the next open brings nothing.
+
+That deepening fetch did not work at first, and the reason is worth recording.
+go-git appends to the shallow set on every fetch carrying a depth and never
+removes an entry that has stopped being a boundary — it does not act on the
+server's `unshallow` lines. The deepen was in fact bringing everything, and the
+walk was then stopping at the *old* graft with the rest of the history sitting
+unread in the store: from the outside it looked exactly like a fetch that did
+nothing. `grafts` therefore asks whether a boundary's parents are actually in
+the store rather than trusting the file, which costs one object lookup per
+boundary and is also what stops the feed's next shallow refresh from cutting the
+history straight back again. Closing the screen drops the chart rather than keeping it, which is the
 opposite of what the commit feed does with its view — a stale feed still answers
 "is main green?" usefully, but a chart held over from before a fetch answers
 "are we getting better?" with an older answer than the one on disk, and nothing

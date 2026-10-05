@@ -57,7 +57,26 @@ class GoBridge(private val client: Client) : ClarityBridge {
     override fun elapsed(seconds: Long): String = Core.elapsed(seconds)
 
     companion object {
-        /** Opens a bridge over the directory the platform gives us for private data. */
-        fun open(dataDir: File): GoBridge = GoBridge(Core.new_(dataDir.absolutePath))
+        private val instances = mutableMapOf<String, GoBridge>()
+
+        /**
+         * The bridge over the directory the platform gives us for private data.
+         *
+         * One per directory for the whole process, and that is not an
+         * optimisation. The key, the registry and every object store live under
+         * that one directory, and a second client over it is a second writer:
+         * the Go side serialises its own work per repository, and two clients
+         * have two sets of locks that know nothing about each other.
+         *
+         * It became load-bearing when the background check arrived. That runs
+         * in the same process as the UI whenever the app happens to be alive,
+         * and it was opening a client of its own — which is exactly the case
+         * the locking was added to prevent.
+         */
+        @Synchronized
+        fun open(dataDir: File): GoBridge {
+            val path = dataDir.absolutePath
+            return instances.getOrPut(path) { GoBridge(Core.new_(path)) }
+        }
     }
 }

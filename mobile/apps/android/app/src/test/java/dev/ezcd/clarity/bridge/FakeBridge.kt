@@ -83,7 +83,14 @@ class FakeBridge : ClarityBridge {
     override fun listRepos(): RepoList {
         calls += "listRepos"
         failList?.let { throw RuntimeException(it) }
-        return RepoList.newBuilder().addAllRepos(repos).build()
+        // Ordered the way the registry orders it: by the name a row shows, then
+        // by id. Returning insertion order instead would have been a fake that
+        // agreed with the model about something the real core disagrees with —
+        // and "the one just added" would look like "the last one" in tests and
+        // nowhere else.
+        return RepoList.newBuilder()
+            .addAllRepos(repos.sortedWith(compareBy({ it.name }, { it.id })))
+            .build()
     }
 
     override fun sync(repoId: String, depth: Int, timeoutSeconds: Int): SyncResult {

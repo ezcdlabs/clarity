@@ -433,6 +433,53 @@ class ClarityModelTest {
         assertEquals("dial tcp: network is unreachable", model.state.value.error)
     }
 
+    @Test
+    fun `trusting a host retries the repository being connected`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/zebra.git", "main")
+
+        bridge.syncOutcome = Outcome.OUTCOME_HOST_KEY_UNKNOWN
+        model.showConnect()
+        model.connect("git@git.acme.dev:acme/aardvark.git", "main")
+        val aardvark = bridge.repos.single { it.name == "aardvark" }.id
+
+        bridge.syncOutcome = Outcome.OUTCOME_OK
+        val synced = mutableListOf<String>()
+        bridge.onSync = { synced += it }
+        model.trustHost()
+
+        // The list is ordered by the name a row shows, so the repository that
+        // was just added is not the one at the end of it. Picking up the wrong
+        // one here would trust a host on behalf of one repository and then go
+        // and fetch a different one.
+        assertEquals(listOf(aardvark), synced.distinct())
+        assertEquals(aardvark, model.state.value.selected)
+    }
+
+    @Test
+    fun `trying again after a refused key retries the repository being connected`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:acme/zebra.git", "main")
+
+        bridge.syncOutcome = Outcome.OUTCOME_AUTH_DENIED
+        model.showConnect()
+        model.connect("git@git.acme.dev:acme/aardvark.git", "main")
+        val aardvark = bridge.repos.single { it.name == "aardvark" }.id
+
+        bridge.syncOutcome = Outcome.OUTCOME_OK
+        val synced = mutableListOf<String>()
+        bridge.onSync = { synced += it }
+        model.retryConnect()
+
+        // Distinct: a connection that succeeds fetches once to find out and
+        // once to open, which is two calls about one repository rather than
+        // one call about two.
+        assertEquals(listOf(aardvark), synced.distinct())
+        assertEquals(aardvark, model.state.value.selected)
+    }
+
     // --- harness -------------------------------------------------------------
 
     private class TestBody(

@@ -55,6 +55,17 @@ class ClarityModel(
     /** The clock and the auto-refresh, running only while the UI is visible. */
     private var pump: Job? = null
 
+    /**
+     * The repository the connect flow is working on.
+     *
+     * Held here rather than read back off the list, which is ordered by the
+     * name a row shows: "the one just added" and "the last one" are the same
+     * repository only until somebody connects one whose name sorts early, and
+     * then trusting a host would hand the answer to a different repository
+     * entirely.
+     */
+    private var connecting: String? = null
+
     fun start() = act {
         loadRepos()
         // Land in a repository rather than on a menu. There is nothing to read
@@ -137,6 +148,7 @@ class ClarityModel(
                 _state.update { it.copy(connect = Connect.Failed(message(e))) }
                 return@launch
             }
+            connecting = id
             act { loadRepos() }
             attempt(id)
         }
@@ -145,7 +157,7 @@ class ClarityModel(
     /** Records the host key the prompt showed, then picks up where it stopped. */
     fun trustHost() {
         val asking = _state.value.connect as? Connect.AskHost ?: return
-        val id = _state.value.repos.lastOrNull()?.id ?: return
+        val id = connecting ?: return
         scope.launch {
             _state.update { it.copy(connect = Connect.Working) }
             try {
@@ -160,7 +172,7 @@ class ClarityModel(
 
     /** Tries the fetch again after the user has fixed something on the host. */
     fun retryConnect() {
-        val id = _state.value.repos.lastOrNull()?.id ?: return
+        val id = connecting ?: return
         scope.launch {
             _state.update { it.copy(connect = Connect.Working) }
             attempt(id)

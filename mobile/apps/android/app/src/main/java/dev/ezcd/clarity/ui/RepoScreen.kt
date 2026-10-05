@@ -28,9 +28,11 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +99,7 @@ private val batchGapBelow = 6.dp
  * file decides is how wide things are and which colour they take, which is the
  * half of the job the proto boundary leaves to the platform.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepoScreen(state: AppState, model: ClarityModel) {
     var tab by rememberSaveable(state.selected) { mutableIntStateOf(0) }
@@ -133,7 +136,19 @@ fun RepoScreen(state: AppState, model: ClarityModel) {
                     return@Column
                 }
 
-                CommitList(view, flow, state, model)
+                // Pull to refresh, because the bar no longer has a button and
+                // a menu is a poor home for the most frequent action on the
+                // screen.
+                PullToRefreshBox(
+                    isRefreshing = state.syncing,
+                    onRefresh = { model.refresh() },
+                    modifier = Modifier.fillMaxSize(),
+                    // The spinner lives in the subtitle; a second one dropping
+                    // in from the top would be two answers to one question.
+                    indicator = {},
+                ) {
+                    CommitList(view, flow, state, model)
+                }
             }
         }
     }

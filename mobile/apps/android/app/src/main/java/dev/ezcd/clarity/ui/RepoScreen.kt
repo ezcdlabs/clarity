@@ -25,11 +25,11 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -114,12 +114,6 @@ fun RepoScreen(state: AppState, model: ClarityModel) {
         if (view != null) {
             Strip(state, model, view, tab) { tab = it }
         }
-        // On the chrome, not the sheet: a fetch belongs to the bar that started
-        // it, and the sheet's turned corners would clip the ends off it.
-        if (state.syncing) {
-            LinearProgressIndicator(Modifier.fillMaxWidth(), color = Ink.blue, trackColor = Ink.line)
-        }
-
         Sheet(topStartRadius = if (flows.size > 1 && tab == 0) 0 else 20) {
             Column(Modifier.fillMaxSize()) {
                 ErrorBar(state.error) { model.dismissError() }
@@ -224,8 +218,27 @@ private fun AppBar(state: AppState, model: ClarityModel, onOpenSwitcher: () -> U
                     modifier = Modifier.size(20.dp).padding(start = 2.dp),
                 )
             }
-            repo?.let {
-                Text(it.subtitle, style = Type.mono, color = Ink.dim, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                repo?.let {
+                    Text(
+                        it.subtitle,
+                        style = Type.mono,
+                        color = Ink.dim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+                // Fetching, said as quietly as it can be said. A bar across the
+                // top was loud and moved the feed down every time it appeared;
+                // this occupies space that is already there and only turns.
+                if (state.syncing) {
+                    CircularProgressIndicator(
+                        Modifier.padding(start = 8.dp).size(11.dp),
+                        color = Ink.dim,
+                        strokeWidth = 1.5.dp,
+                    )
+                }
             }
         }
         RepoMenu(state, model)
@@ -347,8 +360,6 @@ private fun Strip(state: AppState, model: ClarityModel, view: View, tab: Int, on
             StatusGlyph(flows.firstOrNull()?.deploy ?: view.deploy, prominent = true, size = 16)
         }
 
-        Spacer(Modifier.weight(1f))
-        Text(viewAge(state, model), style = Type.monoMeta, color = Ink.dim, modifier = Modifier.padding(bottom = 2.dp))
     }
 
     if (flows.size > 1) {

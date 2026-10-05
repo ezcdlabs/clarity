@@ -43,8 +43,14 @@ class ClarityModel(
     private val fetchDepth = 0
     private val fetchTimeoutSeconds = 0
 
-    /** How often the open repository re-fetches, like the TUI's watcher. */
-    private val refreshSeconds = 30
+    /**
+     * How often the open repository re-fetches.
+     *
+     * The same five seconds refsource polls at, so the phone and the terminal
+     * are the same freshness rather than approximately so. It is affordable
+     * because a refetch is a shallow fetch of what changed, not a clone.
+     */
+    private val refreshSeconds = 5
 
     /** The clock and the auto-refresh, running only while the UI is visible. */
     private var pump: Job? = null

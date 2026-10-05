@@ -368,7 +368,7 @@ class ClarityModelTest {
         model.resume()
         bridge.calls.clear()
 
-        scheduler.advanceTimeBy(31_000)
+        scheduler.advanceTimeBy(6_000)
         scheduler.runCurrent()
 
         assertTrue("expected an unprompted fetch, got ${bridge.calls}", bridge.calls.contains("sync"))
@@ -385,7 +385,7 @@ class ClarityModelTest {
         model.pause()
         now += 60
         bridge.calls.clear()
-        scheduler.advanceTimeBy(61_000)
+        scheduler.advanceTimeBy(30_000)
         scheduler.runCurrent()
 
         // A timer nobody can see only spends battery, and a fetch nobody asked
@@ -405,7 +405,7 @@ class ClarityModelTest {
 
         bridge.failSync = "dial tcp: network is unreachable"
         model.resume()
-        scheduler.advanceTimeBy(31_000)
+        scheduler.advanceTimeBy(6_000)
         scheduler.runCurrent()
 
         // Otherwise the error bar reappears every thirty seconds for as long as
@@ -425,7 +425,7 @@ class ClarityModelTest {
         model.dismissError()
 
         model.resume()
-        scheduler.advanceTimeBy(31_000)
+        scheduler.advanceTimeBy(6_000)
         scheduler.runCurrent()
 
         // With no view behind it, silence would leave an empty screen and no

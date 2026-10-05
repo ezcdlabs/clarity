@@ -375,6 +375,26 @@ class ClarityModelTest {
     }
 
     @Test
+    fun `coming back to the app refetches at once`() = test {
+        val model = model()
+        model.start()
+        model.connect("git@github.com:ezcdlabs/clarity.git", "main")
+        model.resume()
+        model.pause()
+        bridge.calls.clear()
+
+        model.resume()
+        scheduler.runCurrent()
+
+        // No time advanced: the fetch has to be part of coming back, not the
+        // first beat of the interval. A phone spends most of its life in a
+        // pocket, so what is on screen when you look at it is as old as the
+        // last time you looked — and then it sits there for another interval
+        // before anything moves.
+        assertTrue("waited for the interval: ${bridge.calls}", bridge.calls.contains("sync"))
+    }
+
+    @Test
     fun `nothing ticks or fetches while the app is in the background`() = test {
         val model = model()
         model.start()

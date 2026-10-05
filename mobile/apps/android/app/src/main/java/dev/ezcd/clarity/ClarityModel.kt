@@ -109,6 +109,13 @@ class ClarityModel(
     fun resume() {
         if (pump != null) return
         pump = scope.launch {
+            // Before the loop, not on its first tick. A phone spends most of
+            // its life in a pocket: what is on screen when you look at it is as
+            // old as the last time you looked, and waiting out an interval
+            // before anything moves is the whole of that staleness showing.
+            _state.update { it.copy(nowSeconds = clock()) }
+            _state.value.selected?.let { fetch(it, background = true) }
+
             var sinceFetch = 0
             while (true) {
                 _state.update { it.copy(nowSeconds = clock()) }

@@ -402,6 +402,21 @@ final class ClarityModelTests: XCTestCase {
         XCTAssertTrue(bridge.calls.contains("sync"), "no unprompted fetch: \(bridge.calls)")
     }
 
+    func testComingBackToTheAppRefetchesAtOnce() async {
+        let model = model()
+        await model.start()
+        await model.connect(url: "git@github.com:ezcdlabs/clarity.git", branch: "main")
+        bridge.calls.removeAll()
+
+        await model.catchUp()
+
+        // No beats: the fetch has to be part of coming back rather than the
+        // first tick of the interval. A phone spends most of its life in a
+        // pocket, so what is on screen when you look at it is as old as the
+        // last time you looked.
+        XCTAssertTrue(bridge.calls.contains("sync"), "waited for the interval: \(bridge.calls)")
+    }
+
     func testNothingTicksWhileTheAppIsInTheBackground() async {
         let model = model()
         await model.start()

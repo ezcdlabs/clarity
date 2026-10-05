@@ -74,10 +74,27 @@ final class ClarityModel: ObservableObject {
         guard pump == nil else { return }
         sinceFetch = 0
         pump = Task { [weak self] in
+            // Before the loop, not on its first tick. A phone spends most of
+            // its life in a pocket: what is on screen when you look at it is as
+            // old as the last time you looked, and waiting out an interval
+            // before anything moves is the whole of that staleness showing.
+            await self?.catchUp()
             while !Task.isCancelled {
                 await self?.beat()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
+        }
+    }
+
+    /// One fetch on becoming visible, before the interval starts counting.
+    ///
+    /// Separate from `beat` so a test can say "and then the user came back"
+    /// without waiting a real second for the first tick.
+    func catchUp() async {
+        state.nowSeconds = clock()
+        sinceFetch = 0
+        if let id = state.selected {
+            await fetch(id, background: true)
         }
     }
 

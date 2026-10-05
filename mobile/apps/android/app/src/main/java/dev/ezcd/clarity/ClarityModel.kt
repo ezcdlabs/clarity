@@ -1,6 +1,7 @@
 package dev.ezcd.clarity
 
 import dev.ezcd.clarity.bridge.ClarityBridge
+import dev.ezcd.clarity.proto.Change
 import dev.ezcd.clarity.proto.Outcome
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -32,6 +33,20 @@ class ClarityModel(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val clock: () -> Long = { System.currentTimeMillis() / 1000 },
+    /**
+     * Called when a background refresh of the open repository finds a pipeline
+     * has crossed between green and red.
+     *
+     * A callback rather than state, because this is an event rather than a
+     * fact: it happens once, it is not part of what the screen draws, and a
+     * flag in [AppState] would have to be cleared by whoever consumed it.
+     *
+     * The open repository is the one the background check can never report —
+     * reading a view is what advances the baseline, so by the time a check runs
+     * there is nothing left to compare. The app announces it itself, and
+     * quietly, because the reader is looking at it.
+     */
+    private val onCrossings: (List<Change>) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = _state.asStateFlow()
@@ -404,7 +419,14 @@ class ClarityModel(
             }
             return
         }
-        val fresh = readView(repoId)
+        val fresh = readRepo(repoId)
+        // Only a refresh announces. A chime the instant a screen opens is
+        // reporting history as news — the crossing may have been days ago, and
+        // the first read after an install would announce the whole backlog in
+        // one go.
+        if (background) {
+            fresh?.changesList?.takeIf { it.isNotEmpty() }?.let(onCrossings)
+        }
         // Reading a view is also what records its verdict, so the list that
         // shows those verdicts has to be re-read afterwards. Without this the
         // switcher keeps saying "nothing reported" about a repository whose
@@ -414,16 +436,22 @@ class ClarityModel(
             // A fetch that finished after the user moved on belongs to a
             // repository that is no longer on screen.
             if (it.selected != repoId) it.copy(syncing = false)
-            else it.copy(syncing = false, view = fresh ?: it.view)
+            else it.copy(syncing = false, view = fresh?.view ?: it.view)
         }
     }
 
-    /** The view on disk, or null if there is not one yet. */
-    private suspend fun readView(repoId: String) = try {
-        withContext(io) { bridge.view(repoId, commitLimit) }
+    /**
+     * The view on disk and what moved since the last read, or null if there is
+     * not one yet.
+     */
+    private suspend fun readRepo(repoId: String) = try {
+        withContext(io) { bridge.read(repoId, commitLimit) }
     } catch (e: Exception) {
         null
     }
+
+    /** The view alone, for the paths with nothing to announce. */
+    private suspend fun readView(repoId: String) = readRepo(repoId)?.view
 
     private fun loadRepos() {
         val list = bridge.listRepos()

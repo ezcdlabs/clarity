@@ -46,7 +46,7 @@ class CheckWorker(context: Context, params: WorkerParameters) :
         }
 
         Notifications.ensureChannels(applicationContext)
-        for (change in changes.changesList) {
+        for (change in worthTelling(changes.changesList, Visible.repoId)) {
             Notifications.post(applicationContext, change)
         }
         Result.success()

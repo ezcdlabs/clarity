@@ -1656,6 +1656,27 @@ a sound, because it is the thing the feature exists for. Recovering is
 Splitting them puts the dial where Android wants it: the user mutes one and
 keeps the other from system settings, and the app needs no preferences screen.
 
+**The repository on screen gets a chime, not a notification.** The rule is the
+one every messaging app uses: a short tone for the conversation you are in, a
+notification for the ones you are not. A notification is for something you would
+otherwise miss, and a feed that turned red in front of you is not that — what
+you might miss is the *moment*, with the phone face-up on a desk while you look
+at a different screen. So it is a brief tone on the notification stream (silent
+mode and Do Not Disturb still apply) plus a haptic: two taps for broken, one for
+recovered. Deliberately not the notification tone, because hearing that and
+finding nothing in the shade is worse than hearing nothing.
+
+That needs `Read` rather than `View`, and the reason is a trap worth naming.
+Reading a view is what advances the baseline — the verdict is recorded so the
+switcher can show it — so a pipeline that breaks while its own screen is open
+has its crossing consumed by the very read that drew it red, and the background
+check afterwards compares against a baseline that has already moved. Before
+`Read`, the repository you were watching was the one repository that could never
+announce anything, by accident rather than by design. `Read` hands the crossings
+back alongside the view, and only a *background* refresh announces them: a chime
+the instant a screen opens would be reporting history as news, and the first
+read after an install would play the whole backlog at once.
+
 What it deliberately does not do is ring like an alarm or bring itself to the
 foreground. Android has a mechanism for that — a full-screen intent — and since
 14 the permission for it is granted by default only to calling and alarm apps.

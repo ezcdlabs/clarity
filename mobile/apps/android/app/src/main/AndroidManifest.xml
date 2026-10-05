@@ -13,6 +13,11 @@
          dashboard. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- For the short cue the open repository gets instead of a notification.
+         Granted at install; the phone's own silent and Do Not Disturb rules
+         still apply, because the tone goes out on the notification stream. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

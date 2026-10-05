@@ -4,6 +4,7 @@ import dev.ezcd.clarity.proto.Commit
 import dev.ezcd.clarity.proto.Flow
 import dev.ezcd.clarity.proto.HostKey
 import dev.ezcd.clarity.proto.AxisTick
+import dev.ezcd.clarity.proto.Change
 import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.LeadAxis
 import dev.ezcd.clarity.proto.Metrics
@@ -18,6 +19,7 @@ import dev.ezcd.clarity.proto.SectionKind
 import dev.ezcd.clarity.proto.Status
 import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
+import dev.ezcd.clarity.proto.ViewResult
 
 /**
  * A bridge with no Go behind it.
@@ -153,6 +155,19 @@ class FakeBridge : ClarityBridge {
         return weekly[repoId]
             // What a repo that has never been fetched gives you, as [view] does.
             ?: throw RuntimeException("reference not found")
+    }
+
+    /** What the next [read] reports as having moved. Cleared once delivered. */
+    var crossings: List<Change> = emptyList()
+
+    override fun read(repoId: String, limit: Int): ViewResult {
+        val result = ViewResult.newBuilder()
+            .setView(view(repoId, limit))
+            .addAllChanges(crossings)
+            .build()
+        // Consumed, as the core consumes it: a crossing is reported once.
+        crossings = emptyList()
+        return result
     }
 
     /** What the next [check] reports. */

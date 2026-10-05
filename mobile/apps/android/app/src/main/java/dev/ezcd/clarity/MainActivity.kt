@@ -28,6 +28,8 @@ import dev.ezcd.clarity.ui.App
 import dev.ezcd.clarity.ui.ClarityTheme
 import dev.ezcd.clarity.watch.CheckWorker
 import dev.ezcd.clarity.watch.Notifications
+import dev.ezcd.clarity.watch.Chime
+import dev.ezcd.clarity.watch.Visible
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 
@@ -41,7 +43,14 @@ import java.io.File
 class ClarityViewModel(app: Application) : AndroidViewModel(app) {
     val model: ClarityModel = run {
         val dir = File(app.filesDir, "clarity").apply { mkdirs() }
-        ClarityModel(GoBridge.open(dir), viewModelScope, Dispatchers.IO)
+        ClarityModel(
+            GoBridge.open(dir),
+            viewModelScope,
+            Dispatchers.IO,
+            // Only ever the repository on screen: this is the read path for the
+            // open repository, and the background check covers the rest.
+            onCrossings = { Chime.forCrossings(app, it) },
+        )
     }
 
     init {
@@ -72,7 +81,21 @@ class MainActivity : ComponentActivity() {
                 // spending someone's battery and data on a screen nobody is
                 // looking at.
                 LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.model.resume() }
-                LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.model.pause() }
+                LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+                    viewModel.model.pause()
+                    // Nothing is on screen, so the check has nothing to hold
+                    // back. Cleared here rather than left behind, because a
+                    // stale value would silence the one repository the user is
+                    // most likely to have been watching.
+                    Visible.repoId = null
+                }
+
+                // What the background check must not interrupt you about: the
+                // repository whose feed is in front of you already shows this,
+                // within five seconds of it happening.
+                LaunchedEffect(state.selected, state.overlay) {
+                    Visible.repoId = state.selected
+                }
 
                 // Asked for when it first means something — once there is a
                 // repository to be told about — rather than at launch. A

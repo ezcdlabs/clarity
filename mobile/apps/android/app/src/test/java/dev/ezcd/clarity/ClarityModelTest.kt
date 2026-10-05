@@ -1,6 +1,7 @@
 package dev.ezcd.clarity
 
 import dev.ezcd.clarity.bridge.FakeBridge
+import dev.ezcd.clarity.proto.Change
 import dev.ezcd.clarity.proto.Outcome
 import dev.ezcd.clarity.proto.Status
 import kotlinx.coroutines.CoroutineDispatcher
@@ -500,6 +501,53 @@ class ClarityModelTest {
         assertEquals(aardvark, model.state.value.selected)
     }
 
+    // --- what the open repository announces ---
+
+    @Test
+    fun `a background refresh hands back the pipelines that moved`() = test {
+        val announced = mutableListOf<Change>()
+        val model = model(onCrossings = { announced += it })
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.views[id] = FakeBridge.viewOf("feat: broke it")
+        model.refresh()
+        announced.clear()
+
+        bridge.crossings = listOf(
+            Change.newBuilder().setRepoId(id).setRepoName("thing").setStage("CI").setBroke(true).build(),
+        )
+        model.resume()
+        scheduler.advanceTimeBy(6_000)
+        scheduler.runCurrent()
+
+        // The screen you are looking at is the one the background check can
+        // never tell you about: reading a view is what advances the baseline,
+        // so by the time the check runs there is nothing left to compare. The
+        // app has to say it itself, and quietly — you are watching.
+        assertEquals(listOf("CI"), announced.map { it.stage })
+    }
+
+    @Test
+    fun `opening a repository does not announce what it finds`() = test {
+        val announced = mutableListOf<Change>()
+        val model = model(onCrossings = { announced += it })
+        model.start()
+        model.connect("git@github.com:acme/thing.git", "main")
+        val id = model.state.value.repos.single().id
+        bridge.views[id] = FakeBridge.viewOf("feat: already broken")
+        bridge.crossings = listOf(
+            Change.newBuilder().setRepoId(id).setRepoName("thing").setStage("CI").setBroke(true).build(),
+        )
+
+        model.refresh()
+
+        // Asked for, not happened upon. A chime the instant a screen opens is
+        // reporting history as news — the crossing may have been days ago, and
+        // the first read after an install would announce the whole backlog.
+        assertEquals(emptyList<String>(), announced.map { it.stage })
+    }
+
     // --- the metrics screen -------------------------------------------------
 
     @Test
@@ -662,7 +710,8 @@ class ClarityModelTest {
          * scheduler advances explicitly, which is what makes the clock and the
          * refresh interval testable at all.
          */
-        fun model() = ClarityModel(bridge, scope, dispatcher, clock = { now })
+        fun model(onCrossings: (List<Change>) -> Unit = {}) =
+            ClarityModel(bridge, scope, dispatcher, clock = { now }, onCrossings = onCrossings)
 
         fun subjectOf(state: AppState): String? =
             state.view?.getFlows(0)?.getSections(0)?.getCommits(0)?.subject

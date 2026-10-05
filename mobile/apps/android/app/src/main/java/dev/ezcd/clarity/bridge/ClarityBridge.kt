@@ -5,6 +5,7 @@ import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
 import dev.ezcd.clarity.proto.SyncResult
 import dev.ezcd.clarity.proto.View
+import dev.ezcd.clarity.proto.ViewResult
 
 /**
  * Everything the app can ask of the Go core.
@@ -54,6 +55,18 @@ interface ClarityBridge {
 
     /** Reads what the last [sync] fetched. Never touches the network. */
     fun view(repoId: String, limit: Int): View
+
+    /**
+     * [view], plus the pipelines that crossed between green and red since the
+     * last read.
+     *
+     * Reading is what advances the baseline, so a repository that breaks while
+     * its own screen is open has the crossing consumed by the read that drew it
+     * red — the background check afterwards finds nothing to report. This hands
+     * it back instead, so the app can make the small noise a screen you are
+     * looking at deserves.
+     */
+    fun read(repoId: String, limit: Int): ViewResult
 
     /**
      * Reads the weekly aggregates. Never touches the network.

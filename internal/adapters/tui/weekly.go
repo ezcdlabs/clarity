@@ -130,11 +130,10 @@ func weeklyPeriod(weeks []core.WeekStat) string {
 		return ""
 	}
 	newest, oldest := weeks[0], weeks[len(weeks)-1]
-	label := func(w core.WeekStat) string { return fmt.Sprintf("W%d-%02d", w.Year, w.Week) }
 	if len(weeks) == 1 {
-		return label(newest)
+		return core.WeekLabel(newest)
 	}
-	return label(oldest) + " – " + label(newest)
+	return core.WeekLabel(oldest) + " – " + core.WeekLabel(newest)
 }
 
 // weeklyLayout splits the available width between the plot and the bars. The
@@ -189,7 +188,7 @@ func weeklyHeader(plotCols, barCols, width int) string {
 }
 
 func weeklyRow(w core.WeekStat, axis core.LeadAxis, maxDeploys, plotCols, barCols, width int) string {
-	label := fmt.Sprintf("W%d-%02d", w.Year, w.Week)
+	label := core.WeekLabel(w)
 
 	var plot string
 	switch {
@@ -359,7 +358,7 @@ func weeklyAxis(axis core.LeadAxis, w, width int) string {
 	}
 	for _, f := range fractions {
 		d := time.Duration(float64(axis.Max) * f)
-		label := formatAxisTick(d)
+		label := core.FormatAxisTick(d)
 		if f == 1 && axis.Clamped {
 			label += "+"
 		}
@@ -375,25 +374,6 @@ func weeklyAxis(axis core.LeadAxis, w, width int) string {
 	}
 	return ClipRight("  "+strings.Repeat(" ", weekLabelWidth)+
 		dimStyle().Render(strings.Join(cells, "")), width)
-}
-
-// formatAxisTick keeps the quarter marks distinct. Days lose too much
-// precision at the quarters — a 2d axis would label 1d twice.
-func formatAxisTick(d time.Duration) string {
-	switch {
-	case d == 0:
-		return "0"
-	case d >= 72*time.Hour:
-		days := d.Hours() / 24
-		if days == math.Trunc(days) {
-			return fmt.Sprintf("%dd", int(days))
-		}
-		return fmt.Sprintf("%.1fd", days)
-	case d >= time.Hour:
-		return fmt.Sprintf("%dh", int(math.Round(d.Hours())))
-	default:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	}
 }
 
 func dimStyle() lipgloss.Style    { return lipgloss.NewStyle().Foreground(colorGray) }

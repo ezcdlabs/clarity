@@ -188,10 +188,10 @@ func WeekDividerLabel(s WeekStat) string {
 	// leave a bare "0 deploys" sitting above another week's rows, reading as
 	// a statement about the section rather than about this week.
 	if s.AvgLead == 0 {
-		return fmt.Sprintf("W%d-%02d %d %s", s.Year, s.Week, s.Deploys, deploysLabel)
+		return fmt.Sprintf("%s %d %s", WeekLabel(s), s.Deploys, deploysLabel)
 	}
-	return fmt.Sprintf("W%d-%02d  %d %s  %s avg",
-		s.Year, s.Week, s.Deploys, deploysLabel, FormatElapsed(s.AvgLead))
+	return fmt.Sprintf("%s  %d %s  %s avg",
+		WeekLabel(s), s.Deploys, deploysLabel, FormatElapsed(s.AvgLead))
 }
 
 // LimitNoticeLabel formats the note that closes a truncated commit list

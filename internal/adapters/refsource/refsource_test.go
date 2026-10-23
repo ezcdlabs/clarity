@@ -3,6 +3,7 @@ package refsource_test
 import (
 	"context"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -267,5 +268,60 @@ func TestNew_RegistersClarityFetchRefspec(t *testing.T) {
 	if !strings.Contains(string(out), refs.ClarityFetchRefspec) {
 		t.Errorf("expected remote.origin.fetch to include %q, got:\n%s",
 			refs.ClarityFetchRefspec, out)
+	}
+}
+
+// Once is the one-shot read `git clarity check` needs, and the reason it is
+// not Watch: Watch swallows its fetch error on purpose, so a watcher that
+// loses the network keeps rendering the last good state instead of blanking
+// the view. A push-time check that did the same would answer from stale refs
+// and call it green — the one failure mode that would make the command worse
+// than not having it.
+func TestSource_Once_ReturnsASnapshot(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "main",
+		RepoName: "myrepo",
+		Limit:    50,
+		Clock:    clock.NewFake(),
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+
+	snap, err := src.Once()
+	if err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	if len(snap.Commits) == 0 {
+		t.Error("Once returned no commits")
+	}
+	if snap.RepoName != "myrepo" {
+		t.Errorf("RepoName = %q, want %q", snap.RepoName, "myrepo")
+	}
+}
+
+func TestSource_Once_ReportsAnUnreachableRemote(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "main",
+		Limit:    50,
+		Clock:    clock.NewFake(),
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+	gittest.SetRemoteURL(t, clone.Path, "origin", filepath.Join(t.TempDir(), "not-a-repo"))
+
+	if _, err := src.Once(); err == nil {
+		t.Error("Once succeeded against an unreachable remote, want an error")
 	}
 }

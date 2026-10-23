@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
 	"github.com/ezcdlabs/clarity/internal/cache"
+	"github.com/ezcdlabs/clarity/internal/checkcmd"
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
@@ -35,6 +37,12 @@ func main() {
 		return
 	}
 	if err := dispatch(os.Args[1:]); err != nil {
+		// A subcommand whose exit code is part of its interface reports it
+		// this way, having already written its own output.
+		var exit exitError
+		if errors.As(err, &exit) {
+			os.Exit(exit.code)
+		}
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -61,6 +69,9 @@ func dispatch(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "metrics" {
 		return runMetrics(args[1:])
+	}
+	if len(args) > 0 && args[0] == "check" {
+		return runCheck(args[1:])
 	}
 	opts, err := parseRootArgs(args)
 	if err != nil {
@@ -365,6 +376,144 @@ func runPlain(opts rootOptions) error {
 	// truncate further" inside RenderSnapshot.
 	return plainRendererFor(opts).Render(ctx, lens.Views(ctx))
 }
+
+// checkTimeout bounds how long `check` waits for its first snapshot. The
+// Source port emits on a channel and swallows its own read errors — a repo
+// whose events ref cannot be read emits nothing at all rather than failing —
+// so a clock is the only thing that separates "still fetching" from "never
+// going to answer". Twenty seconds covers a cold fetch over a slow link
+// without making a push feel hung; past it the answer is undetermined, which
+// does not block.
+const checkTimeout = 20 * time.Second
+
+const checkHelp = `usage: git clarity check [--limit N] [--cache-dir <path>]
+
+Exits 0 when CI is not red on the trunk, 1 when the newest commit that
+resolved CI failed, and 0 with a note on stderr when it could not tell.
+Prints nothing at all when the trunk is green, so it composes:
+
+  git clarity check && git push
+
+CI only. A failed deploy never blocks a push: it is not a failure another
+commit makes worse, and it is per-flow besides.
+
+There is no flag to pass the check. To push onto a red trunk, run ` + "`git push`" + `
+on its own — if the break is yours to fix, that is the expected thing to do.
+`
+
+// runCheck drives `git clarity check` — the pre-push predicate.
+//
+// It reads one snapshot from the configured Source and classifies it. Three
+// things it deliberately does not do:
+//
+//   - It does not go through the Lens. Groupings, lead times and flows are
+//     irrelevant to one boolean, and CachedLens would hand back a stale
+//     cached view first — gating a push on a cached answer is precisely the
+//     bug this command would be blamed for.
+//   - It does not print on green. The command is meant to be prefixed to
+//     every push, and a tool that chatters on the happy path gets dropped
+//     from the habit inside a week.
+//   - It does not offer a way past itself. Dropping the `&&` is the way past,
+//     and that is the only bypass that cannot be baked into a wrapper script.
+func runCheck(args []string) error {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	limit := fs.Int("limit", 100, "max commits to read while looking for the newest resolved CI status")
+	cacheDir := fs.String("cache-dir", "", "directory for clarity's local caches; overrides $CLARITY_CACHE_DIR and the default .git/clarity")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fmt.Fprint(os.Stdout, checkHelp)
+			return nil
+		}
+		return checkFailed(fmt.Errorf("usage: git clarity check [--limit N] [--cache-dir <path>]: %w", err))
+	}
+	if fs.NArg() != 0 {
+		return checkFailed(fmt.Errorf("unknown argument %q", fs.Arg(0)))
+	}
+
+	repoPath, err := repoRoot()
+	if err != nil {
+		return checkFailed(fmt.Errorf("not a git repository: %w", err))
+	}
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		return checkFailed(err)
+	}
+	resolvedCache := config.ResolveCacheDir(config.CacheDirSources{
+		Flag:     *cacheDir,
+		Env:      os.Getenv("CLARITY_CACHE_DIR"),
+		RepoRoot: repoPath,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+	defer cancel()
+
+	result := checkTrunk(ctx, cfg, repoPath, resolvedCache, *limit)
+	if result.Report != "" {
+		fmt.Fprintln(os.Stderr, strings.TrimRight(result.Report, "\n"))
+	}
+	if code := result.Outcome.ExitCode(); code != 0 {
+		return exitError{code: code}
+	}
+	return nil
+}
+
+// checkTrunk reads one snapshot and classifies it, turning every failure into
+// an undetermined answer rather than an error. Nothing that goes wrong while
+// *finding out* whether the trunk is red is grounds for blocking a push —
+// offline, an expired credential, a misconfigured source, a timeout: none of
+// them is a broken build, and a check that blocked on any of them would be
+// uninstalled the first time someone worked on a train.
+func checkTrunk(ctx context.Context, cfg config.Config, repoPath, cacheDir string, limit int) checkcmd.Result {
+	// The events-ref source — the default, and every repo without a
+	// clarity.github section — is read through TrunkReader rather than the
+	// Source port, so a fetch that failed comes back as "could not tell"
+	// instead of being quietly answered from stale remote-tracking refs. That
+	// distinction is the difference between a check that is useless offline
+	// and one that is actively misleading.
+	if cfg.Clarity == nil || cfg.Clarity.GitHub == nil {
+		src, err := refsource.New(refsource.Options{
+			RepoPath: repoPath,
+			RepoName: filepath.Base(repoPath),
+			Remote:   "origin",
+			Branch:   cfg.Branch,
+			Limit:    effectiveLimit(limit),
+		})
+		if err != nil {
+			return checkcmd.Undetermined.Result(err.Error())
+		}
+		return checkcmd.Read(ctx, src, cfg.Branch, time.Now())
+	}
+
+	// The GitHub Actions source has no one-shot read, so it goes through the
+	// Source port and inherits its silence about failures. It is less exposed
+	// than that sounds: buildSource pre-flights it with Validate, so a
+	// misconfigured mapping or a missing credential fails before any snapshot
+	// is taken. A poll that breaks after that is the remaining gap.
+	src, err := buildSource(ctx, cfg, rootOptions{limit: limit, cacheDir: cacheDir}, repoPath, cacheDir)
+	if err != nil {
+		return checkcmd.Undetermined.Result(err.Error())
+	}
+	return checkcmd.FromSource(ctx, src, cfg.Branch, time.Now())
+}
+
+// checkFailed reports a check that could not run at all — a bad flag, not a
+// git repository — and exits 2 rather than 1.
+//
+// The code matters: `check && git push` reads 1 as "the trunk is red", so a
+// typo in a flag must not be able to impersonate a broken build. One meaning
+// per exit code is the whole contract of a predicate.
+func checkFailed(err error) error {
+	fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	return exitError{code: 2}
+}
+
+// exitError carries a process status out of a subcommand whose exit code is
+// part of its interface and which has already written whatever the user needs
+// to see. main exits with the code and prints nothing further.
+type exitError struct{ code int }
+
+func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
 // buildSource picks the inbound Source adapter based on `.ezcd.json`'s
 // clarity.github section: present → ghsource, absent → refsource (the

@@ -2,6 +2,7 @@ package core
 
 import (
 	"sort"
+	"time"
 
 	"github.com/ezcdlabs/clarity/clarityrefs"
 )
@@ -115,6 +116,43 @@ func CIStatus(events []clarityrefs.Event) string {
 //     header red for a commit that is no longer HEAD and was already reverted.
 //     The newest commit that has an answer is the one the header speaks for.
 func CurrentStageStatus(commits []CommitView, stage string) string {
+	res, found := CurrentStage(commits, stage)
+	if !found {
+		return ""
+	}
+	return res.Status
+}
+
+// StageResolution is CurrentStage's answer: the resolved status for a stage
+// plus the commit and the event it came from.
+//
+// The identity is what separates this from CurrentStageStatus. A header badge
+// only needs the colour; `git clarity check` has to name the commit that broke
+// the trunk, who pushed it and how long it has been red, because "CI is red"
+// invites a retry while a named commit invites a wait or a fix.
+type StageResolution struct {
+	// Commit is the newest commit that resolved the stage.
+	Commit CommitView
+	// Status is "passed" or "failed" — never "started" or "skipped", which
+	// do not resolve a stage.
+	Status string
+	// Time is the resolving event's timestamp, not the commit's. It answers
+	// "how long has it been like this?", which is the question that decides
+	// whether a reader should wait for a fix or go and take it over.
+	Time time.Time
+}
+
+// CurrentStage returns the resolution of the given stage — the status of the
+// newest commit that has resolved it — together with the commit that carries
+// it. Reports false when no commit in the window has resolved the stage.
+//
+// This is the one implementation of the rule documented on CurrentStageStatus
+// above; that function is a thin projection of this one. Two independent
+// walks, one for the badge and one for `check`, could answer differently for
+// the same repo, and the disagreement would surface during an incident — which
+// is the worst possible moment to learn that the tool has two opinions about
+// whether main is green.
+func CurrentStage(commits []CommitView, stage string) (StageResolution, bool) {
 	for _, c := range commits {
 		var latest clarityrefs.Event
 		found := false
@@ -131,8 +169,8 @@ func CurrentStageStatus(commits []CommitView, stage string) string {
 			}
 		}
 		if found {
-			return latest.Status
+			return StageResolution{Commit: c, Status: latest.Status, Time: latest.Time}, true
 		}
 	}
-	return ""
+	return StageResolution{}, false
 }

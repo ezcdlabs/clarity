@@ -194,3 +194,25 @@ func refsEqual(a, b map[string]string) bool {
 	}
 	return true
 }
+
+// Once fetches and builds a single snapshot, returning the fetch error that
+// Watch deliberately swallows.
+//
+// The two have different requirements, and the difference is the whole point
+// of this method. A watcher that loses the network should keep rendering the
+// last state it knew rather than blank the view, so Watch ignores the failure
+// and re-emits from local refs. `git clarity check` has to answer a question
+// about the remote *right now*: doing the same thing there means gating a push
+// on stale refs, and reporting green because the fetch that would have found
+// the breakage never ran.
+func (s *Source) Once() (core.Snapshot, error) {
+	if err := fetchAll(s.opts.RepoPath, s.opts.Remote, s.opts.Branch); err != nil {
+		return core.Snapshot{}, err
+	}
+	snap, err := BuildSnapshot(s.opts.RepoPath, s.opts.Branch, s.opts.Limit)
+	if err != nil {
+		return core.Snapshot{}, err
+	}
+	snap.RepoName = s.opts.RepoName
+	return snap, nil
+}

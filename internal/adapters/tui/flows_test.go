@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
@@ -220,6 +222,91 @@ func TestModel_ChromeBarCutsOutTheSelectedFlow(t *testing.T) {
 	run := ansiOf(chromeSeq) + strings.Repeat(" ", 10)
 	if !strings.Contains(header, run) {
 		t.Errorf("chrome does not extend past the strip across the row:\n%q", header)
+	}
+}
+
+// The bar is one surface, so every visible column of a barred header must be
+// painted — either chrome or the selected tab's cutout. The joins between the
+// header's parts used to be bare strings, and each one punched a terminal-
+// coloured hole through the bar.
+func TestModel_ChromeBarPaintsEveryColumn(t *testing.T) {
+	bg := lipgloss.Color("#0d1117")
+	for _, stale := range []bool{false, true} {
+		view := twoFlowView()
+		view.Stale = stale
+
+		m := tui.New().WithSize(100, 40).WithBackground(bg)
+		next, _ := m.Update(tui.ViewMsg(view))
+		header := strings.SplitN(next.(tui.Model).View().Content, "\n", 2)[0]
+
+		if n := bareColumns(header); n > 0 {
+			t.Errorf("stale=%v: %d visible cells of the barred header carry no background —\n"+
+				"the bar reads as patches on the terminal instead of one surface:\n%q",
+				stale, n, header)
+		}
+	}
+}
+
+// bareColumns walks a rendered line tracking SGR state and counts the visible
+// runes painted with no explicit background colour.
+func bareColumns(line string) int {
+	bg := false
+	count := 0
+	for i := 0; i < len(line); {
+		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '[' {
+			end := strings.IndexByte(line[i:], 'm')
+			if end < 0 {
+				break
+			}
+			params := strings.Split(line[i+2:i+end], ";")
+			for j := 0; j < len(params); j++ {
+				switch params[j] {
+				case "", "0", "49":
+					bg = false
+				case "48":
+					bg = true
+					// Skip the colour spec so an r/g/b value of 0 or 49 is not
+					// mistaken for a reset.
+					if j+1 < len(params) {
+						switch params[j+1] {
+						case "2":
+							j += 4
+						case "5":
+							j++
+						}
+					}
+				}
+			}
+			i += end + 1
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		if !bg && r != utf8.RuneError {
+			count++
+		}
+		i += size
+	}
+	return count
+}
+
+// The terminal's answer to the foreground query steers the chrome. On a
+// mid-tone background with light text, lightening the bar parks it right under
+// the text — so it is cut darker instead, away from the text.
+func TestModel_ForegroundSteersChromeTowardReadability(t *testing.T) {
+	bg := lipgloss.Color("#44475a")
+	m := tui.New().WithSize(100, 40).WithBackground(bg)
+	next, _ := m.Update(tui.ViewMsg(twoFlowView()))
+	answered, _ := next.(tui.Model).Update(tea.ForegroundColorMsg{Color: lipgloss.Color("#f8f8f2")})
+	header := strings.SplitN(answered.(tui.Model).View().Content, "\n", 2)[0]
+
+	lightened := ansiOf(lipgloss.NewStyle().Background(lipgloss.Lighten(bg, 0.10)).Render(" "))
+	darkened := ansiOf(lipgloss.NewStyle().Background(lipgloss.Darken(bg, 0.10)).Render(" "))
+
+	if strings.Contains(header, lightened) {
+		t.Errorf("chrome was lightened under light text on a mid-tone background:\n%q", header)
+	}
+	if !strings.Contains(header, darkened) {
+		t.Errorf("chrome was not darkened away from the text:\n%q", header)
 	}
 }
 

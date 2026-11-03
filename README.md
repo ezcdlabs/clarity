@@ -646,20 +646,44 @@ sharing the body's colour, which reads as a tab continuous with the content it
 controls — the browser/editor idiom — and is a stronger signal than raising it
 would be.
 
-The surface is **derived from the real terminal background**, not picked from the
-palette. `lipgloss.BackgroundColor` gets the actual colour over OSC 11 and
-`lipgloss.Lighten(bg, 0.10)` gives the chrome, so the bar picks up each theme's own
-tint: Solarized's comes out blue, Gruvbox's warm, a light theme's is darkened
-instead. A colour chosen from the ANSI text palette cannot do this, which is why
-every fixed grey looked pasted on.
+The surface is **derived from the real terminal colours**, not picked from the
+palette. `lipgloss.BackgroundColor` gets the background over OSC 11 before the
+program starts, and the chrome is an elevation of it, so the bar picks up each
+theme's own tint: Solarized's comes out blue, Gruvbox's warm. A colour chosen
+from the ANSI text palette cannot do this, which is why every fixed grey looked
+pasted on.
 
-Three consequences of that, all of which need handling rather than hoping:
+**Which way to elevate is decided by contrast, not by a light/dark verdict.** The
+default foreground is queried too (OSC 10, via `tea.RequestForegroundColor` in
+`Init` — by then bubbletea owns stdin, so only its event loop can read the answer
+without racing its input reader). Two candidates are considered: one step lighter
+(`Lighten(bg, 0.10)`) and one step darker (`Darken(bg, 0.10)`, reduced to `0.06`
+on light backgrounds, where multiplicative darkening reads much stronger). A
+candidate is viable only while it still contrasts with the background itself
+(WCAG ratio ≥ 1.1) — lightening white or darkening near-black produces no visible
+bar at all. Among viable candidates, the one keeping more contrast against the
+foreground wins. Near-black and near-white themes land exactly where the old
+light/dark rule put them, but a mid-tone theme — Herdr's default scheme is one —
+used to get the bar lightened to sit right under its own text; it now elevates
+away from the text instead of into it. See `chromeSurface`.
 
-- **The query can fail** — no TTY, a terminal that ignores OSC 11, piped output.
-  There is no colour to derive an elevation from in that case, so no bar is drawn
-  and the selected flow is marked by weight and an underline instead. A fill
-  picked from the ANSI text palette was considered and rejected: a colour that is
-  not made of the background can only ever look pasted on to it.
+**The bar is one surface, so every column of it is painted** — including the
+two-space joins between the header's parts, which are rendered on the chrome like
+everything else. lipgloss does not re-apply an outer style after an inner SGR
+reset, so wrapping the assembled row in a background style cannot do this; each
+constituent, joiners included, carries the background itself. A bare join is a
+hole punched through the bar.
+
+Three consequences of the derivation, all of which need handling rather than
+hoping:
+
+- **The queries can fail** — no TTY, a terminal that ignores OSC 11, piped
+  output. There is no colour to derive an elevation from in that case, so no bar
+  is drawn and the selected flow is marked by weight and an underline instead. A
+  fill picked from the ANSI text palette was considered and rejected: a colour
+  that is not made of the background can only ever look pasted on to it. The
+  foreground query failing costs less: the bar still renders, and the elevation
+  falls back to the directional rule (dark lightens, light darkens).
 - **Elevation needs truecolor.** On a 256-colour terminal the derived shade
   quantises to the nearest cube entry and can land back on a flat grey. Not
   detected yet — a terminal that answers the query but renders few colours gets

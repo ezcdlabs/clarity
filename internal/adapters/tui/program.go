@@ -76,6 +76,12 @@ type Model struct {
 	// terminal that ignores the query — and the strip falls back accordingly.
 	background    color.Color
 	backgroundSet bool
+	// foreground is the terminal's default text colour, from the OSC 10 query
+	// bubbletea runs for us (RequestForegroundColor in Init). The chrome picks
+	// which way to elevate by it: an elevation that lands under the text costs
+	// more legibility than it buys surface. nil until the terminal answers,
+	// and the chrome falls back to its directional rule meanwhile.
+	foreground color.Color
 	// requestedFlow is the --deploy argument, resolved against the first View
 	// that can answer it. Not resolved once at startup, because with nothing
 	// declared the flows aren't known until data arrives.
@@ -107,20 +113,11 @@ func (m Model) WithBackground(bg color.Color) Model {
 }
 
 // chrome returns the elevated surface the header bar is painted in, or nil
-// when there is no background to derive one from.
+// when there is no background to derive one from. The derivation itself —
+// which way to elevate, steered by contrast against the foreground and the
+// background — lives in chromeSurface.
 func (m Model) chrome() color.Color {
-	bg := m.terminalBackground()
-	if bg == nil {
-		return nil
-	}
-	// Derive the direction from the background in hand rather than the global
-	// verdict: they agree in production, but only this one honours an
-	// explicitly supplied background. Lightening a pale terminal produces a
-	// bar invisible against it.
-	if isDarkColor(bg) {
-		return lipgloss.Lighten(bg, chromeElevation)
-	}
-	return lipgloss.Darken(bg, chromeElevation*lightElevationRatio)
+	return chromeSurface(m.terminalBackground(), m.foreground)
 }
 
 func (m Model) terminalBackground() color.Color {
@@ -234,7 +231,14 @@ func (m Model) WithSize(width, height int) Model {
 	return m
 }
 
-func (m Model) Init() tea.Cmd { return tickEvery() }
+// Init starts the spinner tick and asks the terminal for its default
+// foreground colour. Unlike the background — queried before the program claims
+// stdin (see newProgram) — this query has to ride bubbletea's own event loop:
+// by Init the loop owns stdin, and only it can read the answer without racing
+// its input reader.
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(tickEvery(), tea.RequestForegroundColor)
+}
 
 // tickEvery fires fast enough for smooth spinner animation. Lead-time
 // timers display whole seconds so they only visually update once per
@@ -297,6 +301,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.requestResolved = true
 		}
 		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	case tea.ForegroundColorMsg:
+		m.foreground = msg.Color
 		return m, nil
 	case tickMsg:
 		m.spinnerIdx++
@@ -369,6 +376,11 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 		}
 		return st
 	}
+	// The joins between parts are painted too — a bare "  " is a hole punched
+	// through the bar, two columns of terminal background in the middle of the
+	// surface. Unbarred they render as the plain strings they always were.
+	sp := on(lipgloss.NewStyle()).Render(" ")
+	gap := sp + sp
 
 	titleStyle := on(lipgloss.NewStyle().Bold(true))
 	if ciStatus == "failed" || deployStatus == "failed" {
@@ -377,20 +389,20 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 	title := titleStyle.Render(snap.RepoName)
 
 	dot := on(lipgloss.NewStyle().Foreground(colorGray)).Render("·")
-	ci := on(lipgloss.NewStyle().Foreground(colorGray)).Render("ci:") + " " + statusIcon(ciStatus, bg)
+	ci := on(lipgloss.NewStyle().Foreground(colorGray)).Render("ci:") + sp + statusIcon(ciStatus, bg)
 
 	parts := []string{title, dot, ci, dot}
 	if view.Stale {
 		parts = append(parts,
 			on(lipgloss.NewStyle().Foreground(colorGray).Italic(true)).Render("refreshing…"), dot)
 	}
-	left := strings.Join(parts, "  ")
+	left := strings.Join(parts, gap)
 	right := ""
 	if rightHint != "" {
 		right = on(lipgloss.NewStyle().Foreground(colorGray)).Render(rightHint)
 	}
 
-	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + " " + statusIcon(deployStatus, bg)
+	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + sp + statusIcon(deployStatus, bg)
 	if len(view.Flows) > 1 {
 		// The strip takes whatever the fixed parts leave. If that isn't enough
 		// the quit hint goes first — it is the only thing on the row carrying
@@ -411,12 +423,12 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 		deploy = renderStrip(view.Flows, selected, chrome, base, budget, true)
 	}
 
-	line := left + "  " + deploy
+	line := left + gap + deploy
 	if width <= 0 {
 		if right == "" {
 			return line
 		}
-		return line + "  " + right
+		return line + gap + right
 	}
 
 	pad := width - lipgloss.Width(line) - lipgloss.Width(right)

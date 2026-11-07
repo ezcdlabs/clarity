@@ -45,7 +45,7 @@ In any git repository, run:
 git clarity
 ```
 
-This opens an alt-screen TUI showing the most recent commits on `main` with their pipeline status. Press `q` to quit. No setup beyond install — clarity adds the events fetch refspec to your repo's git config the first time it runs.
+This opens an alt-screen TUI showing the most recent commits on the trunk (detected from the repository — see [The TUI](#the-tui-git-clarity)) with their pipeline status. Press `q` to quit. On a repo that has never been set up it opens on a welcome pane instead (see [First run and setup](#first-run-and-setup-git-clarity-init)); clarity also adds the events fetch refspec to your repo's git config the first time it runs.
 
 When `stdout` is not a terminal (e.g. piped to another command, redirected to a file, or invoked by an agent), `git clarity` automatically switches to a static plain-text rendering of the same view — header line plus HEAD / CI Passed / Deployed sections, no animation, no ANSI escapes. Force it in an interactive terminal with `--plain`. Three more flags shape the output in either mode:
 
@@ -64,6 +64,18 @@ The current week is reported whether or not it has deploys — `W2026-39  0 depl
 An empty current week is followed by a blank line, so the section opens the way `HEAD` and `CI Passed` do when they are empty. Without it the next week's divider butts directly against the header and the eye binds its totals to it, which is the misreading this whole rule exists to prevent. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" averages the per-commit lead times shown on the right of each row — see [Lead time](#lead-time) for what those measure and how to change it. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
 
 The oldest week in a truncated window gets **no** divider. `--limit` almost always cuts mid-week, so that week is missing however many deploys fell below the cap — and unlike a missing row, an undercounted aggregate is wrong in a way the reader cannot see. Dropping it is the honest option: a divider that isn't there prompts a `--limit 0`, whereas "2 deploys" for a week that had nine just gets believed. Weeks above the boundary are kept; they can only be short by a commit authored below the cut but deployed inside the window, which is the long-lead case `--limit 0` also answers.
+
+### First run and setup: `git clarity init`
+
+A repo nobody has set up has no `refs/clarity/config` (see [The config ref](#the-config-ref-refsclarityconfig)), and on such a repo the TUI opens on a **welcome pane** rather than a dashboard where every commit sits meaninglessly "before CI Passed". The pane names the detected trunk, explains what is missing, and offers two on-screen options — **Set up this repo** and **Exit** — navigated with the arrow keys and confirmed with enter. (On-screen selectables, never bare hotkeys: a visible choice confirmed with enter beats an invisible, instant letter binding.) Choosing setup writes the default config ref and pushes it, then carries straight on into the dashboard; the pane also points at `git clarity onboard` for handing the rest of the wiring to an agent.
+
+`git clarity init` is the same act as a command: it writes `refs/clarity/config` with defaults and pushes it, and does nothing (saying so) when the ref already exists — a re-run must never clobber choices someone has made since. There is nothing to ask, so it is a one-shot, not a wizard: the trunk is detected, the lead time mode has a default, and the events source defaults to the repo's own events ref. It exists alongside the TUI's welcome pane for the caller that cannot press enter in a TUI — a script, a CI bootstrap, or the agent following the onboarding prompt. Setup needs push permission, once, by whoever runs it; the config reaches everyone else by fetch.
+
+### Onboarding with an agent: `git clarity onboard`
+
+Setting up the *tooling* is one command, but instrumenting a pipeline and backfilling its history is real work — and it is work an AI agent demonstrably does well when handed the repo and told how clarity's events work. `git clarity onboard` prints exactly that briefing to stdout: a self-contained prompt carrying facts the binary gathered on the spot (the remote, the detected trunk, whether the repo is already set up, whether GitHub Actions workflows exist) plus the full event grammar, the batch backfill format, and a verification step. Paste it into Claude Code or any other agent; `git clarity onboard | wl-copy` works too.
+
+The prompt lives in the binary rather than on a website on purpose: it is versioned with the binary, so it always describes the event format this exact build reads instead of drifting independently; it works offline; and it opens with repo-specific facts a hosted document would make the agent rediscover. It also instructs the agent to backfill only runs the CI provider actually recorded — with their real SHAs and timestamps — never invented history.
 
 ### Lead time
 
@@ -379,6 +391,64 @@ Statuses per stage: `started`, `passed`, `failed`, `skipped`.
 
 Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based development cares about exactly three things, latest HEAD, latest green CI, and latest production deploy, and that maps onto two state transitions. A "test" or "lint" or "integration" stage is not a separate lifecycle position; it's part of CI that either passes or doesn't. Adding more stages would dilute the "is HEAD green?" question this tool exists to answer. The `git clarity report` command rejects any other stage name with an error rather than letting custom names drift in.
 
+### The config ref (`refs/clarity/config`)
+
+Clarity's shared configuration lives in a second custom ref, as one file
+(`config`) in git-config syntax — the dialect git users already read and git
+tooling already edits:
+
+```gitconfig
+[clarity]
+	source = events-ref
+	leadTime = all
+[deploy "web"]
+	target = web-eu
+	target = web-us
+[deploy "mobile"]
+```
+
+`clarity.source` names where events come from. This build understands one
+value, `events-ref` (the repo's own `refs/clarity/events`), but the key is
+the dispatch point future sources plug into — another repository's ref (so a
+code repo can stay read-only for reporters), another backend entirely. An
+old binary reading an unknown source refuses loudly rather than silently
+rendering the wrong repo's events as this one's. `clarity.leadTime` is the
+[lead time mode](#lead-time); `[deploy "<name>"]` sections declare the
+[deploy flows](#deploy-targets). Unknown sections and keys are ignored —
+the forward-compat contract — but an unknown `source` is not, because it
+means the events live somewhere this build cannot read.
+
+**Existence is the setup signal.** "Has clarity been set up on this repo?"
+is one raceless, binary fact — the ref exists or it doesn't — which is what
+the TUI's welcome pane keys off, and what `git clarity init` creates. No
+heuristics over event counts, no probing for config files.
+
+**The ref is a commit chain.** Every config change commits on top of the
+previous one, so `git log refs/clarity/config` is the audit trail. That is
+most of what a committed, PR-reviewed file would have bought — and the ref
+avoids that file's real flaw: config about where events come from is
+repo-level truth, not a property of any one commit, and a file at the trunk
+tip leaves every branch and old checkout carrying a possibly-stale copy.
+The ref also travels with `git fetch` exactly as the events do, so a client
+with no checkout at all (the mobile app) reads the same config everyone
+else does, and the working tree stays free of tool droppings.
+
+**There is deliberately no `branch` key.** The trunk is detected from the
+repository itself (see [The TUI](#the-tui-git-clarity)); a config that
+could disagree with the repo would just be a second place for that truth
+to go stale. A repo whose trunk detection fails is fixed with
+`git remote set-head origin --auto` — a git repair that helps every
+origin/HEAD reader, not a clarity setting.
+
+**Legacy `.ezcd.json` is a fallback, not a peer.** A committed `.ezcd.json`
+(the original config file, shared with the broader ezcd tooling idea that
+was since dropped) is still honoured when the config ref is absent, so
+existing repos keep working — including its pinned `branch`, the one place
+a branch pin survives. The moment `refs/clarity/config` exists it wins
+outright and the file is ignored rather than merged: two half-applied
+configs would be undebuggable. The file, its parser and this paragraph are
+all scheduled to go once the known installs have migrated.
+
 ### Why per-file events on a custom ref
 
 A single shared blob (e.g. git notes) requires read-modify-write semantics for every append, with concurrent CI jobs racing on the push. Per-file events solve this:
@@ -415,28 +485,29 @@ per-subsystem status board.
 and `deploy passed ios` produce two flows, not one flow plus an overlay. A team
 adding mobile doesn't have to touch the web pipeline in the same commit.
 
-**Flows are declared in `.ezcd.json`,** which maps each flow to the target(s) whose
-events it contains:
+**Flows are declared in the clarity config** (see [The config ref](#the-config-ref-refsclarityconfig)),
+one `[deploy "<name>"]` section per flow, each mapping the flow to the
+target(s) whose events it contains:
 
-```json
-{
-  "clarity": {
-    "deploys": [
-      { "name": "web",     "targets": ["", "web"] },
-      { "name": "iOS",     "targets": ["ios"] },
-      { "name": "Android", "targets": ["android"] }
-    ]
-  }
-}
+```gitconfig
+[deploy "web"]
+	target =
+	target = web
+[deploy "iOS"]
+	target = ios
+[deploy "Android"]
+	target = android
 ```
 
-`""` is the untargeted deploy — the literal value in the data, not a keyword. When
-a flow's name is its only target the entry shortens to a bare string, so a repo
-that has never renamed anything writes `"deploys": ["web", "ios", "android"]`.
-The key is `deploys` rather than `tabs` because it describes the repo's
-deployable units, not a UI affordance: plain mode consumes the same config to
-produce stacked sections, and the file is useful documentation of what the
-monorepo actually ships.
+The empty `target =` is the untargeted deploy — the literal value in the data,
+not a keyword. A section with no `target` lines claims its own name, so a repo
+that has never renamed anything writes three bare `[deploy "..."]` headers and
+nothing else. The section is `deploy` rather than `tab` because it describes
+the repo's deployable units, not a UI affordance: plain mode consumes the same
+config to produce stacked sections, and the config is useful documentation of
+what the monorepo actually ships. (The legacy `.ezcd.json` spelling —
+`clarity.deploys`, entries either bare strings or `{name, targets}` objects —
+is still honoured as a fallback; see the config ref section.)
 
 **Selecting a flow: `--deploy`.** A root flag, not a plain-mode one — plain mode
 narrows to that flow's section, and the TUI opens with it selected. The latter is
@@ -653,6 +724,14 @@ theme's own tint: Solarized's comes out blue, Gruvbox's warm. A colour chosen
 from the ANSI text palette cannot do this, which is why every fixed grey looked
 pasted on.
 
+**"No answer" has two shapes, and both mean assume-dark.** On a terminal that
+ignores OSC 11 `lipgloss.BackgroundColor` can return a nil colour with a *nil
+error* — Windows conhost does exactly this — so a nil background is the same
+case as an error: the light/dark verdict defaults to dark and the derived
+surfaces are skipped (`chromeSurface(nil, …)` returns nil, there is nothing to
+elevate from). Treating nil as a colour instead crashed the whole TUI on
+Windows before the first frame.
+
 **Which way to elevate is decided by contrast, not by a light/dark verdict.** The
 default foreground is queried too (OSC 10, via `tea.RequestForegroundColor` in
 `Init` — by then bubbletea owns stdin, so only its event loop can read the answer
@@ -735,9 +814,10 @@ SHAs and commit subjects out of. Worth revisiting only if click-to-select can
 be had without that cost.
 
 On overflow the strip degrades in stages, in the order things stop earning their
-columns: the quit hint goes first — the only thing on the row carrying no
-information — then names shorten to an ellipsis, then names go entirely, then the
-group label, and finally the separators. A flow is never hidden and never
+columns: the refreshing indicator's word goes first (its spinner stays — one
+column that still says a fetch is in flight), then names shorten to an
+ellipsis, then names go entirely, then the group label, then the separators,
+and the spinner only in the final extremity. A flow is never hidden and never
 scrolled out of reach, since the stuck deploy is the one most worth seeing and
 would be the one off-screen; at the extreme the strip becomes a row of bare
 status glyphs, which is still the higher-priority half of what a tab carries.
@@ -780,16 +860,24 @@ The events ref isn't fetched by default. The first time `git clarity` runs in a 
     fetch = +refs/clarity/events:refs/clarity/events
 ```
 
-This is a one-time, automatic step.
+This is a one-time, automatic step. The config ref travels differently: every
+command fetches `refs/clarity/config` explicitly (best-effort, so offline
+answers from the last fetch) rather than through a refspec — the read has to
+work in a fresh CI clone that never ran the TUI, and `report` enforcing
+declared targets is exactly such a reader.
 
 ---
 
 ## The TUI: `git clarity`
 
-A live updating terminal view of the most recent commits on the current branch (default: `main`), with pipeline stages and statuses rendered per commit.
+A live updating terminal view of the most recent commits on the trunk, with pipeline stages and statuses rendered per commit.
+
+**Which branch is the trunk** is resolved the same way for every command (`loadConfig` in `cmd/git-clarity`): the repository itself is asked — origin/HEAD (the remote's default branch, recorded at clone time, which gets `master`, `trunk` or `develop` right where any name probe cannot), then `main`, then `master`, each candidate only accepted if it actually resolves to a commit, so a stale origin/HEAD falls through (`gitlog.DetectTrunk`). A master-trunk repo therefore works with zero config, and there is no branch setting to drift out of date — only a legacy `.ezcd.json` pin still overrides detection, for as long as that fallback lives. The checked-out branch is deliberately **not** in the chain: silently watching whatever happens to be checked out would point the dashboard — and the `check` push gate — at a feature branch, a wrong answer that looks right. When nothing conventional resolves, the `main` default stands and the source pre-flight fails, hinting at the likely trunk and the git-native fix: `git remote set-head origin --auto`, which repairs origin/HEAD for every tool that reads it. Detection applies to `check` too, so the gate and the dashboard always agree on what "the trunk" means.
+
+**The TUI starts before anything else runs.** Config reading, the first fetch and the branch pre-flight all happen behind a live frame, each step naming itself in place of the old bare "Loading" — `reading clarity config (refs/clarity/config)`, `fetching master from origin`, `reading events` — so a stall shows its stage instead of lying that progress is being made. A repo with no config lands on the welcome pane (see [First run and setup](#first-run-and-setup-git-clarity-init)); a startup failure renders in-frame with its hint attached, rather than on a stderr the alt-screen would eat. Nothing is allowed to sit between "typed the command" and "seeing something": that gap is where a hang is indistinguishable from a tool that simply doesn't work.
 
 ```
-your-app · ci: ✓ · deploy: ✓                                   press q to quit
+your-app · ci: ✓ · deploy: ✓
 
 HEAD
   · grace   wip notes                                              30s
@@ -807,6 +895,15 @@ Deployed
 Above is the single-flow case, which is what a repo with one deploy target
 renders. A repo with several turns that header row into chrome carrying a strip of
 selectable flows — see [The header and the deploy strip](#the-header-and-the-deploy-strip).
+
+**The top-right of the header is the refreshing indicator's slot, and it is
+empty the rest of the time.** It used to say "press q to quit" permanently —
+the most prominent position on screen spent on something every TUI user
+already knows. Now `⠋ refreshing…` appears there only while the view is a
+stale replay from the snapshot cache with a fresh fetch in flight, and
+disappears when the fetch lands; when the deploy strip needs the room, the
+word is shed before any flow name is touched and the animated spinner alone
+remains (see the strip's overflow order below).
 
 **Nothing is allowed past the right edge.** A commit subject longer than the
 terminal used to push the lead time off-screen, and the viewport then scrolled
@@ -843,43 +940,21 @@ its colour bleeds across the rest of the row.
 
 Updates live as the underlying refs change. Polls the remote every 5 seconds (configurable) using git's lightweight `info/refs` endpoint to check whether the events ref or branch tip has moved, and only does a full fetch when SHAs differ.
 
-### GitHub Actions as a live source
+### The GitHub Actions live source: retired
 
-Teams who haven't yet added the `ezcdlabs/clarity` action to their workflows can point the TUI straight at the GitHub Actions API instead of the events ref. Add a `clarity.github` section to `.ezcd.json` mapping each stage to a workflow and the jobs that signal its start and completion:
+Earlier builds could point the TUI straight at the GitHub Actions API instead of the events ref, via a `clarity.github` workflow/job mapping in `.ezcd.json` written by an interactive `init --github` wizard. That adapter is gone, and the decision is worth recording:
 
-```json
-{
-  "clarity": {
-    "github": {
-      "ci": { "workflow": "CI", "jobs": ["build", "test"] },
-      "deploy": {
-        "workflow": "Deploy",
-        "jobs": { "started": ["approve"], "completed": ["release"] }
-      }
-    }
-  }
-}
-```
+- **Nobody used it, and everybody paid for it.** It carried a runtime dependency on an installed-and-authenticated `gh`, and essentially every field failure of the early-tester period — unauthenticated gh on WSL2, repo-slug resolution, workflow mapping against the wrong branch — was its surface.
+- **Agent-driven backfill removed its reason to exist.** The adapter's value was "a dashboard before your pipeline reports events"; `git clarity onboard` gets a repo to the same place by backfilling real events once, after which the events ref — the format every other part of clarity already speaks — carries everything.
+- **It was the only read-only backend, and that is the honest cost.** The events ref requires CI to push. Removing the GitHub poller removes today's answer to "my reporter can't have write access" — a deliberate bet that the better answer is a future `clarity.source` pointing at a separate events repository, which fits the ref model instead of bypassing it, and helps every CI system rather than only GitHub Actions.
 
-`jobs` accepts either shape: a single array (the same set gates both start and completion) or `{started, completed}` for distinct sets. Either stage may be omitted. `git clarity init --github` writes this file interactively — it discovers your workflows and jobs via `gh` and asks which ones map to CI and Deploy.
-
-When the section is present, `git clarity` derives its view from GitHub Actions runs (via the `gh` CLI, using its existing auth) rather than from `refs/clarity/events`.
+The hexagonal split keeps the bet cheap: `core.Source` is unchanged, and a future adapter re-enters through the same port the retired one left by. Two lessons from its code outlived it: subprocess stderr belongs in the error (`exit status 4` is actionable only once gh's own "run `gh auth login`" rides along, credential-redacted via `gitenv.Redact`), and every Source gets a startup `Validate` pre-flight so a misconfiguration fails with words rather than an empty dashboard.
 
 ### Local state: the cache directory
 
-Clarity keeps its local state in `<repo>/.git/clarity`, overridable with `--cache-dir <path>` or `$CLARITY_CACHE_DIR` (flag wins over env wins over default). Point it at a mounted volume when running in an ephemeral container, otherwise incremental polling starts cold on every restart.
+Clarity keeps its local state in `<repo>/.git/clarity`, overridable with `--cache-dir <path>` or `$CLARITY_CACHE_DIR` (flag wins over env wins over default).
 
-The directory holds:
-
-| File                       | Contents                                                              |
-| -------------------------- | --------------------------------------------------------------------- |
-| `snapshot-cache.json.gz`   | Last rendered snapshot, replayed at startup so the TUI paints instantly while a fresh fetch is in flight |
-| `github-runs.json.gz`      | Mirror of raw GitHub Actions run data, so polls stay incremental       |
-| `ghsource.log`             | Non-fatal diagnostics from the GitHub poller                           |
-
-All three are safe to `rm` — they're rebuilt on the next run.
-
-`ghsource.log` is where to look when the GitHub source renders fewer events than expected. Transient failures (a rate-limited API call, one run whose `/jobs` fetch failed) are deliberately non-fatal: the poller keeps the stale cache and retries on the next tick rather than killing the TUI. Those failures can't go to stderr — mid-frame writes corrupt the TUI's alt-screen — so they land in this file, one timestamped line each. Fatal startup errors (bad config, `gh` not authenticated) still fail loudly on stderr before the TUI starts.
+The directory holds one file, `snapshot-cache.json.gz` — the last rendered snapshot, replayed at startup so the TUI paints instantly while a fresh fetch is in flight. Safe to `rm`; it's rebuilt on the next run. (`check` still accepts `--cache-dir` so existing pre-push hooks don't break, but no longer caches anything: a push gate answering from a cache would be answering about the past.)
 
 ### Authentication
 
@@ -907,7 +982,7 @@ Examples:
 
 ### What it does
 
-1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else. A `<target>` is accepted only for `deploy`, and only if declared in `.ezcd.json` when that file declares any
+1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else. A `<target>` is accepted only for `deploy`, and only if declared in the clarity config when it declares any
 2. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
 3. Builds the event JSON (core fields + auto-detected `ci` metadata block)
 4. Generates a unique filename: `<unix-ts>-<short-uuid>.json`
@@ -1001,7 +1076,7 @@ An explicitly empty target — `report deploy passed ""`, which is what an unset
 `$TARGET` expands to — is an error rather than a silent untargeted deploy.
 Omitting the argument is how the untargeted deploy is reported.
 
-When `.ezcd.json` declares flows, a target none of them claims is refused at
+When the clarity config declares flows, a target none of them claims is refused at
 write time, so a typo fails the pipeline that made it instead of appearing days
 later as a flow nobody deploys to. A repo declaring nothing keeps the open
 vocabulary, since discovery is the zero-setup path.
@@ -1233,13 +1308,6 @@ decided by four lines on stderr, so they carry:
   making `check --wait && git push` back pressure rather than notification. It needs a
   timeout, since an agent blocked indefinitely inside one shell call is its own
   failure mode. Not built until the plain form has been lived with.
-- **A one-shot read for the GitHub Actions source.** `refsource` answers `check`
-  through `TrunkReader`, which surfaces the fetch error. `ghsource` has no equivalent
-  and still goes through `Source.Watch`, which swallows it. It is less exposed than
-  that sounds — `buildSource` pre-flights that source with `Validate`, so a bad
-  workflow mapping or a missing credential fails before any snapshot is taken — but a
-  poll that breaks *after* the pre-flight is a real gap, and closing it is a
-  `ghsource.Once` and nothing else.
 - **How much the push would bury.** "your push adds 2 commits on top" is the sentence
   that makes the consequence concrete, but `check` reads only the remote trunk — the
   local branch is not in its snapshot.
@@ -2141,6 +2209,8 @@ A fetch failure is fatal to a write rather than ignored. Continuing would rebuil
 
 The read side (the watcher) still ignores a failed events fetch: a TUI that cannot reach the remote should keep rendering the last known state rather than blank the view.
 
+**But that policy only holds once a first state exists.** Applied before one does, "degrade quietly" degenerates into a TUI that hangs blank forever: on a repo whose trunk isn't the "main" default and that has no `.ezcd.json` yet, the snapshot build failed on the missing branch on every poll, the watcher swallowed it every time, and nothing was ever emitted or explained. So the events-ref source gets the same startup pre-flight the GitHub source has always had: `buildSource` calls `refsource.Validate`, which fetches (best-effort, like the watcher's own first tick — a branch alive only on the remote is still watchable) and then requires the configured branch to resolve. The failure names the branch and the refs tried, and — since the usual cause is a stale or missing origin/HEAD rather than a wrong config — `main.go` appends what the trunk appears actually to be (via `initcmd.DetectTrunk`) and the git repair that fixes it: `git remote set-head origin --auto`. Since trunk auto-detection landed (see [The TUI](#the-tui-git-clarity)), this pre-flight is the backstop rather than the first line: it fires only when no origin/HEAD and neither conventional name resolves — and in the TUI it renders in-frame, part of the startup machine rather than a stderr line the alt-screen would eat.
+
 ### TUI library
 
 Bubble Tea (`charmbracelet/bubbletea`) is the standard choice in Go for TUIs of this kind. The render loop receives state updates from the watcher goroutine and re-renders.
@@ -2225,11 +2295,12 @@ Three layers of defence, because none is sufficient alone:
 - **Notification hooks** — Slack/Discord/webhook integrations for deploy events
 - **Historical retention / `git clarity gc`** — events can grow unbounded; a pruning command for old events
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
-- **Auto-detect current branch** — the TUI currently hardcodes `main`; defaulting to the current checkout (or accepting `--branch`) is straightforward once the need arises
-- **Per-target GitHub Actions source** — the `clarity.github` config maps one workflow/job set per stage, so the GitHub source is single-flow. Deploy targets currently require the events ref. Extending the config to a per-target deploy mapping (and `init --github` to ask for it) is the notable follow-on cost of the target model
+- **A `--branch` flag** — the trunk is auto-detected (see [The TUI](#the-tui-git-clarity)), which resolved the old "auto-detect current branch" question — deliberately *without* falling back to the current checkout, since a silently-wrong trunk misleads both the dashboard and the `check` gate. A per-invocation `--branch` override for looking at a non-trunk branch remains unbuilt until the need arises
+- **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in the config ref is the seam it plugs into
+- **`git clarity config` get/set** — the config ref is written whole by `init` and otherwise edited by hand (`git cat-file -p refs/clarity/config:config`, edit, re-commit via a helper that does not yet exist). A small get/set surface becomes worth building the first time someone needs to change `leadTime` without reading this README
 - **Candidacy in batch mode** — `report --batch` carries stage events only, so a monorepo backfilling its history gets flows but not candidacy, and every historical commit counts towards every flow's lead time. A `scope/` equivalent for the JSONL stream would close it
 - **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for
-- **Target name validation without config** — stages and statuses are enforced against closed sets in `internal/report`. Target names can't be: with no `.ezcd.json` declaring flows, any string is accepted, so a typo creates a ghost flow. Declaring flows closes the set (see [Deploy targets](#deploy-targets)); a repo that hasn't declared any keeps the open vocabulary by design
+- **Target name validation without config** — stages and statuses are enforced against closed sets in `internal/report`. Target names can't be: with no declared flows, any string is accepted, so a typo creates a ghost flow. Declaring flows closes the set (see [Deploy targets](#deploy-targets)); a repo that hasn't declared any keeps the open vocabulary by design
 - **Watcher fetch error surfacing** — fetch failures in the polling loop are currently silent; the TUI shows the last successful snapshot with no indication that it has gone stale. A subtle "(stale)" marker on the header would close that loop
 - **JSON output mode** — `git clarity --json` for scripting and piping into other tools
 - **Configuration file** — a `.clarity.json` or `.git/config` section for per-repo settings (poll interval, branch, etc) once there are options worth configuring

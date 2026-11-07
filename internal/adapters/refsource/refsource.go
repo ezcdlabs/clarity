@@ -18,6 +18,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/clock"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
+	"github.com/ezcdlabs/clarity/internal/gitlog"
 	"github.com/ezcdlabs/clarity/internal/refs"
 )
 
@@ -68,6 +69,29 @@ func New(opts Options) (*Source, error) {
 		return nil, fmt.Errorf("configure clarity fetch refspec: %w", err)
 	}
 	return &Source{opts: opts}, nil
+}
+
+// Validate reports whether the source can produce a snapshot at all — in
+// practice, whether the configured branch resolves to a ref.
+//
+// It exists because Watch cannot say so itself: its channel carries only
+// snapshots, and it deliberately swallows per-poll errors so a watcher that
+// loses the network keeps rendering the last state it knew. Applied before
+// any first state exists, that policy turns "the branch does not exist" —
+// the "main" default on a master-trunk repo — into a TUI that hangs blank
+// forever. Callers pre-flight with Validate, exactly as buildSource already
+// does for the ghsource path.
+//
+// The fetch comes first, best-effort like Watch's own: a branch with no
+// local ref but alive on the remote is watchable, because the first fetch
+// materialises its remote-tracking ref. Best-effort, because offline with
+// local refs in place is also watchable.
+func (s *Source) Validate(context.Context) error {
+	_ = fetchAll(s.opts.RepoPath, s.opts.Remote, s.opts.Branch)
+	if _, _, err := gitlog.Walk(s.opts.RepoPath, s.opts.Branch, 1); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Watch starts a polling goroutine and returns a channel of snapshots.

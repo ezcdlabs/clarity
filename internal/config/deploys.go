@@ -54,10 +54,7 @@ func (d *rawDeploy) UnmarshalJSON(data []byte) error {
 // zero-setup path, where flows are discovered from the events instead and
 // nothing is ever hidden.
 func (c Config) Deploys() []core.Flow {
-	if c.Clarity == nil {
-		return nil
-	}
-	return c.Clarity.Deploys
+	return c.DeclaredDeploys
 }
 
 // hydrateDeploys converts the wire entries into flows and rejects the

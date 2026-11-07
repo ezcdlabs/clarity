@@ -304,3 +304,33 @@ func TestSync_AShallowRefreshDoesNotUndoADeepening(t *testing.T) {
 			len(deep.Commits), len(after.Commits))
 	}
 }
+
+// TestConfig_PrefersTheConfigRef: refs/clarity/config is the config of
+// record everywhere, and the mobile client must read the same one the CLI
+// does — a lingering legacy .ezcd.json in the tree loses.
+func TestConfig_PrefersTheConfigRef(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile(".ezcd.json", `{"clarity":{"leadTime":"pipeline"}}`)
+	clone.CommitAll("chore: legacy config")
+	clone.Push("main")
+	refCfg := []byte("[clarity]\n\tsource = events-ref\n\tleadTime = reported\n")
+	if err := clarityrefs.WriteConfigFile(clone.Path, "origin", refCfg, "clarity: set up"); err != nil {
+		t.Fatalf("seed ref config: %v", err)
+	}
+
+	r := open(t, remote)
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	cfg, err := r.Config()
+	if err != nil {
+		t.Fatalf("Config: %v", err)
+	}
+	if got := string(cfg.LeadTimeMode()); got != "reported" {
+		t.Errorf("lead time mode = %q, want reported from the config ref", got)
+	}
+	if !cfg.SetUp {
+		t.Error("SetUp = false although the config ref exists")
+	}
+}

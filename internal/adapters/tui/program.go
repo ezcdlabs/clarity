@@ -91,6 +91,16 @@ type Model struct {
 	// than opening on some other flow: a user who asked for ios and silently
 	// got web has no way to tell, and README promises this is an error.
 	flowErr error
+	// Startup state (see startup.go): the phase line that replaces the bare
+	// "Loading", the welcome pane for a repo with no config ref, and an
+	// error that renders in-frame. All of it is superseded the moment the
+	// first View arrives.
+	startupPhase  string
+	startupErr    error
+	welcome       bool
+	welcomeBranch string
+	welcomeIdx    int
+	choices       chan<- WelcomeChoice
 }
 
 // FlowErr reports a --deploy argument that matched no flow, once the program
@@ -141,6 +151,12 @@ func keyCode(key string) rune {
 	switch key {
 	case "tab", "shift+tab":
 		return tea.KeyTab
+	case "up":
+		return tea.KeyUp
+	case "down":
+		return tea.KeyDown
+	case "enter":
+		return tea.KeyEnter
 	}
 	runes := []rune(key)
 	if len(runes) == 0 {
@@ -254,6 +270,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.welcome && !m.received {
+			return m.updateWelcome(msg)
+		}
 		key := msg.String()
 		switch key {
 		case "q", "ctrl+c":
@@ -305,6 +324,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.ForegroundColorMsg:
 		m.foreground = msg.Color
 		return m, nil
+	case StartupPhaseMsg:
+		m.startupPhase = string(msg)
+		m.welcome = false
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	case WelcomeMsg:
+		m.welcome, m.welcomeBranch, m.welcomeIdx = true, msg.Branch, 0
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	case StartupErrorMsg:
+		m.startupErr = msg.Err
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
 	case tickMsg:
 		m.spinnerIdx++
 		m.viewport.SetContent(m.renderBody())
@@ -320,9 +352,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // renderBody returns the body content the viewport scrolls over. The header
 // stays fixed above and is rendered separately by View().
 func (m Model) renderBody() string {
+	// Startup precedence: an error ends startup outright; a received view
+	// supersedes everything else (nothing in startup is worth hiding data
+	// for); the welcome pane and the phase line fill the wait.
+	if m.startupErr != nil {
+		return renderStartupError(m.startupErr)
+	}
 	if !m.received {
+		if m.welcome {
+			return renderWelcome(m.welcomeBranch, m.welcomeIdx)
+		}
+		label := "Loading"
+		if m.startupPhase != "" {
+			label = m.startupPhase
+		}
 		spin := lipgloss.NewStyle().Foreground(colorBlue).Render(spinnerFrame(m.spinnerIdx))
-		return "  " + spin + " Loading\n"
+		return "  " + spin + " " + label + "\n"
 	}
 	now := time.Now()
 	if m.nowFn != nil {
@@ -333,7 +378,7 @@ func (m Model) renderBody() string {
 
 func (m Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), "press q to quit"))
+	b.WriteString(renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), spinnerFrame(m.spinnerIdx)))
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
 	v := tea.NewView(b.String())
@@ -345,16 +390,22 @@ func (m Model) View() tea.View {
 }
 
 // renderHeader builds the top line: repo name (bold) + build/deploy status
-// badges on the left, an optional "refreshing…" SWR hint, "press q to
-// quit" right-aligned to width. When any badge has resolved to failed,
+// badges on the left, and — only while the view is stale — the SWR
+// indicator right-aligned to width. When any badge has resolved to failed,
 // the repo name flips bold red — a focused alarm in the top-left where
 // the eye naturally lands first, without recolouring the rest of the
 // header.
-// rightHint is the text pinned to the right of the header. The live view
-// spends it on "press q to quit"; the weekly view passes "" — it is the first
-// thing to go when the strip needs room, so it has to be the caller's choice
-// rather than baked in.
-func renderHeader(view core.View, selected string, width int, chrome, base color.Color, rightHint string) string {
+//
+// The top-right used to spend itself on "press q to quit", the most
+// prominent slot on screen saying nothing (q-quits is table stakes for a
+// TUI). It now belongs to "⠋ refreshing…", which does carry information,
+// and the indicator sheds the way the week stats do — whole facts at a
+// time: the word goes first, leaving the animated spinner alone (one
+// column that still says a fetch is in flight), and only then nothing.
+//
+// spinner is the current animation frame; the caller owns the animation
+// counter, this function only places the frame.
+func renderHeader(view core.View, selected string, width int, chrome, base color.Color, spinner string) string {
 	snap := view.Snapshot
 	ciStatus := view.Header.CI
 	deployStatus := view.Header.Deploy
@@ -391,34 +442,40 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 	dot := on(lipgloss.NewStyle().Foreground(colorGray)).Render("·")
 	ci := on(lipgloss.NewStyle().Foreground(colorGray)).Render("ci:") + sp + statusIcon(ciStatus, bg)
 
-	parts := []string{title, dot, ci, dot}
+	left := strings.Join([]string{title, dot, ci, dot}, gap)
+
+	// The SWR indicator, in its two sizes. Only a stale view shows either:
+	// nothing in flight, nothing to advertise.
+	right, rightCompact := "", ""
 	if view.Stale {
-		parts = append(parts,
-			on(lipgloss.NewStyle().Foreground(colorGray).Italic(true)).Render("refreshing…"), dot)
-	}
-	left := strings.Join(parts, gap)
-	right := ""
-	if rightHint != "" {
-		right = on(lipgloss.NewStyle().Foreground(colorGray)).Render(rightHint)
+		rightCompact = on(lipgloss.NewStyle().Foreground(colorGray)).Render(spinner)
+		right = rightCompact + sp +
+			on(lipgloss.NewStyle().Foreground(colorGray).Italic(true)).Render("refreshing…")
 	}
 
 	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + sp + statusIcon(deployStatus, bg)
 	if len(view.Flows) > 1 {
-		// The strip takes whatever the fixed parts leave. If that isn't enough
-		// the quit hint goes first — it is the only thing on the row carrying
-		// no information — and only then do names start truncating. A flow is
-		// never dropped: the stuck deploy is the one most worth seeing and
-		// would be the one to vanish.
-		// What the strip may occupy: the row minus the fixed left parts, the
-		// two-column gap after them, and the quit hint with its own gap. When
-		// that isn't enough the hint goes first — it is the only thing on the
-		// row carrying no information.
+		// The strip takes whatever the fixed parts leave. If that isn't
+		// enough the indicator's word goes first, then its spinner, and only
+		// then do names start truncating. A flow is never dropped: the stuck
+		// deploy is the one most worth seeing and would be the one to vanish.
 		budget := width - lipgloss.Width(left) - 2 - lipgloss.Width(right) - 2
 		if width <= 0 {
 			budget = stripWidth(view.Flows)
 		} else if stripWidth(view.Flows) > budget {
-			right = ""
+			right = rightCompact
 			budget = width - lipgloss.Width(left) - 2
+			if right != "" {
+				// The spinner is one column plus its gap; keep it and let
+				// the strip truncate names around it, unless the row is so
+				// narrow that even that leaves the strip nothing to draw in.
+				compact := budget - lipgloss.Width(right) - 2
+				if compact > 0 {
+					budget = compact
+				} else {
+					right = ""
+				}
+			}
 		}
 		deploy = renderStrip(view.Flows, selected, chrome, base, budget, true)
 	}
@@ -429,6 +486,16 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 			return line
 		}
 		return line + gap + right
+	}
+
+	// Single-flow rows have no strip to negotiate with, but the same
+	// shedding applies when the terminal itself is too narrow for the full
+	// indicator.
+	if right != "" && lipgloss.Width(line)+2+lipgloss.Width(right) > width {
+		right = rightCompact
+		if lipgloss.Width(line)+2+lipgloss.Width(right) > width {
+			right = ""
+		}
 	}
 
 	pad := width - lipgloss.Width(line) - lipgloss.Width(right)
@@ -682,7 +749,38 @@ func (r *Renderer) WithClock(nowFn func() time.Time) *Renderer {
 // When ctx is cancelled the program is asked to quit so callers can
 // interrupt cleanly on signal.
 func (r *Renderer) Render(ctx context.Context, views <-chan core.View) error {
-	p := newProgram(views, r.nowFn, r.flow)
+	return r.RenderStartup(ctx, views, nil, nil)
+}
+
+// RenderStartup is Render plus the startup conversation: messages arriving
+// on startup (StartupPhaseMsg, WelcomeMsg, StartupErrorMsg) are forwarded
+// into the program as they arrive, and welcome-pane choices come back on
+// choices. The program starts immediately — config reading, fetching and
+// validation happen behind a live frame, which is the whole point: nothing
+// may sit between "typed the command" and "seeing something".
+func (r *Renderer) RenderStartup(ctx context.Context, views <-chan core.View, startup <-chan any, choices chan<- WelcomeChoice) error {
+	m := New().WithFlow(r.flow)
+	if r.nowFn != nil {
+		m = m.WithClock(r.nowFn)
+	}
+	if choices != nil {
+		m = m.WithStartupChoices(choices)
+	}
+	// Same pre-claim detection as newProgram; see the comment there.
+	detectTerminal()
+	p := tea.NewProgram(m)
+	go func() {
+		for v := range views {
+			p.Send(ViewMsg(v))
+		}
+	}()
+	if startup != nil {
+		go func() {
+			for s := range startup {
+				p.Send(s)
+			}
+		}()
+	}
 	go func() {
 		<-ctx.Done()
 		p.Quit()

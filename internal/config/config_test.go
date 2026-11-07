@@ -94,6 +94,22 @@ func TestLoad_UnknownFields_Ignored(t *testing.T) {
 	}
 }
 
+// TestLoad_MarksLegacyFile: callers need to tell "no config anywhere"
+// (welcome-screen territory) apart from "configured the old way" (keep
+// working, no welcome). Only an actually-present file counts.
+func TestLoad_MarksLegacyFile(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load(dir)
+	if err != nil || cfg.LegacyFile {
+		t.Fatalf("no file: LegacyFile=%v err=%v, want false/nil", cfg.LegacyFile, err)
+	}
+	writeFile(t, dir, ".ezcd.json", `{}`)
+	cfg, err = config.Load(dir)
+	if err != nil || !cfg.LegacyFile {
+		t.Fatalf("file present: LegacyFile=%v err=%v, want true/nil", cfg.LegacyFile, err)
+	}
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
@@ -112,12 +128,9 @@ func TestLoad_LeadTime_Absent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Clarity == nil {
-		t.Fatal("expected a clarity section")
-	}
-	if cfg.Clarity.LeadTime != core.DefaultLeadTimeMode {
+	if cfg.LeadTimeMode() != core.DefaultLeadTimeMode {
 		t.Errorf("leadTime = %q, want the default %q",
-			cfg.Clarity.LeadTime, core.DefaultLeadTimeMode)
+			cfg.LeadTimeMode(), core.DefaultLeadTimeMode)
 	}
 }
 
@@ -137,8 +150,8 @@ func TestLoad_LeadTime_Modes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load(%q): %v", raw, err)
 		}
-		if cfg.Clarity.LeadTime != want {
-			t.Errorf("leadTime %q parsed as %q, want %q", raw, cfg.Clarity.LeadTime, want)
+		if cfg.LeadTimeMode() != want {
+			t.Errorf("leadTime %q parsed as %q, want %q", raw, cfg.LeadTimeMode(), want)
 		}
 	}
 }
@@ -218,5 +231,35 @@ func TestParse_IsTheSameContractAsLoad(t *testing.T) {
 	// And a malformed file still fails, whichever way it arrives.
 	if _, err := config.Parse([]byte("{nope")); err == nil {
 		t.Error("malformed input should be an error")
+	}
+}
+
+// TestParse_BranchPinned distinguishes "the user named a trunk" from "the
+// loader defaulted one". The distinction is what lets runtime trunk
+// detection replace the blind "main" default without ever overriding an
+// explicit choice — a pinned branch must win even when the repo's own
+// origin/HEAD disagrees with it.
+func TestParse_BranchPinned(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"branch named", `{"branch": "trunk"}`, true},
+		{"branch named main is still pinned", `{"branch": "main"}`, true},
+		{"no branch field", `{"pushq": {}}`, false},
+		{"empty branch is not pinned", `{"branch": ""}`, false},
+		{"empty file", ``, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := config.Parse([]byte(tc.in))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if cfg.BranchPinned != tc.want {
+				t.Errorf("BranchPinned = %v, want %v", cfg.BranchPinned, tc.want)
+			}
+		})
 	}
 }

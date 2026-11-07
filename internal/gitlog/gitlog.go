@@ -139,6 +139,47 @@ func parseRecord(record string) (core.Commit, error) {
 	}, nil
 }
 
+// DetectTrunk picks the trunk branch when no configuration pins one:
+// origin/HEAD — the remote's default branch, recorded at clone time, which
+// gets master (or trunk, or develop) right where a name probe cannot — then
+// the conventional names. Every candidate must actually resolve to a commit,
+// so a stale origin/HEAD falls through instead of being trusted.
+//
+// "" means nothing conventional resolved; the caller keeps its own default
+// and lets the pre-flight error explain. The current branch is deliberately
+// not a candidate: silently watching whatever happens to be checked out
+// would point the dashboard — and the `check` push gate — at a feature
+// branch, a wrong answer that looks right. (The init wizard does suggest the
+// current branch, but there a human confirms it.)
+func DetectTrunk(repoPath string) string {
+	for _, candidate := range []string{RemoteDefaultBranch(repoPath), "main", "master"} {
+		if candidate == "" {
+			continue
+		}
+		if _, err := resolveBranch(repoPath, candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// RemoteDefaultBranch returns the branch origin's HEAD points at, or ""
+// when origin/HEAD is unset — a remote added by hand (`git remote add`
+// never sets it), or no remote at all.
+func RemoteDefaultBranch(repoPath string) string {
+	cmd := exec.Command("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	cmd.Dir = repoPath
+	cmd.Env = gitenv.Clean()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// The short form is "origin/<branch>"; the branch itself may contain
+	// slashes, so only the remote segment is cut.
+	_, branch, _ := strings.Cut(strings.TrimSpace(string(out)), "/")
+	return branch
+}
+
 // resolveBranch picks the ref the walk starts from, preferring the
 // remote-tracking branch — the Source's fetch step keeps it current — and
 // falling back to the local branch.

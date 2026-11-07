@@ -325,3 +325,89 @@ func TestSource_Once_ReportsAnUnreachableRemote(t *testing.T) {
 		t.Error("Once succeeded against an unreachable remote, want an error")
 	}
 }
+
+// --- Source.Validate ----------------------------------------------------------
+
+// runGit runs a git command in dir, failing the test on error.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// TestValidate_BranchMissing is the hang field report: `git clarity` on a
+// master-trunk repo with no .ezcd.json watched the "main" default, the
+// snapshot build failed on the missing branch, Watch swallowed the error —
+// its keep-rendering-the-last-state policy, applied before any first state
+// exists — and the TUI sat on an empty channel forever, blank. Validate is
+// the pre-flight that turns that into an immediate error naming the branch,
+// the same contract the ghsource path already has.
+func TestValidate_BranchMissing(t *testing.T) {
+	remote := gittest.NewRemoteOnBranch(t, "master")
+	clone := remote.NewClone(t)
+
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "main",
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+	err = src.Validate(context.Background())
+	if err == nil {
+		t.Fatal("expected Validate to fail for a branch that exists nowhere")
+	}
+	if !strings.Contains(err.Error(), `"main"`) {
+		t.Errorf("the error should name the missing branch, got: %v", err)
+	}
+}
+
+// TestValidate_BranchExists: the ordinary repo passes.
+func TestValidate_BranchExists(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "main",
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+	if err := src.Validate(context.Background()); err != nil {
+		t.Errorf("Validate: expected nil, got %v", err)
+	}
+}
+
+// TestValidate_FetchesBranchOnlyOnRemote: a branch with no local ref at all
+// but alive on the remote is watchable — Watch's own first fetch would have
+// materialised it — so Validate must fetch before it judges, or it would
+// reject configurations that worked before it existed.
+func TestValidate_FetchesBranchOnlyOnRemote(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	// Put "dev" on the remote, then erase every local trace of it.
+	clone.CheckoutNew("dev")
+	clone.Push("dev")
+	runGit(t, clone.Path, "checkout", "main")
+	runGit(t, clone.Path, "branch", "-D", "dev")
+	runGit(t, clone.Path, "update-ref", "-d", "refs/remotes/origin/dev")
+
+	src, err := refsource.New(refsource.Options{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+		Branch:   "dev",
+	})
+	if err != nil {
+		t.Fatalf("refsource.New: %v", err)
+	}
+	if err := src.Validate(context.Background()); err != nil {
+		t.Errorf("Validate: expected the remote-only branch to pass, got %v", err)
+	}
+}

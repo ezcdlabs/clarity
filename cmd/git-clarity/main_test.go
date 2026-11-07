@@ -14,6 +14,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/cache"
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
+	"github.com/ezcdlabs/clarity/internal/gittest"
 	"github.com/ezcdlabs/clarity/internal/report"
 )
 
@@ -625,13 +626,16 @@ func TestCheckDeclaredTarget(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			dir := t.TempDir()
+			// A real repo, because declarations are read through loadConfig
+			// now — which asks git — with the legacy file carrying them here.
+			remote := gittest.NewRemote(t)
+			clone := remote.NewClone(t)
 			if c.config != "" {
-				if err := os.WriteFile(filepath.Join(dir, ".ezcd.json"), []byte(c.config), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(clone.Path, ".ezcd.json"), []byte(c.config), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			err := checkDeclaredTarget(dir, c.target)
+			err := checkDeclaredTarget(clone.Path, c.target)
 			if c.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -651,6 +655,32 @@ func TestCheckDeclaredTarget(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCheckDeclaredTarget_ReadsTheConfigRef: declarations in
+// refs/clarity/config gate `report` the same way the legacy file's did —
+// and they only reach a fresh clone because checkDeclaredTarget goes
+// through loadConfig's fetch.
+func TestCheckDeclaredTarget_ReadsTheConfigRef(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	declarer := remote.NewClone(t)
+	reporter := remote.NewClone(t)
+
+	refCfg := []byte("[deploy \"web\"]\n[deploy \"ios\"]\n")
+	if err := clarityrefs.WriteConfigFile(declarer.Path, "origin", refCfg, "clarity: declare flows"); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	if err := checkDeclaredTarget(reporter.Path, "web"); err != nil {
+		t.Fatalf("declared target refused: %v", err)
+	}
+	err := checkDeclaredTarget(reporter.Path, "android")
+	if err == nil {
+		t.Fatal("undeclared target accepted")
+	}
+	if !strings.Contains(err.Error(), "not declared") {
+		t.Errorf("error should say the target is not declared: %v", err)
 	}
 }
 

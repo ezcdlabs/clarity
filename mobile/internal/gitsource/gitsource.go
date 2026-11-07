@@ -107,6 +107,17 @@ func (r *Repo) Sync(ctx context.Context, opts SyncOptions) error {
 		return fmt.Errorf("fetch %s: %w", clarityrefs.EventsRef, err)
 	}
 
+	// The config ref too, whole — it is one small file and its history.
+	// Absent is benign: it is every repo nobody has set up yet.
+	err = r.repo.FetchContext(ctx, &gogit.FetchOptions{
+		RemoteName: gogit.DefaultRemoteName,
+		RefSpecs:   []gogitconfig.RefSpec{refspec(clarityrefs.ConfigRef)},
+		Auth:       opts.Auth,
+	})
+	if err := ignoreBenign(err); err != nil {
+		return fmt.Errorf("fetch %s: %w", clarityrefs.ConfigRef, err)
+	}
+
 	branchRef := "refs/heads/" + r.branch
 	err = r.repo.FetchContext(ctx, &gogit.FetchOptions{
 		RemoteName: gogit.DefaultRemoteName,
@@ -146,11 +157,59 @@ func ignoreBenign(err error) error {
 	return err
 }
 
-// Config reads .ezcd.json out of the branch tip, with no checkout.
+// Config returns the repository's clarity configuration, with no checkout:
+// the config ref when the repo has been set up, else the legacy .ezcd.json
+// out of the branch tip. The same precedence as the CLI's loadConfig — the
+// two clients must never read different configs from the same repo.
 //
-// A repo with no config file is not an error — it is most repos — and parses
-// to the defaults.
+// A repo with no config anywhere is not an error — it is most repos — and
+// parses to the defaults.
 func (r *Repo) Config() (config.Config, error) {
+	if data, ok, err := r.configRefFile(); err != nil {
+		return config.Config{}, err
+	} else if ok {
+		cfg, err := config.ParseClarityConfig(data)
+		if err != nil {
+			return config.Config{}, err
+		}
+		cfg.SetUp = true
+		return cfg, nil
+	}
+	return r.legacyConfig()
+}
+
+// configRefFile reads the config file off the local config ref. ok=false
+// means the ref is absent — the repo is not set up — which is ordinary.
+// A ref with no file inside is still set up (ref existence is the signal),
+// just all defaults.
+func (r *Repo) configRefFile() ([]byte, bool, error) {
+	ref, err := r.repo.Reference(plumbing.ReferenceName(clarityrefs.ConfigRef), true)
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	commit, err := r.repo.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", clarityrefs.ConfigRef, err)
+	}
+	f, err := commit.File(clarityrefs.ConfigFileName)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", clarityrefs.ConfigRef, err)
+	}
+	body, err := f.Contents()
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", clarityrefs.ConfigRef, err)
+	}
+	return []byte(body), true, nil
+}
+
+// legacyConfig reads .ezcd.json out of the branch tip.
+func (r *Repo) legacyConfig() (config.Config, error) {
 	tip, err := r.tip()
 	if err != nil {
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {

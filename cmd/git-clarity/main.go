@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ezcdlabs/clarity/internal/adapters/ghsource"
+	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
@@ -24,7 +24,9 @@ import (
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
+	"github.com/ezcdlabs/clarity/internal/gitlog"
 	"github.com/ezcdlabs/clarity/internal/initcmd"
+	"github.com/ezcdlabs/clarity/internal/onboardcmd"
 	"github.com/ezcdlabs/clarity/internal/report"
 )
 
@@ -66,6 +68,9 @@ func dispatch(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "init" {
 		return runInit(args[1:])
+	}
+	if len(args) > 0 && args[0] == "onboard" {
+		return runOnboard(args[1:])
 	}
 	if len(args) > 0 && args[0] == "metrics" {
 		return runMetrics(args[1:])
@@ -117,16 +122,10 @@ func runMetrics(args []string) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		return err
 	}
-	resolvedCache := config.ResolveCacheDir(config.CacheDirSources{
-		Flag:     *cacheDir,
-		Env:      os.Getenv("CLARITY_CACHE_DIR"),
-		RepoRoot: repoPath,
-	})
-
 	// A trend view wants history, and without a poll loop it can afford it:
 	// the cost is paid once at startup rather than on every tick. 0 still
 	// means unlimited, as it does on every other command.
@@ -137,7 +136,7 @@ func runMetrics(args []string) error {
 	// entirely local and should stay open for as long as it is wanted.
 	fetchCtx, cancelFetch := context.WithTimeout(context.Background(), metricsTimeout)
 	defer cancelFetch()
-	src, err := buildSource(fetchCtx, cfg, opts, repoPath, resolvedCache)
+	src, err := buildSource(fetchCtx, cfg, opts, repoPath)
 	if err != nil {
 		return err
 	}
@@ -262,28 +261,32 @@ func truncationNotice(view core.View, width int) string {
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	github := fs.Bool("github", false, "configure the GitHub Actions source")
 	if err := fs.Parse(args); err != nil {
-		return fmt.Errorf("usage: git clarity init --github: %w", err)
+		return fmt.Errorf("usage: git clarity init: %w", err)
 	}
-	if !*github {
-		return fmt.Errorf("usage: git clarity init --github")
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: git clarity init (it takes no arguments — there is nothing to ask)")
 	}
 	repoPath, err := repoRoot()
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	cfg, err := config.Load(repoPath)
-	if err != nil {
-		return err
+	return initcmd.Run(initcmd.Options{RepoPath: repoPath, Out: os.Stdout})
+}
+
+// runOnboard prints the agent-onboarding prompt to stdout, so
+// `git clarity onboard | wl-copy` (or a straight copy out of the terminal)
+// hands the whole setup-and-backfill job to an AI agent.
+func runOnboard(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: git clarity onboard (it prints a prompt for an AI agent; paste it into Claude Code or similar)")
 	}
-	return initcmd.Run(initcmd.Options{
-		Client:    ghsource.NewCLIClient(repoPath),
-		In:        os.Stdin,
-		Out:       os.Stdout,
-		ConfigDir: repoPath,
-		Branch:    cfg.Branch,
-	})
+	repoPath, err := repoRoot()
+	if err != nil {
+		return fmt.Errorf("not a git repository: %w", err)
+	}
+	fmt.Print(onboardcmd.Prompt(onboardcmd.GatherFacts(repoPath)))
+	return nil
 }
 
 func parseRootArgs(args []string) (rootOptions, error) {
@@ -314,33 +317,135 @@ func isTerminal(f *os.File) bool {
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
+// loadConfig resolves the configuration every command operates on.
+//
+// The config of record is refs/clarity/config (fetched best-effort first,
+// so offline answers with the last fetch): when it exists the repo counts
+// as set up, its file applies, and any lingering legacy .ezcd.json is
+// ignored rather than merged — two half-applied configs would be
+// undebuggable. Without the ref, the legacy file is honoured so existing
+// repos keep working through the deprecation window.
+//
+// The trunk comes from the repository itself (origin/HEAD, then main, then
+// master — gitlog.DetectTrunk); only a legacy file's pinned branch
+// overrides it. When nothing conventional resolves, cfg keeps the "main"
+// default and the source pre-flight's error (with its hint) stays the
+// ending.
+func loadConfig(repoPath string) (config.Config, error) {
+	_ = clarityrefs.FetchConfigRef(repoPath, "origin")
+	data, ok, err := clarityrefs.ReadConfigFile(repoPath)
+	if err != nil {
+		return config.Config{}, err
+	}
+	var cfg config.Config
+	if ok {
+		if cfg, err = config.ParseClarityConfig(data); err != nil {
+			return config.Config{}, err
+		}
+		cfg.SetUp = true
+	} else if cfg, err = config.Load(repoPath); err != nil {
+		return cfg, err
+	}
+	if !cfg.BranchPinned {
+		if detected := gitlog.DetectTrunk(repoPath); detected != "" {
+			cfg.Branch = detected
+		}
+	}
+	return cfg, nil
+}
+
 func runTUI(opts rootOptions) error {
 	repoPath, err := repoRoot()
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	cfg, err := config.Load(repoPath)
-	if err != nil {
-		return err
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The TUI comes up before any config is read or network touched:
+	// everything slow or fallible happens in the orchestrator goroutine and
+	// reports into the live frame — a phase line while it works, the welcome
+	// pane when the repo isn't set up, the error in-frame when it cannot
+	// start. Anything sitting between "typed the command" and "seeing
+	// something" is where trust dies; nothing is allowed to sit there.
+	views := make(chan core.View)
+	startup := make(chan any, 8)
+	choices := make(chan tui.WelcomeChoice, 1)
+	go startDashboard(ctx, opts, repoPath, startup, choices, views)
+	return tuiRendererFor(opts).RenderStartup(ctx, views, startup, choices)
+}
+
+// startDashboard is the TUI's startup orchestrator: config → (welcome →
+// setup →) source pre-flight → views. Each step names itself on the
+// startup channel before running, so a stall shows its stage instead of a
+// bare "Loading"; each failure renders in-frame with its hint attached.
+func startDashboard(ctx context.Context, opts rootOptions, repoPath string, startup chan<- any, choices <-chan tui.WelcomeChoice, views chan<- core.View) {
+	send := func(msg any) bool {
+		select {
+		case startup <- msg:
+			return true
+		case <-ctx.Done():
+			return false
+		}
 	}
+
+	send(tui.StartupPhaseMsg("reading clarity config (refs/clarity/config)"))
+	cfg, err := loadConfig(repoPath)
+	if err != nil {
+		send(tui.StartupErrorMsg{Err: err})
+		return
+	}
+
+	// No config ref and no legacy file: the dashboard would render every
+	// commit meaninglessly "before CI", so offer setup instead. "Exit" quits
+	// inside the Model; only the setup choice arrives here.
+	if !cfg.SetUp && !cfg.LegacyFile {
+		// The wizard chain (may suggest the checked-out branch), not the
+		// runtime one: this is a display suggestion a human reads, and on a
+		// repo where nothing conventional resolves, naming the checkout
+		// beats echoing the "main" default that just failed to detect.
+		welcomeBranch := initcmd.DetectTrunk(repoPath)
+		if welcomeBranch == "" {
+			welcomeBranch = cfg.Branch
+		}
+		send(tui.WelcomeMsg{Branch: welcomeBranch})
+		select {
+		case <-choices:
+		case <-ctx.Done():
+			return
+		}
+		if err := initcmd.Run(initcmd.Options{RepoPath: repoPath, Out: io.Discard}); err != nil {
+			send(tui.StartupErrorMsg{Err: err})
+			return
+		}
+	}
+
+	send(tui.StartupPhaseMsg(fmt.Sprintf("fetching %s from origin", cfg.Branch)))
 	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
 		Flag:     opts.cacheDir,
 		Env:      os.Getenv("CLARITY_CACHE_DIR"),
 		RepoRoot: repoPath,
 	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	src, err := buildSource(ctx, cfg, opts, repoPath, cacheDir)
+	src, err := buildSource(ctx, cfg, opts, repoPath)
 	if err != nil {
-		return err
+		send(tui.StartupErrorMsg{Err: err})
+		return
 	}
+
+	send(tui.StartupPhaseMsg("reading events"))
 	// CachedLens wraps the bare Lens so the TUI can paint a stale view
 	// from <cacheDir>/snapshot-cache.json.gz immediately, then replace
 	// it with the fresh fetch when the source's first emit lands. Plain
 	// mode deliberately doesn't wrap (scripts/agents want fresh data).
 	cf := cache.New(filepath.Join(cacheDir, "snapshot-cache.json.gz"))
 	lens := cachedLensFor(cfg, src, cf)
-	return tuiRendererFor(opts).Render(ctx, lens.Views(ctx))
+	for v := range lens.Views(ctx) {
+		select {
+		case views <- v:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // runPlain takes one snapshot from the source (which performs the initial
@@ -356,18 +461,13 @@ func runPlain(opts rootOptions) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository: %w", err)
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		return err
 	}
-	cacheDir := config.ResolveCacheDir(config.CacheDirSources{
-		Flag:     opts.cacheDir,
-		Env:      os.Getenv("CLARITY_CACHE_DIR"),
-		RepoRoot: repoPath,
-	})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	src, err := buildSource(ctx, cfg, opts, repoPath, cacheDir)
+	src, err := buildSource(ctx, cfg, opts, repoPath)
 	if err != nil {
 		return err
 	}
@@ -419,7 +519,12 @@ func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	limit := fs.Int("limit", 100, "max commits to read while looking for the newest resolved CI status")
-	cacheDir := fs.String("cache-dir", "", "directory for clarity's local caches; overrides $CLARITY_CACHE_DIR and the default .git/clarity")
+	// --cache-dir is still accepted so existing pre-push hooks don't break,
+	// but nothing in check uses a cache anymore: it was the retired GitHub
+	// Actions source's run cache, and the events-ref read is cacheless by
+	// design (a push gate answering from a cache would be answering about
+	// the past).
+	_ = fs.String("cache-dir", "", "accepted for compatibility; check no longer caches")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(os.Stdout, checkHelp)
@@ -435,20 +540,14 @@ func runCheck(args []string) error {
 	if err != nil {
 		return checkFailed(fmt.Errorf("not a git repository: %w", err))
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		return checkFailed(err)
 	}
-	resolvedCache := config.ResolveCacheDir(config.CacheDirSources{
-		Flag:     *cacheDir,
-		Env:      os.Getenv("CLARITY_CACHE_DIR"),
-		RepoRoot: repoPath,
-	})
-
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
 	defer cancel()
 
-	result := checkTrunk(ctx, cfg, repoPath, resolvedCache, *limit)
+	result := checkTrunk(ctx, cfg, repoPath, *limit)
 	if result.Report != "" {
 		fmt.Fprintln(os.Stderr, strings.TrimRight(result.Report, "\n"))
 	}
@@ -464,37 +563,23 @@ func runCheck(args []string) error {
 // offline, an expired credential, a misconfigured source, a timeout: none of
 // them is a broken build, and a check that blocked on any of them would be
 // uninstalled the first time someone worked on a train.
-func checkTrunk(ctx context.Context, cfg config.Config, repoPath, cacheDir string, limit int) checkcmd.Result {
-	// The events-ref source — the default, and every repo without a
-	// clarity.github section — is read through TrunkReader rather than the
-	// Source port, so a fetch that failed comes back as "could not tell"
-	// instead of being quietly answered from stale remote-tracking refs. That
-	// distinction is the difference between a check that is useless offline
-	// and one that is actively misleading.
-	if cfg.Clarity == nil || cfg.Clarity.GitHub == nil {
-		src, err := refsource.New(refsource.Options{
-			RepoPath: repoPath,
-			RepoName: filepath.Base(repoPath),
-			Remote:   "origin",
-			Branch:   cfg.Branch,
-			Limit:    effectiveLimit(limit),
-		})
-		if err != nil {
-			return checkcmd.Undetermined.Result(err.Error())
-		}
-		return checkcmd.Read(ctx, src, cfg.Branch, time.Now())
-	}
-
-	// The GitHub Actions source has no one-shot read, so it goes through the
-	// Source port and inherits its silence about failures. It is less exposed
-	// than that sounds: buildSource pre-flights it with Validate, so a
-	// misconfigured mapping or a missing credential fails before any snapshot
-	// is taken. A poll that breaks after that is the remaining gap.
-	src, err := buildSource(ctx, cfg, rootOptions{limit: limit, cacheDir: cacheDir}, repoPath, cacheDir)
+func checkTrunk(ctx context.Context, cfg config.Config, repoPath string, limit int) checkcmd.Result {
+	// Read through TrunkReader rather than the Source port, so a fetch that
+	// failed comes back as "could not tell" instead of being quietly
+	// answered from stale remote-tracking refs. That distinction is the
+	// difference between a check that is useless offline and one that is
+	// actively misleading.
+	src, err := refsource.New(refsource.Options{
+		RepoPath: repoPath,
+		RepoName: filepath.Base(repoPath),
+		Remote:   "origin",
+		Branch:   cfg.Branch,
+		Limit:    effectiveLimit(limit),
+	})
 	if err != nil {
 		return checkcmd.Undetermined.Result(err.Error())
 	}
-	return checkcmd.FromSource(ctx, src, cfg.Branch, time.Now())
+	return checkcmd.Read(ctx, src, cfg.Branch, time.Now())
 }
 
 // checkFailed reports a check that could not run at all — a bad flag, not a
@@ -515,66 +600,46 @@ type exitError struct{ code int }
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
-// buildSource picks the inbound Source adapter based on `.ezcd.json`'s
-// clarity.github section: present → ghsource, absent → refsource (the
-// events-ref default). Same factory shape future identifiers like
-// `file:...` will plug into.
-//
-// When the ghsource branch is taken we also run a pre-flight Validate
-// against the configured workflows so misconfigured / unauthenticated
-// invocations fail fast with a clear error, rather than silently
-// rendering an empty snapshot that the user has to chase. The cost is
-// one extra gh API call at startup.
-//
-// Non-fatal poll diagnostics (skipped runs, transient gh blips) go to
-// <cache-dir>/ghsource.log instead of stderr so the TUI's alt-screen
-// rendering isn't trashed by mid-frame writes.
-func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath, cacheDir string) (core.Source, error) {
-	if cfg.Clarity != nil && cfg.Clarity.GitHub != nil {
-		logFile, err := openGHSourceLog(cacheDir)
-		if err != nil {
-			return nil, fmt.Errorf("open ghsource log: %w", err)
-		}
-		// We intentionally don't Close logFile — buildSource doesn't
-		// own the Source's lifetime, and the OS reclaims the file
-		// handle on process exit. Pre-mature close would silently
-		// drop log lines from the polling goroutine.
-		src, err := ghsource.New(ghsource.Options{
-			RepoPath: repoPath,
-			RepoName: filepath.Base(repoPath),
-			Branch:   cfg.Branch,
-			Limit:    effectiveLimit(opts.limit),
-			Mapping:  cfg.Clarity.GitHub,
-			Cache:    cache.New(filepath.Join(cacheDir, "github-runs.json.gz")),
-			Client:   ghsource.NewCLIClient(repoPath).WithLogger(logFile),
-			Logger:   logFile,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if err := src.Validate(ctx); err != nil {
-			return nil, fmt.Errorf("github actions source: %w", err)
-		}
-		return src, nil
-	}
-	return refsource.New(refsource.Options{
+// buildSource constructs the inbound Source adapter. There is one: the
+// events-ref source. The factory shape survives its former second branch
+// (the retired GitHub Actions adapter) because the config ref's
+// clarity.source key is where future sources — another repository's ref,
+// another backend — will dispatch from.
+func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath string) (core.Source, error) {
+	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		RepoName: filepath.Base(repoPath),
 		Remote:   "origin",
 		Branch:   cfg.Branch,
 		Limit:    effectiveLimit(opts.limit),
 	})
-}
-
-// openGHSourceLog opens <cacheDir>/ghsource.log in append mode,
-// creating parent dirs as needed. Used for non-fatal diagnostics from
-// the ghsource polling loop so the TUI's alt-screen stays clean.
-func openGHSourceLog(cacheDir string) (*os.File, error) {
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+	if err != nil {
 		return nil, err
 	}
-	return os.OpenFile(filepath.Join(cacheDir, "ghsource.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	// Same pre-flight contract as the ghsource branch above: the Source port
+	// swallows per-poll errors, so a branch that resolves nowhere would hang
+	// the TUI on an empty channel, blank, forever. Fail here instead — and
+	// since the usual cause is a repo whose trunk isn't the "main" default
+	// and that has no .ezcd.json yet, say which branch probably is the trunk.
+	if err := src.Validate(ctx); err != nil {
+		return nil, fmt.Errorf("events source: %w%s", err, branchHint(cfg, repoPath))
+	}
+	return src, nil
+}
+
+// branchHint names the likely fix when the configured branch doesn't
+// resolve. Detection already tried origin/HEAD and the conventional names,
+// so landing here means the repo's trunk is unconventional AND git's own
+// record of the remote default is missing or stale — which is why the hint
+// is a git repair, not a clarity config: `git remote set-head` fixes trunk
+// detection for every tool that reads origin/HEAD, this one included.
+func branchHint(cfg config.Config, repoPath string) string {
+	detected := initcmd.DetectTrunk(repoPath)
+	if detected == "" || detected == cfg.Branch {
+		return "\nclarity watches the repository's trunk (origin/HEAD, then main, then master) — none of those resolved here"
+	}
+	return fmt.Sprintf("\nthis repository's trunk looks like %q — run `git remote set-head origin --auto` so the repo records its default branch, and clarity (like every origin/HEAD reader) will find it",
+		detected)
 }
 
 // effectiveLimit maps the CLI's "0 = unlimited" convention onto the source's
@@ -922,19 +987,24 @@ func cachedLensFor(cfg config.Config, src core.Source, cf *cache.File) *core.Cac
 
 // checkDeclaredTarget refuses a target the repo's config doesn't declare.
 //
-// Declaring flows is what turns .ezcd.json into an expectation, and this is
+// Declaring flows is what turns the config into an expectation, and this is
 // where that expectation pays: a typo fails the pipeline that made it, loudly,
 // instead of appearing days later as a mysterious extra tab that nobody
 // deploys to. Events are append-only, so the alternative is a stray flow
 // nobody can remove.
 //
 // A repo that declares nothing keeps the open vocabulary by design — discovery
-// is the zero-setup path and must not require a config file to work.
+// is the zero-setup path and must not require any config to work.
+//
+// Through loadConfig, not the bare legacy file: the declarations live in
+// refs/clarity/config now, and a CI clone only sees those after the fetch
+// loadConfig performs — skipping it would silently disable enforcement in
+// exactly the place deploys are reported from.
 func checkDeclaredTarget(repoPath, target string) error {
 	if target == "" {
 		return nil
 	}
-	cfg, err := config.Load(repoPath)
+	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		return err
 	}
@@ -952,10 +1022,11 @@ func checkDeclaredTarget(repoPath, target string) error {
 	for _, f := range flows {
 		declared = append(declared, f.Name)
 	}
-	return fmt.Errorf("target %q is not declared in .ezcd.json — this repo declares: %s\n\n"+
-		"  Add it to clarity.deploys, or fix the typo. Events are append-only, so an\n"+
-		"  undeclared target would show up as a flow nobody can remove.",
-		target, strings.Join(declared, ", "))
+	return fmt.Errorf("target %q is not declared in the clarity config — this repo declares: %s\n\n"+
+		"  Add a [deploy %q] section to the config (refs/clarity/config), or fix the\n"+
+		"  typo. Events are append-only, so an undeclared target would show up as a\n"+
+		"  flow nobody can remove.",
+		target, strings.Join(declared, ", "), target)
 }
 
 // tuiRendererFor and plainRendererFor are the single place root flags are

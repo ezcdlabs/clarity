@@ -83,9 +83,17 @@ type Clone struct {
 // main. It is cleaned up automatically when the test ends.
 func NewRemote(t *testing.T) *Remote {
 	t.Helper()
+	return NewRemoteOnBranch(t, "main")
+}
+
+// NewRemoteOnBranch is NewRemote with the trunk named explicitly — for tests
+// about repositories whose default branch is not "main" (master trunks are
+// still common in the wild, and clarity must not assume them away).
+func NewRemoteOnBranch(t *testing.T, branch string) *Remote {
+	t.Helper()
 	dir := t.TempDir()
 
-	run(t, dir, "git", "init", "--bare", "--initial-branch=main")
+	run(t, dir, "git", "init", "--bare", "--initial-branch="+branch)
 	run(t, dir, "git", "config", "user.email", "test@example.com")
 	run(t, dir, "git", "config", "user.name", "Test")
 
@@ -98,7 +106,7 @@ func NewRemote(t *testing.T) *Remote {
 	writeFile(t, seedDir, ".gitkeep", "")
 	run(t, seedDir, "git", "add", ".")
 	run(t, seedDir, "git", "commit", "-m", "initial commit")
-	run(t, seedDir, "git", "push", "origin", "main")
+	run(t, seedDir, "git", "push", "origin", branch)
 
 	return &Remote{Path: dir, url: dir}
 }
@@ -185,6 +193,23 @@ func (c *Clone) Fetch() {
 // LogBranch returns commits on the given branch or ref, newest first.
 func (c *Clone) LogBranch(branch string) []Commit {
 	return logBranch(c.Path, branch)
+}
+
+// CheckoutNew creates and checks out a new branch in the clone.
+func (c *Clone) CheckoutNew(branch string) {
+	c.t.Helper()
+	run(c.t, c.Path, "git", "checkout", "-b", branch)
+}
+
+// NewLocalRepo creates a repository with no remote at all, checked out on the
+// given branch — the shape of a project that has not been pushed anywhere yet.
+func NewLocalRepo(t *testing.T, branch string) *Clone {
+	t.Helper()
+	dir := t.TempDir()
+	run(t, dir, "git", "init", "--initial-branch="+branch)
+	run(t, dir, "git", "config", "user.email", "test@example.com")
+	run(t, dir, "git", "config", "user.name", "Test")
+	return &Clone{Path: dir, t: t}
 }
 
 // CurrentBranch returns the short name of the current branch, or "" if HEAD is detached.

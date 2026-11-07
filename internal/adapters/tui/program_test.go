@@ -180,16 +180,38 @@ func TestModel_FreshView_NoRefreshingIndicator(t *testing.T) {
 	}
 }
 
-// The "q to quit" hint sits in the top-right of the header line.
-func TestModel_QuitHint_OnHeaderLine_RightAligned(t *testing.T) {
+// The header carries no quit hint. "press q to quit" spent the most
+// prominent slot on the screen saying nothing — q-quits is table stakes
+// for a TUI — and the top-right now belongs to the refreshing indicator,
+// which does carry information.
+func TestModel_NoQuitHintOnHeader(t *testing.T) {
 	m := newModel("clarity")
-	out := m.View().Content
-	if !strings.Contains(strings.ToLower(out), "q") {
-		t.Errorf("expected quit hint, got:\n%s", out)
+	firstLine := strings.SplitN(m.View().Content, "\n", 2)[0]
+	if strings.Contains(strings.ToLower(firstLine), "quit") {
+		t.Errorf("header still carries a quit hint:\n%q", firstLine)
 	}
-	// Quit hint must appear on the first line (the header), not below.
-	firstLine := strings.SplitN(out, "\n", 2)[0]
-	if !strings.Contains(strings.ToLower(firstLine), "q") {
-		t.Errorf("expected quit hint on the header line, got first line:\n%q", firstLine)
+}
+
+// With several flows and a width too tight for "refreshing…" beside the
+// strip, the indicator degrades to its spinner alone rather than
+// disappearing: one column that still says a fetch is in flight.
+func TestModel_StaleView_NarrowHeaderKeepsSpinner(t *testing.T) {
+	view := core.View{
+		Snapshot: core.Snapshot{RepoName: "clarity"},
+		Stale:    true,
+		Flows: []core.FlowView{
+			{Flow: core.Flow{Name: "web"}},
+			{Flow: core.Flow{Name: "ios"}},
+			{Flow: core.Flow{Name: "android"}},
+		},
+	}
+	m, _ := newModel("").Update(tui.ViewMsg(view))
+	model := m.(tui.Model).WithSize(44, 20)
+	firstLine := strings.SplitN(model.View().Content, "\n", 2)[0]
+	if strings.Contains(strings.ToLower(firstLine), "refreshing") {
+		t.Fatalf("full indicator rendered at a width it cannot afford:\n%q", firstLine)
+	}
+	if !strings.ContainsAny(firstLine, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Errorf("no spinner fallback on the narrow stale header:\n%q", firstLine)
 	}
 }

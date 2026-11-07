@@ -68,7 +68,9 @@ func TestRenderSnapshot_KeepsTheLeadTimeWhenTheSubjectIsClipped(t *testing.T) {
 	view := core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
 	out := visible(renderSnap(view, 50, time.Unix(1000, 0), 0))
 
-	if !strings.Contains(out, "3m 20s") {
+	// 1m 40s: deploy at t=300 minus the first pipeline event at t=200,
+	// per the pipeline default.
+	if !strings.Contains(out, "1m 40s") {
 		t.Errorf("the lead time was lost to a long subject:\n%s", out)
 	}
 	if !strings.Contains(out, "…") {
@@ -251,7 +253,7 @@ func TestRenderSnapshot_LeadTimeSurvivesALongAuthor(t *testing.T) {
 
 	for _, width := range []int{20, 30, 40, 49} {
 		out := visible(renderSnap(view, width, time.Unix(1000, 0), 0))
-		if !strings.Contains(out, "3m 20s") {
+		if !strings.Contains(out, "1m 40s") { // deploy(300) − first event(200)
 			t.Errorf("at width %d the lead time was clipped instead of the author:\n%s", width, out)
 		}
 	}

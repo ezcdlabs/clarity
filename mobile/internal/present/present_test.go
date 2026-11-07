@@ -104,12 +104,13 @@ func TestView_CarriesTheDecisionsNotTheGeometry(t *testing.T) {
 	if c.Sha != "aaaaaaaaaaaa" {
 		t.Errorf("the full sha must survive for anything that needs to address the commit")
 	}
-	// Lead time is two hours: authored at 01:00, deployed at 03:00.
+	// Lead time is one hour under the pipeline default: CI passed at
+	// 02:00 (the commit's first pipeline event), deployed at 03:00.
 	if !c.LeadTimeKnown {
 		t.Fatal("a shipped commit has a lead time")
 	}
-	if c.LeadTimeSeconds != int64(2*time.Hour/time.Second) {
-		t.Errorf("lead time = %ds, want %ds", c.LeadTimeSeconds, int64(2*time.Hour/time.Second))
+	if c.LeadTimeSeconds != int64(time.Hour/time.Second) {
+		t.Errorf("lead time = %ds, want %ds", c.LeadTimeSeconds, int64(time.Hour/time.Second))
 	}
 	if c.LeadTime == "" {
 		t.Error("the preformatted lead time is what a client displays; it must not be empty")

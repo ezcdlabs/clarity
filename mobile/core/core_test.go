@@ -25,8 +25,14 @@ func TestClient_AddSyncView(t *testing.T) {
 	// After the commit was authored, not before: a deploy that predates its
 	// commit is a negative interval, which core excludes — so an event in the
 	// past would have produced a view with no lead time and proved nothing.
-	if err := clarityrefs.WriteEvent(clone.Path, "origin", head, clarityrefs.Event{
-		Stage: "deploy", Status: "passed", Time: time.Now().Add(30 * time.Second),
+	// The CI start matters too: the pipeline default measures from the first
+	// pipeline event, and a lone deploy event measures zero, which core
+	// reads as "no lead time".
+	if err := clarityrefs.WriteEvents(clone.Path, "origin", map[string][]clarityrefs.Event{
+		head: {
+			{Stage: "ci", Status: "started", Time: time.Now().Add(10 * time.Second)},
+			{Stage: "deploy", Status: "passed", Time: time.Now().Add(30 * time.Second)},
+		},
 	}); err != nil {
 		t.Fatalf("seed event: %v", err)
 	}

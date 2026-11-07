@@ -26,8 +26,8 @@ type LeadTimeMode string
 const (
 	// LeadAll measures every commit from its authoring time, including
 	// commits with no pipeline events of their own — they inherit the deploy
-	// that shipped them. This is clarity's historical behaviour and remains
-	// the default, so upgrading doesn't silently move anyone's numbers.
+	// that shipped them. This is clarity's historical behaviour, and was the
+	// default until LeadPipeline took that role.
 	//
 	// Its weakness is that CI typically runs on the pushed head rather than
 	// every commit in the push, so a developer who commits five times and
@@ -62,8 +62,15 @@ const (
 	LeadPipeline LeadTimeMode = "pipeline"
 )
 
-// DefaultLeadTimeMode is what an unset configuration means.
-const DefaultLeadTimeMode = LeadAll
+// DefaultLeadTimeMode is what an unset configuration means: measure the
+// pipeline. The original "all" default kept DORA's definition but made the
+// headline number as much a measure of commit-and-push habits as of
+// delivery — a five-commit batch pushed on Monday carried five weekend-sized
+// samples — and that is the wrong first impression for a tool whose pitch is
+// "watch your pipeline". Teams who want DORA lead time for changes opt into
+// it by name (`leadTime = all`), which also makes the choice visible in the
+// config instead of implicit in a default nobody read.
+const DefaultLeadTimeMode = LeadPipeline
 
 // ParseLeadTimeMode converts a configured string into a LeadTimeMode. Empty
 // means unset and yields the default. Matching is case-insensitive so a

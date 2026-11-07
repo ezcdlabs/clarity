@@ -34,7 +34,9 @@ func shipping(weekOffset int, leads ...time.Duration) []core.CommitView {
 			Subject: "feat: work",
 			Time:    deployedAt.Add(-lead),
 			Events: []clarityrefs.Event{
-				{Stage: "ci", Status: "passed", Time: deployedAt.Add(-time.Minute)},
+				// The pipeline opens at the authoring instant, so the
+				// pipeline-default lead time is exactly the `lead` asked for.
+				{Stage: "ci", Status: "started", Time: deployedAt.Add(-lead)},
 				{Stage: "deploy", Status: "passed", Time: deployedAt},
 			},
 		})

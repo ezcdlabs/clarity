@@ -140,8 +140,8 @@ func TestLeadTimeMode_ReachesRenderedRows(t *testing.T) {
 		// what the pushed head's lead time reads
 		wantHead string
 	}{
-		// Default: every deployed commit is timed from its authoring.
-		{leadTime: "", wantSweptAlongTimed: true, wantHead: "8m 20s"},
+		// Default is pipeline: unset must render exactly as "pipeline" does.
+		{leadTime: "", wantSweptAlongTimed: false, wantHead: "5m 00s"},
 		{leadTime: "all", wantSweptAlongTimed: true, wantHead: "8m 20s"},
 		// Reported: the swept-along commit drops out, the head keeps its
 		// authoring-to-deploy time.

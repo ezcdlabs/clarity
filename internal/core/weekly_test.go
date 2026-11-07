@@ -14,13 +14,17 @@ func utc(year, month, day, hour int) time.Time {
 	return time.Date(year, time.Month(month), day, hour, 0, 0, 0, time.UTC)
 }
 
-// commit constructs a CommitView with a single deploy:passed event at deployAt.
-// The CI event isn't needed for WeeklyStats — only the deploy time is bucketed.
+// commit constructs a CommitView whose pipeline starts at commitAt (a
+// `ci started` event) and deploys at deployAt. The CI event matters under
+// the pipeline default: it is what the lead time is measured from, so
+// placing it at the authoring time keeps these fixtures' arithmetic
+// readable — lead is simply deployAt − commitAt.
 func commit(sha string, commitAt, deployAt time.Time) core.CommitView {
 	return core.CommitView{
 		SHA:  sha,
 		Time: commitAt,
 		Events: []clarityrefs.Event{
+			{Stage: "ci", Status: "started", Time: commitAt},
 			{Stage: "deploy", Status: "passed", Time: deployAt},
 		},
 	}
@@ -86,9 +90,12 @@ func TestWeeklyStats_BatchWithMultipleCommits_OneDeploy_AvgAcrossCommits(t *test
 	// of the batch holding the deploy:passed event; older commits in the
 	// batch have no deploy events of their own — computeBatches walks
 	// newest-first and joins event-less older commits to the current batch.
-	// So: one explicit deploy at time d, two commits in the batch.
+	// So: one explicit deploy at time d, two commits in the batch. Under the
+	// pipeline default only commits with events contribute a lead time, so
+	// the ride-along's inherited sample is asserted under LeadAll, where
+	// inheritance is the defining behaviour.
 	cNewer := utc(2026, 1, 5, 10) // 2h lead
-	cOlder := utc(2026, 1, 5, 9)  // 3h lead
+	cOlder := utc(2026, 1, 5, 9)  // 3h lead under LeadAll
 	d := utc(2026, 1, 5, 12)
 	snap := core.Snapshot{Commits: []core.CommitView{
 		commit("newer", cNewer, d),
@@ -103,9 +110,16 @@ func TestWeeklyStats_BatchWithMultipleCommits_OneDeploy_AvgAcrossCommits(t *test
 	if w.Deploys != 1 {
 		t.Errorf("expected 1 deploy batch (not 2 commits), got %d", w.Deploys)
 	}
-	wantAvg := 150 * time.Minute
-	if w.AvgLead != wantAvg {
-		t.Errorf("expected avg lead %v, got %v", wantAvg, w.AvgLead)
+	// Pipeline default: only the reporting commit contributes (2h); the
+	// event-less ride-along is shipped but unmeasured.
+	if wantAvg := 2 * time.Hour; w.AvgLead != wantAvg {
+		t.Errorf("expected avg lead %v under the default, got %v", wantAvg, w.AvgLead)
+	}
+	// LeadAll: the ride-along inherits the batch's deploy and contributes
+	// its authoring-based 3h, pulling the average to 2h30m.
+	all := core.WeeklyStatsMode(snap, core.LeadAll)
+	if wantAvg := 150 * time.Minute; len(all) != 1 || all[0].AvgLead != wantAvg {
+		t.Errorf("expected avg lead %v under LeadAll, got %+v", wantAvg, all)
 	}
 }
 
@@ -164,7 +178,10 @@ func TestWeeklyStats_OlderBatchWithoutRecordedDeploy_StillContributesToAvg(t *te
 	if w.Deploys != 1 {
 		t.Errorf("expected Deploys=1 (started batch is not a recorded deploy), got %d", w.Deploys)
 	}
-	wantAvg := (dNewer.Sub(cNewer) + dNewer.Sub(cOlder)) / 2
+	// Under the pipeline default each commit is measured from its first
+	// pipeline event: the newer from its CI start (= cNewer, per the commit
+	// helper), the older from its own ci:passed an hour after authoring.
+	wantAvg := (dNewer.Sub(cNewer) + dNewer.Sub(cOlder.Add(time.Hour))) / 2
 	if w.AvgLead != wantAvg {
 		t.Errorf("expected avg lead %v (includes inherited frozen lead), got %v", wantAvg, w.AvgLead)
 	}

@@ -272,7 +272,7 @@ func TestParseLeadTimeMode(t *testing.T) {
 		want    core.LeadTimeMode
 		wantErr bool
 	}{
-		{in: "", want: core.LeadAll},
+		{in: "", want: core.LeadPipeline}, // unset means the default, and the default is pipeline
 		{in: "all", want: core.LeadAll},
 		{in: "reported", want: core.LeadReported},
 		{in: "pipeline", want: core.LeadPipeline},
@@ -311,5 +311,17 @@ func TestParseLeadTimeMode_ErrorNamesTheOptions(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got: %v", want, err)
 		}
+	}
+}
+
+// TestDefaultLeadTimeMode_IsPipeline records a decision, not a tautology:
+// an unset config measures the pipeline, not developer push habits. The
+// original "all" default made a five-commit Friday batch contribute five
+// weekend-sized samples, which read as commentary on when people push
+// rather than on anything the pipeline did — every early user asked why
+// their lead time was days when their pipeline took minutes.
+func TestDefaultLeadTimeMode_IsPipeline(t *testing.T) {
+	if core.DefaultLeadTimeMode != core.LeadPipeline {
+		t.Fatalf("DefaultLeadTimeMode = %q, want %q", core.DefaultLeadTimeMode, core.LeadPipeline)
 	}
 }

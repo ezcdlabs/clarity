@@ -229,7 +229,9 @@ func TestLeadTime_NotDeployed_LiveAgainstNow(t *testing.T) {
 	commitTime := time.Unix(1000, 0)
 	now := time.Unix(1090, 0)
 	commits := []core.CommitView{
-		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{ev("ci", "started", 50)}},
+		// CI starts at the authoring time, so the pipeline-default lead is
+		// the same 90s the elapsed clock shows.
+		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{ev("ci", "started", 1000)}},
 	}
 	g := core.GroupCommits(commits)
 	d, frozen, ok := g.LeadTime(0, now)
@@ -271,7 +273,7 @@ func TestLeadTime_Deployed_FrozenAtDeployTime(t *testing.T) {
 	now := time.Unix(9000, 0)
 	commits := []core.CommitView{
 		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{
-			ev("ci", "passed", 100),
+			ev("ci", "started", 1000), // pipeline opens at authoring time
 			{Stage: "deploy", Status: "passed", Time: deployTime},
 		}},
 	}
@@ -286,6 +288,10 @@ func TestLeadTime_Deployed_FrozenAtDeployTime(t *testing.T) {
 }
 
 func TestLeadTime_FixForwardedCommit_FrozenAtNewerDeploy(t *testing.T) {
+	// Explicitly LeadAll: inheriting a lead time with no events of your own
+	// is that mode's defining behaviour. Under the pipeline default an
+	// event-less commit contributes no lead time at all (covered by
+	// TestLeadTimeModes_BatchedPush in leadtime_test.go).
 	olderCommitTime := time.Unix(500, 0)
 	newerDeployTime := time.Unix(2000, 0)
 	commits := []core.CommitView{
@@ -294,7 +300,7 @@ func TestLeadTime_FixForwardedCommit_FrozenAtNewerDeploy(t *testing.T) {
 		}},
 		{SHA: "older", Time: olderCommitTime},
 	}
-	g := core.GroupCommits(commits)
+	g := core.GroupCommitsMode(commits, core.LeadAll)
 	d, frozen, ok := g.LeadTime(1, time.Unix(9999, 0))
 	if !ok || !frozen {
 		t.Fatal("expected frozen lead time")
@@ -314,6 +320,7 @@ func TestLeadTime_OwnDeploy_NotOverriddenByNewerDeploy(t *testing.T) {
 			{Stage: "deploy", Status: "passed", Time: newerDeployTime},
 		}},
 		{SHA: "older", Time: olderCommitTime, Events: []clarityrefs.Event{
+			ev("ci", "started", 500), // pipeline opens at authoring time
 			{Stage: "deploy", Status: "passed", Time: olderDeployTime},
 		}},
 	}

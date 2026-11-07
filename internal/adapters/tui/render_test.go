@@ -312,7 +312,7 @@ func TestRenderSnapshot_LiveCommit_RendersTickingLeadTime(t *testing.T) {
 	snap := core.Snapshot{
 		Commits: []core.CommitView{
 			{SHA: "a", Author: "alice", Subject: "wip", Time: commitTime,
-				Events: []clarityrefs.Event{ev("ci", "started", 50)}},
+				Events: []clarityrefs.Event{ev("ci", "started", 1000)}}, // pipeline opens at authoring time
 		},
 	}
 	out := renderSnap(view(snap), 80, now, 0)
@@ -330,7 +330,7 @@ func TestRenderSnapshot_DeployedCommit_FrozenLeadTime(t *testing.T) {
 		Commits: []core.CommitView{
 			{SHA: "a", Author: "alice", Subject: "shipped", Time: commitTime,
 				Events: []clarityrefs.Event{
-					ev("ci", "passed", 100),
+					ev("ci", "started", 1000), // pipeline opens at authoring time
 					{Stage: "deploy", Status: "passed", Time: deployTime},
 				}},
 		},

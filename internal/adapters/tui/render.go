@@ -80,6 +80,13 @@ func detectBackgroundColor() color.Color {
 // exported. Colours are alpha-premultiplied 16-bit, which is fine here since a
 // terminal background is opaque.
 func isDarkColor(c color.Color) bool {
+	if c == nil {
+		// "No answer" — lipgloss.BackgroundColor returns a nil colour with a
+		// nil error on terminals that never respond to OSC 11 (Windows
+		// conhost in the field). Dark is the same safe default the error
+		// path takes.
+		return true
+	}
 	r, g, b, _ := c.RGBA()
 	hi := max(r, max(g, b))
 	lo := min(r, min(g, b))
@@ -94,9 +101,11 @@ func isDarkColor(c color.Color) bool {
 func detectTerminal() {
 	termOnce.Do(func() {
 		bg, err := lipgloss.BackgroundColor(os.Stdin, os.Stdout)
-		if err != nil {
+		if err != nil || bg == nil {
 			// No answer: assume dark, which is what HasDarkBackground does and
-			// what is safe in tests and pipelines.
+			// what is safe in tests and pipelines. The nil-with-nil-error case
+			// is real — Windows conhost answers the query with nothing —
+			// and termBg stays nil, which detectBackgroundColor documents.
 			hasDarkBg = true
 			return
 		}

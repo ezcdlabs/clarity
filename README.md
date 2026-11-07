@@ -77,23 +77,33 @@ Setting up the *tooling* is one command, but instrumenting a pipeline and backfi
 
 The prompt lives in the binary rather than on a website on purpose: it is versioned with the binary, so it always describes the event format this exact build reads instead of drifting independently; it works offline; and it opens with repo-specific facts a hosted document would make the agent rediscover. It also instructs the agent to backfill only runs the CI provider actually recorded — with their real SHAs and timestamps — never invented history.
 
+### Reading and changing config: `git clarity config`
+
+```sh
+git clarity config                      # print the stored file
+git clarity config leadTime             # read one key ("pipeline (default)" when unset)
+git clarity config leadTime all         # set it, and push
+```
+
+A set rewrites the one key, re-parses the **whole** resulting file, and only then commits it onto the config ref's tip and pushes — so a typo'd value fails with the list of valid ones and the shared config never moves. Writes are stricter than reads on purpose: the read path ignores keys it doesn't know (an old binary must survive a newer config), but this command refuses to *write* a key this build cannot validate, because writing forward-compatibly is how typos become permanent shared state. The settable keys are `leadTime` and `source`; `[deploy "…"]` sections are structural and stay a hand edit until a subcommand earns its keep. Setting a key on a repo with no config ref creates it, which is setup, and the output says so. Every change is one commit on `refs/clarity/config` — `git log refs/clarity/config` is the audit trail.
+
 ### Lead time
 
 Each row's right-hand column is that commit's lead time, and the weekly `avg` is the mean of the ones visible in the Deployed section. What "lead time" starts from is configurable, because the honest answer depends on what you intend the number to change:
 
-```json
-{ "clarity": { "leadTime": "pipeline" } }
+```sh
+git clarity config leadTime all
 ```
 
 | Mode | Which commits count | Measured from |
 | --- | --- | --- |
-| `all` (default) | every commit that reached production | its authoring time |
+| `all` | every commit that reached production | its authoring time |
 | `reported` | commits carrying at least one pipeline event | its authoring time |
-| `pipeline` | commits carrying at least one pipeline event | its earliest event |
+| `pipeline` (default) | commits carrying at least one pipeline event | its earliest event |
 
 **Why the choice exists.** CI usually runs on the pushed head, not on every commit in a push. A developer who makes five small commits and pushes them together produces one commit with events and four without — but all five reached production, so under `all` they contribute five samples, each carrying however long the work sat unpushed. The average ends up describing commit-and-push habits as much as the pipeline. Someone who commits on Friday and pushes on Monday moves the team's number more than any pipeline change would.
 
-`all` is the default so that upgrading never silently moves anyone's numbers.
+**`pipeline` is the default** because that Friday-to-Monday batch is the first thing every new user saw: a dashboard claiming days of lead time over a pipeline that takes minutes, which reads as a broken tool rather than a measured truth. An unset config now measures the pipeline — the thing clarity's pitch says it watches — and the DORA-faithful `all` is a deliberate, visible opt-in rather than a default nobody read. (`all` was the default originally, chosen so upgrading never moved anyone's numbers; field experience ranked the first impression above that stability, and the flip is the one time the numbers move without a config edit.)
 
 `reported` removes the multiplier — one sample per pushed batch instead of one per commit — but not the magnitude. The surviving commit is still timed from when it was authored, so the Friday-to-Monday gap is still in the average, just once instead of five times. Choose it to keep the DORA definition intact and only stop the double-counting.
 
@@ -2297,7 +2307,7 @@ Three layers of defence, because none is sufficient alone:
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
 - **A `--branch` flag** — the trunk is auto-detected (see [The TUI](#the-tui-git-clarity)), which resolved the old "auto-detect current branch" question — deliberately *without* falling back to the current checkout, since a silently-wrong trunk misleads both the dashboard and the `check` gate. A per-invocation `--branch` override for looking at a non-trunk branch remains unbuilt until the need arises
 - **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in the config ref is the seam it plugs into
-- **`git clarity config` get/set** — the config ref is written whole by `init` and otherwise edited by hand (`git cat-file -p refs/clarity/config:config`, edit, re-commit via a helper that does not yet exist). A small get/set surface becomes worth building the first time someone needs to change `leadTime` without reading this README
+- **`git clarity config` for deploy declarations** — the get/set surface exists (see [Reading and changing config](#reading-and-changing-config-git-clarity-config)) but covers scalar keys only; declaring `[deploy "…"]` sections is still a hand edit of the ref's file. A `config deploy add/remove` grammar becomes worth it when the hand edit is the thing a user actually stumbles on
 - **Candidacy in batch mode** — `report --batch` carries stage events only, so a monorepo backfilling its history gets flows but not candidacy, and every historical commit counts towards every flow's lead time. A `scope/` equivalent for the JSONL stream would close it
 - **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for
 - **Target name validation without config** — stages and statuses are enforced against closed sets in `internal/report`. Target names can't be: with no declared flows, any string is accepted, so a typo creates a ghost flow. Declaring flows closes the set (see [Deploy targets](#deploy-targets)); a repo that hasn't declared any keeps the open vocabulary by design

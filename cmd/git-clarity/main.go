@@ -22,6 +22,7 @@ import (
 	"github.com/ezcdlabs/clarity/internal/cache"
 	"github.com/ezcdlabs/clarity/internal/checkcmd"
 	"github.com/ezcdlabs/clarity/internal/config"
+	"github.com/ezcdlabs/clarity/internal/configcmd"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/gitlog"
@@ -71,6 +72,13 @@ func dispatch(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "onboard" {
 		return runOnboard(args[1:])
+	}
+	if len(args) > 0 && args[0] == "config" {
+		repoPath, err := repoRoot()
+		if err != nil {
+			return fmt.Errorf("not a git repository: %w", err)
+		}
+		return configcmd.Run(configcmd.Options{RepoPath: repoPath, Out: os.Stdout, Args: args[1:]})
 	}
 	if len(args) > 0 && args[0] == "metrics" {
 		return runMetrics(args[1:])

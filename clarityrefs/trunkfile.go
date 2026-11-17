@@ -32,6 +32,41 @@ func ReadTrunkFile(repoPath, branch, path string) ([]byte, bool, error) {
 	return nil, false, nil
 }
 
+// HasTrunkRef reports whether any local ref can answer for the trunk —
+// the remote-tracking ref or the local branch head. False is the shape of
+// a CI job checked out from a tag, which fetched no branch at all.
+func HasTrunkRef(repoPath, branch string) (bool, error) {
+	for _, ref := range []string{"refs/remotes/origin/" + branch, "refs/heads/" + branch} {
+		exists, err := refExists(repoPath, ref)
+		if err != nil || exists {
+			return exists, err
+		}
+	}
+	return false, nil
+}
+
+// FetchTrunkTip fetches just the trunk's tip into the remote-tracking ref,
+// at depth 1 — the caller wants one blob out of one tree, not history.
+// Meant for repositories where HasTrunkRef is false (a tag checkout);
+// callers with a trunk ref must not use it, because the depth-1 fetch
+// records a shallow boundary, which is noise in a developer's full clone
+// and nothing in a CI workspace that is discarded after the job.
+func FetchTrunkTip(repoPath, remote, branch string) error {
+	if remote == "" {
+		remote = "origin"
+	}
+	refspec := "+refs/heads/" + branch + ":refs/remotes/" + remote + "/" + branch
+	cmd := exec.Command("git", append(noAutoGC, "fetch", "--depth=1", remote, refspec)...)
+	cmd.Dir = repoPath
+	cmd.Env = gitenv.Clean()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("fetch %s from %s: %w\n%s", branch, remote, err,
+			gitenv.Redact(strings.TrimSpace(string(out))))
+	}
+	return nil
+}
+
 // readRefPath reads <ref>:<path> as a blob. A path absent from the tree is
 // ok=false; everything else that stops the read is an error.
 func readRefPath(repoPath, ref, path string) ([]byte, bool, error) {

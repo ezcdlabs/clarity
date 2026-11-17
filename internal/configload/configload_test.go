@@ -1,6 +1,7 @@
 package configload_test
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -167,3 +168,41 @@ func TestStored_Precedence(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// TestLoad_FetchesTheTrunkWhenNoLocalRefHasIt: a CI job checked out from a
+// tag has neither refs/remotes/origin/<trunk> nor refs/heads/<trunk>, and
+// that job may be exactly the one reporting deploys — declared-target
+// enforcement must not silently switch off there. When no local ref can
+// answer for the trunk, the tip is fetched (best-effort, depth 1) before
+// concluding the repo has no config.
+func TestLoad_FetchesTheTrunkWhenNoLocalRefHasIt(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	writer := remote.NewClone(t)
+	writer.WriteFile(".clarity", "[clarity]\n\tleadTime = reported\n")
+	writer.CommitAll("add .clarity")
+	writer.Push("main")
+
+	// A tag-checkout shape: detached HEAD, no trunk refs anywhere local.
+	clone := remote.NewClone(t)
+	for _, args := range [][]string{
+		{"git", "remote", "set-head", "origin", "main"}, // origin/HEAD names the trunk, as it does after a real clone
+		{"git", "checkout", "--detach", "HEAD"},
+		{"git", "update-ref", "-d", "refs/heads/main"},
+		{"git", "update-ref", "-d", "refs/remotes/origin/main"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = clone.Path
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+
+	cfg, err := configload.Load(clone.Path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.SetUp || cfg.LeadTimeMode() != core.LeadReported {
+		t.Errorf("SetUp=%v LeadTimeMode=%q — the trunk tip was not fetched when no local ref had it",
+			cfg.SetUp, cfg.LeadTimeMode())
+	}
+}

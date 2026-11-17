@@ -907,10 +907,16 @@ The events ref isn't fetched by default. The first time `git clarity` runs in a 
 This is a one-time, automatic step. The config needs no special transport at
 all: `.clarity` rides the trunk, so any clone that can see the trunk — a
 fresh CI checkout included, which is exactly where `report` enforces
-declared targets — already has the config of record. Only the legacy
-`refs/clarity/config` fallback is still fetched explicitly (best-effort, so
-offline answers from the last fetch), for as long as unmigrated repos need
-it.
+declared targets — already has the config of record. The one clone that
+cannot is a CI job checked out from a **tag**, which fetches no branch; a
+reader that finds no trunk ref at all fetches just the tip (depth 1,
+best-effort) before concluding the repo has no config, because that job may
+be exactly the one reporting deploys and enforcement must not silently
+switch off there. A clone that *has* a trunk ref is never fetched this way —
+its ref is the answer, and a depth-1 fetch would shallow-mark a developer's
+full clone. Only the legacy `refs/clarity/config` fallback is still fetched
+explicitly (best-effort, so offline answers from the last fetch), for as
+long as unmigrated repos need it.
 
 ---
 

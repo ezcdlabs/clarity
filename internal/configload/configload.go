@@ -45,6 +45,23 @@ func Stored(repoPath, branch string) ([]byte, Origin, error) {
 	if err != nil {
 		return nil, OriginNone, err
 	}
+	if !ok {
+		// No local ref for the trunk at all — the shape of a CI job checked
+		// out from a tag, which may be exactly the job reporting deploys, so
+		// concluding "no config" here would silently switch declared-target
+		// enforcement off. Fetch just the tip (best-effort; offline keeps
+		// the no-config answer) and look again. A repo that HAS a trunk ref
+		// is never fetched here: its ref is the answer, stale or not, and a
+		// depth-1 fetch would shallow-mark a developer's full clone.
+		if has, hasErr := clarityrefs.HasTrunkRef(repoPath, branch); hasErr == nil && !has {
+			if clarityrefs.FetchTrunkTip(repoPath, "origin", branch) == nil {
+				data, ok, err = clarityrefs.ReadTrunkFile(repoPath, branch, config.ClarityFileName)
+				if err != nil {
+					return nil, OriginNone, err
+				}
+			}
+		}
+	}
 	if ok {
 		return data, OriginTrunkFile, nil
 	}

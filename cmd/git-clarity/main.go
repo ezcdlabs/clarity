@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ezcdlabs/clarity/internal/adapters/execsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
@@ -28,6 +29,8 @@ import (
 	"github.com/ezcdlabs/clarity/internal/initcmd"
 	"github.com/ezcdlabs/clarity/internal/onboardcmd"
 	"github.com/ezcdlabs/clarity/internal/report"
+	"github.com/ezcdlabs/clarity/internal/trust"
+	"github.com/ezcdlabs/clarity/internal/trustcmd"
 )
 
 // version is set at build time via -ldflags "-X main.version=<value>".
@@ -71,6 +74,24 @@ func dispatch(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "onboard" {
 		return runOnboard(args[1:])
+	}
+	if len(args) > 0 && args[0] == "trust" {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: git clarity trust (it shows the configured source command and asks for your approval)")
+		}
+		repoPath, err := repoRoot()
+		if err != nil {
+			return fmt.Errorf("not a git repository: %w", err)
+		}
+		return trustcmd.Run(trustcmd.Options{
+			RepoPath: repoPath,
+			In:       os.Stdin,
+			Out:      os.Stdout,
+			// Both ends must be a terminal: the prompt has to reach a human
+			// and the answer has to come from one. A piped stdin typing
+			// "trust" is an automation, which is exactly who must not answer.
+			Interactive: isTerminal(os.Stdin) && isTerminal(os.Stdout),
+		})
 	}
 	if len(args) > 0 && args[0] == "config" {
 		repoPath, err := repoRoot()
@@ -570,6 +591,30 @@ func runCheck(args []string) error {
 // them is a broken build, and a check that blocked on any of them would be
 // uninstalled the first time someone worked on a train.
 func checkTrunk(ctx context.Context, cfg config.Config, repoPath string, limit int) checkcmd.Result {
+	// An approved exec source answers the check the same way it feeds the
+	// dashboard, through its strict Once — a helper failure is "could not
+	// tell", which lets the push through, never a stale green. Unapproved,
+	// the command must not run (the one rule that holds everywhere), so
+	// the events ref answers as it did before the exec source existed.
+	if cfg.SourceExec != nil {
+		if trusted, err := trust.IsTrusted(repoPath, cfg.SourceExec.Argv); err != nil {
+			return checkcmd.Undetermined.Result(err.Error())
+		} else if trusted {
+			src, err := execsource.New(execsource.Options{
+				RepoPath: repoPath,
+				RepoName: filepath.Base(repoPath),
+				Remote:   "origin",
+				Branch:   cfg.Branch,
+				Limit:    effectiveLimit(limit),
+				Argv:     cfg.SourceExec.Argv,
+				Timeout:  cfg.SourceExec.Timeout,
+			})
+			if err != nil {
+				return checkcmd.Undetermined.Result(err.Error())
+			}
+			return checkcmd.Read(ctx, src, cfg.Branch, time.Now())
+		}
+	}
 	// Read through TrunkReader rather than the Source port, so a fetch that
 	// failed comes back as "could not tell" instead of being quietly
 	// answered from stale remote-tracking refs. That distinction is the
@@ -606,12 +651,54 @@ type exitError struct{ code int }
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
-// buildSource constructs the inbound Source adapter. There is one: the
-// events-ref source. The factory shape survives its former second branch
-// (the retired GitHub Actions adapter) because the config ref's
-// clarity.source key is where future sources — another repository's ref,
-// another backend — will dispatch from.
+// buildSource constructs the inbound Source adapter, dispatching on the
+// config's clarity.source. Two exist: the events-ref source, and the exec
+// source — which runs only once this clone's human has approved the exact
+// configured argv. An unapproved exec source is not an error and not a
+// prompt (there may be no human here to ask): the events ref serves
+// instead, with every snapshot marked so the fallback is never mistaken
+// for the real thing.
 func buildSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath string) (core.Source, error) {
+	if cfg.SourceExec != nil {
+		trusted, err := trust.IsTrusted(repoPath, cfg.SourceExec.Argv)
+		if err != nil {
+			return nil, err
+		}
+		if trusted {
+			src, err := execsource.New(execsource.Options{
+				RepoPath: repoPath,
+				RepoName: filepath.Base(repoPath),
+				Remote:   "origin",
+				Branch:   cfg.Branch,
+				Limit:    effectiveLimit(opts.limit),
+				Argv:     cfg.SourceExec.Argv,
+				Timeout:  cfg.SourceExec.Timeout,
+			})
+			if err != nil {
+				return nil, err
+			}
+			// Same pre-flight contract as the ref source below, plus one
+			// real helper run: "degrade quietly" only holds once a first
+			// state exists, and a helper that cannot run at all must fail
+			// here, loudly, instead of hanging a blank dashboard.
+			if err := src.Validate(ctx); err != nil {
+				return nil, fmt.Errorf("events source: %w%s", err, branchHint(cfg, repoPath))
+			}
+			return src, nil
+		}
+		fallback, err := buildRefSource(ctx, cfg, opts, repoPath)
+		if err != nil {
+			return nil, err
+		}
+		return core.MarkDegraded(fallback,
+			"the configured exec events source is not approved on this clone — run `git clarity trust`; showing the events ref instead"), nil
+	}
+	return buildRefSource(ctx, cfg, opts, repoPath)
+}
+
+// buildRefSource constructs the events-ref source, the default and the
+// fallback.
+func buildRefSource(ctx context.Context, cfg config.Config, opts rootOptions, repoPath string) (core.Source, error) {
 	src, err := refsource.New(refsource.Options{
 		RepoPath: repoPath,
 		RepoName: filepath.Base(repoPath),

@@ -120,7 +120,16 @@ func RenderSnapshot(repoName string, view core.View, now time.Time, opts Options
 
 	var b strings.Builder
 	b.WriteString(plainHeader(repoName, view.Header, flows, named))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+	// A degraded source must say so in-band: a script reading fallback or
+	// last-good data as the real thing is the silent failure the marker
+	// exists to end, and stderr is not part of what a pipe consumes. The
+	// reason carries its own specifics (helper stderr, or which fallback
+	// is serving).
+	if snap.Degraded != "" {
+		b.WriteString("source degraded: " + snap.Degraded + "\n")
+	}
+	b.WriteString("\n")
 
 	// One block per deploy flow. A repo with a single flow gets no block
 	// header at all, so its output is byte-identical to what it rendered

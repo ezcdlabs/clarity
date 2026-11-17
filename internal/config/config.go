@@ -86,6 +86,14 @@ type Config struct {
 	// LeadTimeMode(), which resolves the default in one place.
 	LeadTime core.LeadTimeMode
 
+	// SourceExec is the exec source configuration when clarity.source is
+	// "exec": the command clarity runs to read events, instead of the
+	// events ref. nil means the events-ref source. Honoured only from
+	// `.clarity` on the trunk — never from the legacy config ref, which
+	// review cannot protect — and only after the user has approved the
+	// exact argv (see internal/trust).
+	SourceExec *ExecSource
+
 	// DeclaredDeploys are the declared deploy flows, in declaration order.
 	// Nil when the config declares none, which means flows are discovered
 	// from the events instead — declaring them is what turns the config

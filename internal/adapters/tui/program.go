@@ -453,12 +453,21 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 	left := strings.Join([]string{title, dot, ci, dot}, gap)
 
 	// The SWR indicator, in its two sizes. Only a stale view shows either:
-	// nothing in flight, nothing to advertise.
+	// nothing in flight, nothing to advertise. A degraded source outranks
+	// it — "the fetch is in flight" is routine, "the source is failing and
+	// this is the last good read" is the thing the user must not miss —
+	// and it keeps the warning glyph when the row sheds, for the same
+	// reason the spinner survives shedding.
 	right, rightCompact := "", ""
 	if view.Stale {
 		rightCompact = on(lipgloss.NewStyle().Foreground(colorGray)).Render(spinner)
 		right = rightCompact + sp +
 			on(lipgloss.NewStyle().Foreground(colorGray).Italic(true)).Render("refreshing…")
+	}
+	if snap.Degraded != "" {
+		rightCompact = on(lipgloss.NewStyle().Foreground(colorYellow())).Render("⚠")
+		right = rightCompact + sp +
+			on(lipgloss.NewStyle().Foreground(colorYellow()).Italic(true)).Render("source degraded")
 	}
 
 	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + sp + statusIcon(deployStatus, bg)

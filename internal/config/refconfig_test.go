@@ -1,8 +1,10 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ezcdlabs/clarity/internal/core"
 )
@@ -37,6 +39,44 @@ func TestParseClarityConfig(t *testing.T) {
 		"unknown source is this build's cue to refuse": {
 			in:      "[clarity]\n\tsource = github\n",
 			wantErr: "events-ref",
+		},
+		"source exec takes its argv from the source section": {
+			in: "[clarity]\n\tsource = exec\n[source]\n\targ = bazel\n\targ = run\n\targ = //tools/clarity-source\n",
+			want: Config{
+				Branch:     DefaultBranch,
+				SourceExec: &ExecSource{Argv: []string{"bazel", "run", "//tools/clarity-source"}, Timeout: DefaultExecTimeout},
+			},
+		},
+		"source exec honours a timeout": {
+			in: "[clarity]\n\tsource = exec\n[source]\n\targ = ./helper\n\ttimeout = 30s",
+			want: Config{
+				Branch:     DefaultBranch,
+				SourceExec: &ExecSource{Argv: []string{"./helper"}, Timeout: 30 * time.Second},
+			},
+		},
+		"arguments are an argv, never a shell line": {
+			// Metacharacters are data. If any layer ever interprets these,
+			// the argv read back here would differ. The quoting is git-config
+			// dialect, not shell: unquoted `;` and `#` start a comment, so a
+			// value carrying one is written quoted — and that quote is the
+			// only processing the value ever gets.
+			in: "[clarity]\n\tsource = exec\n[source]\n\targ = ./helper\n\targ = \"$(touch pwned); rm -rf *\"\n",
+			want: Config{
+				Branch:     DefaultBranch,
+				SourceExec: &ExecSource{Argv: []string{"./helper", "$(touch pwned); rm -rf *"}, Timeout: DefaultExecTimeout},
+			},
+		},
+		"source exec with no argv is an error": {
+			in:      "[clarity]\n\tsource = exec\n",
+			wantErr: "arg",
+		},
+		"a bad exec timeout is an error": {
+			in:      "[clarity]\n\tsource = exec\n[source]\n\targ = ./helper\n\ttimeout = soon\n",
+			wantErr: "timeout",
+		},
+		"a source section without source exec is ignored like any unknown section": {
+			in:   "[source]\n\targ = ./helper\n",
+			want: Config{Branch: DefaultBranch},
 		},
 		"unknown lead time mode is an error": {
 			in:      "[clarity]\n\tleadTime = sideways\n",
@@ -82,6 +122,9 @@ func TestParseClarityConfig(t *testing.T) {
 				if f.Name != w.Name || strings.Join(f.Targets, ",") != strings.Join(w.Targets, ",") {
 					t.Errorf("flow[%d] = %+v, want %+v", i, f, w)
 				}
+			}
+			if !reflect.DeepEqual(got.SourceExec, tc.want.SourceExec) {
+				t.Errorf("SourceExec = %+v, want %+v", got.SourceExec, tc.want.SourceExec)
 			}
 		})
 	}

@@ -206,3 +206,47 @@ func TestLoad_FetchesTheTrunkWhenNoLocalRefHasIt(t *testing.T) {
 			cfg.SetUp, cfg.LeadTimeMode())
 	}
 }
+
+// TestLoad_ExecSourceIsNeverHonouredFromTheLegacyRef: the ref is exactly
+// where an attacker would put an executable command — unprotected,
+// unreviewed, silently force-pushable — so a source command there is
+// dropped with a warning, never run. Only .clarity on the trunk may name
+// one.
+func TestLoad_ExecSourceIsNeverHonouredFromTheLegacyRef(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	refCfg := []byte("[clarity]\n\tsource = exec\n[source]\n\targ = ./pwn\n")
+	if err := clarityrefs.WriteConfigFile(clone.Path, "origin", refCfg, "clarity: legacy"); err != nil {
+		t.Fatalf("seed ref: %v", err)
+	}
+
+	cfg, err := configload.Load(clone.Path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SourceExec != nil {
+		t.Fatalf("SourceExec = %+v from the legacy ref; it must be dropped", cfg.SourceExec)
+	}
+	if !strings.Contains(cfg.Notice, "source") {
+		t.Errorf("Notice = %q, want a warning that the ref's source command was ignored", cfg.Notice)
+	}
+}
+
+// TestLoad_ExecSourceFromTheTrunkIsParsed: the positive half — on the
+// trunk the exec source loads with its argv intact.
+func TestLoad_ExecSourceFromTheTrunkIsParsed(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	writer := remote.NewClone(t)
+	writer.WriteFile(".clarity", "[clarity]\n\tsource = exec\n[source]\n\targ = ./tools/helper\n\targ = --store=ch\n")
+	writer.CommitAll("clarity: exec source")
+	writer.Push("main")
+
+	reader := remote.NewClone(t)
+	cfg, err := configload.Load(reader.Path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SourceExec == nil || strings.Join(cfg.SourceExec.Argv, " ") != "./tools/helper --store=ch" {
+		t.Errorf("SourceExec = %+v, want the trunk file's argv", cfg.SourceExec)
+	}
+}

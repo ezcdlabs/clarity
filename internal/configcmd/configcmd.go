@@ -218,8 +218,8 @@ func validate(canon, value string) error {
 			return fmt.Errorf("clarity.leadTime: %w", err)
 		}
 	case "source":
-		if value != config.SourceEventsRef {
-			return fmt.Errorf("clarity.source %q: this build only reads %q", value, config.SourceEventsRef)
+		if value != config.SourceEventsRef && value != config.SourceExecName {
+			return fmt.Errorf("clarity.source %q: this build only reads %q or %q", value, config.SourceEventsRef, config.SourceExecName)
 		}
 	}
 	return nil

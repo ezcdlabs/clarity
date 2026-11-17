@@ -33,6 +33,14 @@ type Snapshot struct {
 	// Renderers can name it in that note. Meaningless when Truncated is
 	// false.
 	Limit int
+	// Degraded, when non-empty, says the source that produced this
+	// snapshot is currently failing and the data is its last good read —
+	// one line of reason, helper stderr included. Set by source adapters
+	// whose backend can fail independently of the repository (the exec
+	// source); the events-ref source never sets it. Renderers surface it
+	// rather than hide it: a dashboard quietly showing old data is the
+	// silent-watcher failure this field exists to end.
+	Degraded string
 }
 
 // Commit is the raw metadata for one commit, before any pipeline events

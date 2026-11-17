@@ -197,6 +197,34 @@ func TestSet_UnknownKeyIsRefused(t *testing.T) {
 	}
 }
 
+// TestSet_SourceExecNeedsItsArgv: `source = exec` is a valid value, but a
+// file saying exec with no [source] args does not parse, and the
+// whole-file re-parse must catch that before anything is written.
+func TestSet_SourceExecNeedsItsArgv(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+
+	_, err := run(t, clone.Path, "source", "exec")
+	if err == nil {
+		t.Fatal("source=exec with no [source] section was written")
+	}
+	if !strings.Contains(err.Error(), "arg") {
+		t.Errorf("the refusal should say the [source] args are missing: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(clone.Path, config.ClarityFileName)); statErr == nil {
+		t.Error("a refused set still wrote .clarity")
+	}
+
+	// With the section already in place (a hand edit), the key is settable.
+	if err := os.WriteFile(filepath.Join(clone.Path, config.ClarityFileName),
+		[]byte("[clarity]\n\tsource = events-ref\n[source]\n\targ = ./helper\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := run(t, clone.Path, "source", "exec"); err != nil {
+		t.Fatalf("set source=exec with args present: %v", err)
+	}
+}
+
 // TestGet_ConfiguredAndDefault: one argument reads the key from the trunk —
 // the configured value plainly, an unset one as the default, saying so.
 func TestGet_ConfiguredAndDefault(t *testing.T) {

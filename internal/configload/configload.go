@@ -114,6 +114,15 @@ func Load(repoPath string) (config.Config, error) {
 		cfg.SetUp = true
 		cfg.Notice = fmt.Sprintf("clarity's config still lives in the legacy %s — run `git clarity init` to write %s, then commit and push it to %s",
 			clarityrefs.ConfigRef, config.ClarityFileName, lookup)
+		// A source command is honoured only from the trunk's file. The ref
+		// is exactly where an attacker would put an executable command —
+		// unprotected, unreviewed, silently force-pushable — so one found
+		// there is dropped, loudly, and the events ref serves instead.
+		if cfg.SourceExec != nil {
+			cfg.SourceExec = nil
+			cfg.Notice = fmt.Sprintf("ignoring the exec source command in the legacy %s — a source command is honoured only from %s on the trunk, where review and branch protection cover it; reading the events ref instead",
+				clarityrefs.ConfigRef, config.ClarityFileName)
+		}
 	default:
 		if cfg, err = config.Load(repoPath); err != nil {
 			return cfg, err

@@ -87,7 +87,11 @@ git clarity config leadTime all         # rewrite .clarity for you to commit
 
 Reads answer from the trunk — the config in effect — never from the working tree, so `get` cannot report an edit that hasn't landed as though it had. A set rewrites the one key in the working-tree `.clarity` and leaves the commit to you: the config lives on the trunk precisely so that changing it goes through the same review as any other trunk change, and a tool that pushed there itself would bypass exactly that. The seed for the rewrite is, in order, the working-tree file (an uncommitted edit is a change mid-flight, not something to discard), the trunk's file, or the legacy ref — so a set on an unmigrated repo doubles as the migration.
 
-A set re-parses the **whole** resulting file before writing it, so a typo'd value fails with the list of valid ones and no file is touched. Writes are stricter than reads on purpose: the read path ignores keys it doesn't know (an old binary must survive a newer config), but this command refuses to *write* a key this build cannot validate, because writing forward-compatibly is how typos become permanent shared state. The settable keys are `leadTime` and `source`; `[deploy "…"]` sections are structural and stay a hand edit until a subcommand earns its keep. The audit trail is the trunk's own history: `git log -- .clarity`.
+A set re-parses the **whole** resulting file before writing it, so a typo'd value fails with the list of valid ones and no file is touched. Writes are stricter than reads on purpose: the read path ignores keys it doesn't know (an old binary must survive a newer config), but this command refuses to *write* a key this build cannot validate, because writing forward-compatibly is how typos become permanent shared state. The settable keys are `leadTime` and `source`; `[deploy "…"]` and `[source]` sections are structural and stay a hand edit until a subcommand earns its keep. The audit trail is the trunk's own history: `git log -- .clarity`.
+
+### Approving an exec events source: `git clarity trust`
+
+A repo whose `.clarity` configures `source = exec` (see [Pluggable event sources](#pluggable-event-sources-claritysource--exec)) names a command for clarity to run — and shared configuration must not be able to run code on your machine just because you opened a dashboard. `git clarity trust` shows the exact argument list and asks for a typed confirmation; the approval is recorded in this clone's local `.git/config` as a hash of that argv, so any change to the command asks again and a fresh clone asks its own human again. Until it is approved, clarity reads the events ref instead and marks every frame `source degraded`, in the TUI and plain output both. Approval is deliberately a human act: the command never prompts outside an interactive terminal, and agents should treat running it as a decision for their human.
 
 ### Lead time
 
@@ -419,12 +423,14 @@ read and git tooling already edits:
 [deploy "mobile"]
 ```
 
-`clarity.source` names where events come from. This build understands one
-value, `events-ref` (the repo's own `refs/clarity/events`), but the key is
-the dispatch point future sources plug into — another repository's ref (so a
-code repo can stay read-only for reporters), another backend entirely. An
-old binary reading an unknown source refuses loudly rather than silently
-rendering the wrong repo's events as this one's. `clarity.leadTime` is the
+`clarity.source` names where events come from. This build understands two
+values: `events-ref` (the repo's own `refs/clarity/events`, the default)
+and `exec` (a local helper command — see
+[Pluggable event sources](#pluggable-event-sources-claritysource--exec)).
+The key is the dispatch point further sources plug into — another
+repository's ref, another backend — and an old binary reading an unknown
+value refuses loudly rather than silently rendering the wrong repo's
+events as this one's. `clarity.leadTime` is the
 [lead time mode](#lead-time); `[deploy "<name>"]` sections declare the
 [deploy flows](#deploy-targets). Unknown sections and keys are ignored —
 the forward-compat contract — but an unknown `source` is not, because it
@@ -492,6 +498,89 @@ init` on an unmigrated repo seeds `.clarity` from the ref's exact content
 (as does setting any key), leaving the commit to the user. The legacy
 parsers and this paragraph are all scheduled to go once the known installs
 have migrated.
+
+### Pluggable event sources: `clarity.source = exec`
+
+The events ref is honest about what it is: **claims, not evidence**.
+Anyone with push access can write to `refs/clarity/events`, and a
+`git clarity report ci passed` from a laptop looks exactly like one from
+CI. For a high-trust trunk team that is fine — the ref is a shared
+noticeboard, not a control. But nothing should *act* on it, and a team
+that wants trustworthy answers needs events from a store whose writers
+are authenticated: ClickHouse rows written by a dedicated CI user, GitHub
+check runs, an internal API.
+
+Clarity gains no transport, auth, database or verification code for this.
+Instead it gains the pattern of git credential helpers and kubectl exec
+plugins: a **local helper command** the team brings, which clarity runs
+and believes.
+
+```gitconfig
+[clarity]
+	source = exec
+[source]
+	arg = ./tools/clarity-source
+	arg = --store=clickhouse
+	timeout = 10s
+```
+
+**Protocol v1, one-shot and polled.** The command is exec'd directly with
+its configured argument list plus `--protocol 1` — the argv is repeated
+`arg =` lines precisely so there is nothing for a shell to parse, and no
+shell ever runs; metacharacters in an argument arrive as the bytes they
+are. stdin carries the trunk commit SHAs clarity is about to display, one
+per line, newest first, so the helper needs no git knowledge and its
+query stays bounded. stdout is one event JSON object per line —
+`{"sha","stage","status","ts","target","ci"}`, the existing schema plus
+the sha — and **everything the helper prints is what clarity treats as
+true**. Deciding which events to trust is the helper's job, because only
+it knows its store's writers; clarity applies no trust logic of its own.
+Exit 0 means the output is complete. A non-zero exit, a timeout
+(`source.timeout`, default 10s), or unparseable output is a failed read:
+the dashboard keeps the **last good snapshot, visibly marked** — `⚠
+source degraded` in the TUI header, a `source degraded: …` line in plain
+output, helper stderr included — instead of the silent watcher it would
+otherwise be. Helper events then flow through the same snapshot, lens and
+renderers as ref events; no code path downstream distinguishes the two.
+
+**The command never runs without this clone's human approving it.** The
+configuration is shared — that is the point of it being on the trunk —
+but shared config must not be able to run code on someone's machine just
+because they ran a dashboard. The model is `direnv allow` / VS Code
+Workspace Trust:
+
+```sh
+git clarity trust
+```
+
+shows the exact argument list and records a hash of it in **local**
+`.git/config` after a typed confirmation — the word `trust`, not a
+keypress. The approval pins the exact argv: any change to the configured
+command invalidates it (the prompt then shows what it changed from), and
+`.git/config` travels with no push or fetch, so a fresh clone always
+asks its own human again. Where no human can answer — plain mode, hooks,
+`check`, any non-TTY — clarity never prompts and never runs an
+unapproved command: the events ref serves instead, with every frame
+marked `source degraded: … run \`git clarity trust\`` so the fallback is
+never mistaken for the real thing. The prompt is honest about its limits:
+if the command runs code from the checkout (`bazel run //tools/...`),
+approving it approves future versions of that code too.
+
+Two placements follow from the security model rather than convenience:
+the source command is honoured **only from `.clarity` on the trunk**,
+never from the legacy config ref — a silently rewritable ref is exactly
+where an attacker would put an executable command, so one found there is
+dropped with a warning and the events ref serves. And `check` holds the
+same lines: an approved helper answers it through the strict one-shot
+read (a helper failure is "could not tell", which lets the push through —
+never a stale green), while an unapproved one simply never runs.
+
+**Writes are out of scope for the helper.** CI writes to its own
+authenticated store through whatever path that store requires;
+`git clarity report` and the events ref keep working for teams that use
+no helper. The mobile client reads the events ref only, so a repo whose
+source is a helper renders its trunk with no events there — a recorded
+limitation until a relay exists.
 
 ### Why per-file events on a custom ref
 
@@ -2348,7 +2437,7 @@ Three layers of defence, because none is sufficient alone:
 - **Historical retention / `git clarity gc`** — events can grow unbounded; a pruning command for old events
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
 - **A `--branch` flag** — the trunk is auto-detected (see [The TUI](#the-tui-git-clarity)), which resolved the old "auto-detect current branch" question — deliberately *without* falling back to the current checkout, since a silently-wrong trunk misleads both the dashboard and the `check` gate. A per-invocation `--branch` override for looking at a non-trunk branch remains unbuilt until the need arises
-- **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in `.clarity` is the seam it plugs into
+- **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in `.clarity` is the seam it plugs into — the same seam the exec source now dispatches from, which also covers this case in the meantime via a helper that reads the sibling repo
 - **`git clarity config` for deploy declarations** — the get/set surface exists (see [Reading and changing config](#reading-and-changing-config-git-clarity-config)) but covers scalar keys only; declaring `[deploy "…"]` sections is still a hand edit of the ref's file. A `config deploy add/remove` grammar becomes worth it when the hand edit is the thing a user actually stumbles on
 - **Candidacy in batch mode** — `report --batch` carries stage events only, so a monorepo backfilling its history gets flows but not candidacy, and every historical commit counts towards every flow's lead time. A `scope/` equivalent for the JSONL stream would close it
 - **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for

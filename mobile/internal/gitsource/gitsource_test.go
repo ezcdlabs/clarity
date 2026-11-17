@@ -305,9 +305,40 @@ func TestSync_AShallowRefreshDoesNotUndoADeepening(t *testing.T) {
 	}
 }
 
-// TestConfig_PrefersTheConfigRef: refs/clarity/config is the config of
-// record everywhere, and the mobile client must read the same one the CLI
-// does — a lingering legacy .ezcd.json in the tree loses.
+// TestConfig_PrefersTheTrunkClarityFile: .clarity on the trunk is the
+// config of record everywhere, and the mobile client must read the same
+// one the CLI does — both legacy stores lose, whatever they say.
+func TestConfig_PrefersTheTrunkClarityFile(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	clone.WriteFile(".clarity", "[clarity]\n\tleadTime = reported\n")
+	clone.WriteFile(".ezcd.json", `{"clarity":{"leadTime":"pipeline"}}`)
+	clone.CommitAll("clarity: set up")
+	clone.Push("main")
+	refCfg := []byte("[clarity]\n\tleadTime = all\n")
+	if err := clarityrefs.WriteConfigFile(clone.Path, "origin", refCfg, "clarity: legacy"); err != nil {
+		t.Fatalf("seed ref config: %v", err)
+	}
+
+	r := open(t, remote)
+	if err := r.Sync(context.Background(), gitsource.SyncOptions{}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	cfg, err := r.Config()
+	if err != nil {
+		t.Fatalf("Config: %v", err)
+	}
+	if got := string(cfg.LeadTimeMode()); got != "reported" {
+		t.Errorf("lead time mode = %q, want reported from .clarity on the trunk", got)
+	}
+	if !cfg.SetUp {
+		t.Error("SetUp = false although .clarity is on the trunk")
+	}
+}
+
+// TestConfig_LegacyRefIsStillHonoured: a repo that has not migrated yet
+// keeps reading its config from refs/clarity/config — a lingering legacy
+// .ezcd.json in the tree loses.
 func TestConfig_PrefersTheConfigRef(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)

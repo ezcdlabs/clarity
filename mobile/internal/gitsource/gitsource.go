@@ -158,13 +158,26 @@ func ignoreBenign(err error) error {
 }
 
 // Config returns the repository's clarity configuration, with no checkout:
-// the config ref when the repo has been set up, else the legacy .ezcd.json
-// out of the branch tip. The same precedence as the CLI's loadConfig — the
-// two clients must never read different configs from the same repo.
+// .clarity out of the branch tip — the config of record — else the legacy
+// config ref, else the legacy .ezcd.json out of the same tip. The same
+// precedence as the CLI's configload.Load — the two clients must never
+// read different configs from the same repo. (The branch this store holds
+// is the one fetched from the remote, so reading its tip is reading the
+// trunk's committed truth, not anyone's working tree.)
 //
 // A repo with no config anywhere is not an error — it is most repos — and
 // parses to the defaults.
 func (r *Repo) Config() (config.Config, error) {
+	if data, ok, err := r.tipFile(config.ClarityFileName); err != nil {
+		return config.Config{}, err
+	} else if ok {
+		cfg, err := config.ParseClarityConfig(data)
+		if err != nil {
+			return config.Config{}, fmt.Errorf("%s on %s: %w", config.ClarityFileName, r.branch, err)
+		}
+		cfg.SetUp = true
+		return cfg, nil
+	}
 	if data, ok, err := r.configRefFile(); err != nil {
 		return config.Config{}, err
 	} else if ok {
@@ -176,6 +189,31 @@ func (r *Repo) Config() (config.Config, error) {
 		return cfg, nil
 	}
 	return r.legacyConfig()
+}
+
+// tipFile reads one file off the branch tip. ok=false covers both an
+// absent branch and an absent file — a repo that has not adopted the file
+// yet, which is ordinary.
+func (r *Repo) tipFile(path string) ([]byte, bool, error) {
+	tip, err := r.tip()
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	f, err := tip.File(path)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	body, err := f.Contents()
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	return []byte(body), true, nil
 }
 
 // configRefFile reads the config file off the local config ref. ok=false

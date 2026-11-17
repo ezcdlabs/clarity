@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ezcdlabs/clarity/clarityrefs"
 	"github.com/ezcdlabs/clarity/internal/adapters/plain"
 	"github.com/ezcdlabs/clarity/internal/adapters/refsource"
 	"github.com/ezcdlabs/clarity/internal/adapters/tui"
@@ -23,9 +22,9 @@ import (
 	"github.com/ezcdlabs/clarity/internal/checkcmd"
 	"github.com/ezcdlabs/clarity/internal/config"
 	"github.com/ezcdlabs/clarity/internal/configcmd"
+	"github.com/ezcdlabs/clarity/internal/configload"
 	"github.com/ezcdlabs/clarity/internal/core"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
-	"github.com/ezcdlabs/clarity/internal/gitlog"
 	"github.com/ezcdlabs/clarity/internal/initcmd"
 	"github.com/ezcdlabs/clarity/internal/onboardcmd"
 	"github.com/ezcdlabs/clarity/internal/report"
@@ -327,12 +326,12 @@ func isTerminal(f *os.File) bool {
 
 // loadConfig resolves the configuration every command operates on.
 //
-// The config of record is refs/clarity/config (fetched best-effort first,
-// so offline answers with the last fetch): when it exists the repo counts
-// as set up, its file applies, and any lingering legacy .ezcd.json is
-// ignored rather than merged — two half-applied configs would be
-// undebuggable. Without the ref, the legacy file is honoured so existing
-// repos keep working through the deprecation window.
+// The config of record is `.clarity` at the trunk's tip — committed,
+// reviewed, protected like any other trunk change — read through
+// configload.Load, which also honours the two legacy stores (the
+// refs/clarity/config ref, then .ezcd.json) so existing repos keep working
+// through the deprecation window. Nothing is merged: two half-applied
+// configs would be undebuggable.
 //
 // The trunk comes from the repository itself (origin/HEAD, then main, then
 // master — gitlog.DetectTrunk); only a legacy file's pinned branch
@@ -340,26 +339,7 @@ func isTerminal(f *os.File) bool {
 // default and the source pre-flight's error (with its hint) stays the
 // ending.
 func loadConfig(repoPath string) (config.Config, error) {
-	_ = clarityrefs.FetchConfigRef(repoPath, "origin")
-	data, ok, err := clarityrefs.ReadConfigFile(repoPath)
-	if err != nil {
-		return config.Config{}, err
-	}
-	var cfg config.Config
-	if ok {
-		if cfg, err = config.ParseClarityConfig(data); err != nil {
-			return config.Config{}, err
-		}
-		cfg.SetUp = true
-	} else if cfg, err = config.Load(repoPath); err != nil {
-		return cfg, err
-	}
-	if !cfg.BranchPinned {
-		if detected := gitlog.DetectTrunk(repoPath); detected != "" {
-			cfg.Branch = detected
-		}
-	}
-	return cfg, nil
+	return configload.Load(repoPath)
 }
 
 func runTUI(opts rootOptions) error {
@@ -397,16 +377,16 @@ func startDashboard(ctx context.Context, opts rootOptions, repoPath string, star
 		}
 	}
 
-	send(tui.StartupPhaseMsg("reading clarity config (refs/clarity/config)"))
+	send(tui.StartupPhaseMsg("reading clarity config (.clarity on the trunk)"))
 	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		send(tui.StartupErrorMsg{Err: err})
 		return
 	}
 
-	// No config ref and no legacy file: the dashboard would render every
-	// commit meaninglessly "before CI", so offer setup instead. "Exit" quits
-	// inside the Model; only the setup choice arrives here.
+	// No config anywhere: the dashboard would render every commit
+	// meaninglessly "before CI", so offer setup instead. "Exit" quits
+	// inside the Model; only the choices that need action arrive here.
 	if !cfg.SetUp && !cfg.LegacyFile {
 		// The wizard chain (may suggest the checked-out branch), not the
 		// runtime one: this is a display suggestion a human reads, and on a
@@ -424,6 +404,17 @@ func startDashboard(ctx context.Context, opts rootOptions, repoPath string, star
 		}
 		if err := initcmd.Run(initcmd.Options{RepoPath: repoPath, Out: io.Discard}); err != nil {
 			send(tui.StartupErrorMsg{Err: err})
+			return
+		}
+		// Setup wrote .clarity but cannot land it — pushing to the trunk
+		// itself would bypass the review the file lives there to get. The
+		// done pane holds the commit-and-push instruction until the user
+		// acknowledges it; carrying straight on would scroll away the one
+		// step that makes setup stick.
+		send(tui.SetupDoneMsg{Branch: cfg.Branch})
+		select {
+		case <-choices:
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -472,6 +463,13 @@ func runPlain(opts rootOptions) error {
 	cfg, err := loadConfig(repoPath)
 	if err != nil {
 		return err
+	}
+	// Situational one-liners (legacy-ref migration, an uncommitted
+	// .clarity) go to stderr so they never corrupt piped output, and only
+	// here — check stays silent by contract and the TUI's alt-screen would
+	// eat them.
+	if cfg.Notice != "" {
+		fmt.Fprintln(os.Stderr, "note: "+cfg.Notice)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -1005,9 +1003,10 @@ func cachedLensFor(cfg config.Config, src core.Source, cf *cache.File) *core.Cac
 // is the zero-setup path and must not require any config to work.
 //
 // Through loadConfig, not the bare legacy file: the declarations live in
-// refs/clarity/config now, and a CI clone only sees those after the fetch
-// loadConfig performs — skipping it would silently disable enforcement in
-// exactly the place deploys are reported from.
+// .clarity on the trunk now (or the legacy config ref), and loadConfig is
+// what resolves that precedence — reading the working tree here instead
+// would let a checked-out branch silently change enforcement in exactly
+// the place deploys are reported from.
 func checkDeclaredTarget(repoPath, target string) error {
 	if target == "" {
 		return nil
@@ -1031,8 +1030,8 @@ func checkDeclaredTarget(repoPath, target string) error {
 		declared = append(declared, f.Name)
 	}
 	return fmt.Errorf("target %q is not declared in the clarity config — this repo declares: %s\n\n"+
-		"  Add a [deploy %q] section to the config (refs/clarity/config), or fix the\n"+
-		"  typo. Events are append-only, so an undeclared target would show up as a\n"+
+		"  Add a [deploy %q] section to .clarity on the trunk, or fix the typo.\n"+
+		"  Events are append-only, so an undeclared target would show up as a\n"+
 		"  flow nobody can remove.",
 		target, strings.Join(declared, ", "), target)
 }

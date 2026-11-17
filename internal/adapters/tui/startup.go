@@ -14,7 +14,7 @@ import (
 // frame, reporting here instead of to a stderr the alt-screen would eat.
 
 // StartupPhaseMsg names the startup step now running ("reading clarity
-// config (refs/clarity/config)", "fetching master from origin", …). Shown
+// config (.clarity on the trunk)", "fetching master from origin", …). Shown
 // in place of the old bare "Loading", so a stall names its stage instead
 // of lying that progress is being made.
 type StartupPhaseMsg string
@@ -24,8 +24,8 @@ type StartupPhaseMsg string
 // the user quits.
 type StartupErrorMsg struct{ Err error }
 
-// WelcomeMsg switches to the welcome pane: the repo has no clarity config
-// ref, so instead of a dashboard where every commit sits meaninglessly
+// WelcomeMsg switches to the welcome pane: the repo has no clarity config,
+// so instead of a dashboard where every commit sits meaninglessly
 // "before CI", the user gets told what is missing and offered the setup.
 type WelcomeMsg struct {
 	// Branch is the detected trunk, so the pane can show the repo was
@@ -33,14 +33,29 @@ type WelcomeMsg struct {
 	Branch string
 }
 
+// SetupDoneMsg switches the welcome pane to its done state: setup wrote
+// .clarity into the working tree, and the pane now shows — and keeps
+// showing until acknowledged — that committing and pushing the file is
+// what finishes setup. A transient phase line would scroll that away, and
+// an instruction nobody saw is an instruction nobody follows.
+type SetupDoneMsg struct {
+	// Branch is the trunk the file must land on.
+	Branch string
+}
+
 // WelcomeChoice is what the user picked on the welcome pane. Exit is
-// handled inside the Model (it just quits); only the choice that needs
-// the orchestrator to act crosses the channel.
+// handled inside the Model (it just quits); only the choices that need
+// the orchestrator to act cross the channel.
 type WelcomeChoice string
 
-// WelcomeSetup asks the orchestrator to run setup: write
-// refs/clarity/config and push it, then carry on into the dashboard.
+// WelcomeSetup asks the orchestrator to run setup: write .clarity into
+// the working tree, then report back with a SetupDoneMsg.
 const WelcomeSetup WelcomeChoice = "setup"
+
+// WelcomeContinue acknowledges the setup-done pane: the user has read the
+// commit-and-push instruction and the orchestrator may carry on into the
+// dashboard.
+const WelcomeContinue WelcomeChoice = "continue"
 
 // welcomeOptions are the selectable actions, in render order. On-screen
 // options navigated with arrows and confirmed with enter — never bare
@@ -56,8 +71,27 @@ func (m Model) WithStartupChoices(ch chan<- WelcomeChoice) Model {
 }
 
 // updateWelcome handles keys while the welcome pane is up. Arrows (and
-// tab) move the selection, enter confirms, q still quits.
+// tab) move the selection, enter confirms, q still quits. In the done
+// state there is one action — acknowledging the commit instruction — so
+// enter is it.
 func (m Model) updateWelcome(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.welcomeDone {
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			m.welcome, m.welcomeDone = false, false
+			m.startupPhase = "starting the dashboard"
+			if m.choices != nil {
+				select {
+				case m.choices <- WelcomeContinue:
+				default:
+				}
+			}
+		}
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -70,7 +104,7 @@ func (m Model) updateWelcome(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.welcome = false
-		m.startupPhase = "setting up — writing refs/clarity/config and pushing it to origin"
+		m.startupPhase = "setting up — writing .clarity"
 		if m.choices != nil {
 			select {
 			case m.choices <- WelcomeSetup:
@@ -91,11 +125,11 @@ func renderWelcome(branch string, selected int) string {
 	b.WriteString("  The trunk looks like " + branch + ", but there are no CI or deploy events\n")
 	b.WriteString("  to light the dashboard up — without them every commit just waits at\n")
 	b.WriteString("  \"before CI\".\n\n")
-	b.WriteString("  Setting up writes refs/clarity/config and pushes it to origin. That ref\n")
-	b.WriteString("  holds clarity's shared config and marks the repo as onboarded; your\n")
-	b.WriteString("  pipeline then reports events with `git clarity report` — and\n")
-	b.WriteString("  `git clarity onboard` prints a prompt that hands that wiring to an\n")
-	b.WriteString("  AI agent.\n\n")
+	b.WriteString("  Setting up writes a .clarity file at the repo root, for you to commit\n")
+	b.WriteString("  and push — on the trunk it is reviewed and protected like any other\n")
+	b.WriteString("  change, and it marks the repo as onboarded. Your pipeline then reports\n")
+	b.WriteString("  events with `git clarity report` — and `git clarity onboard` prints a\n")
+	b.WriteString("  prompt that hands that wiring to an AI agent.\n\n")
 	for i, opt := range welcomeOptions {
 		if i == selected {
 			b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("> "+opt) + "\n")
@@ -104,6 +138,23 @@ func renderWelcome(branch string, selected int) string {
 		}
 	}
 	b.WriteString("\n  ↑/↓ choose · enter confirm · q quit\n")
+	return b.String()
+}
+
+// renderSetupDone draws the pane shown after setup wrote .clarity: the
+// commit-and-push instruction, held on screen until acknowledged, because
+// it is the one step clarity cannot do for the user — pushing to the
+// trunk itself would bypass the review the file moved there to get.
+func renderSetupDone(branch string) string {
+	var b strings.Builder
+	b.WriteString("\n  " + lipgloss.NewStyle().Bold(true).Render(".clarity written") + "\n\n")
+	b.WriteString("  Clarity's config lives in that file, read from " + branch + ". Commit and\n")
+	b.WriteString("  push it to finish setup:\n\n")
+	b.WriteString("    git add .clarity && git commit -m \"clarity: set up\" && git push\n\n")
+	b.WriteString("  The dashboard works meanwhile; the file's values apply once it lands\n")
+	b.WriteString("  on " + branch + ".\n\n")
+	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("> Continue to the dashboard") + "\n")
+	b.WriteString("\n  enter continue · q quit\n")
 	return b.String()
 }
 

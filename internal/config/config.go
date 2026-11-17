@@ -1,15 +1,19 @@
-// Package config holds clarity's project configuration and the two formats
-// it arrives in.
+// Package config holds clarity's project configuration and the formats it
+// arrives in.
 //
-// The format of record is the git-config-syntax file stored in the repo's
-// `refs/clarity/config` ref (see ParseClarityConfig): it travels with
-// `git fetch` like the events ref does, needs no checkout to read — the
-// mobile client has none — and its very existence is what marks a repo as
-// set up for clarity.
+// The config of record is `.clarity` — a git-config-syntax file (see
+// ParseClarityConfig) committed at the root of the repository and read from
+// the trunk's tip, never from the working tree. On the trunk it is covered
+// by review, branch protection and CODEOWNERS, which matters because the
+// config decides things like where events come from; a change to it is an
+// ordinary commit in `git log` and blame rather than a silent write to a
+// side ref.
 //
-// The committed `.ezcd.json` file is the legacy format, still read as a
-// silent fallback when the config ref is absent so existing repos keep
-// working. New fields land only in the ref format.
+// Two legacy formats are still read as fallbacks so existing repos keep
+// working: the same dialect stored in the `refs/clarity/config` ref (the
+// first home of the config, walked back because hosting platforms cannot
+// protect custom refs), and the original committed `.ezcd.json`. New fields
+// land only in the `.clarity` format.
 package config
 
 import (
@@ -34,6 +38,12 @@ const DefaultBranch = "main"
 // path a working copy would.
 const FileName = ".ezcd.json"
 
+// ClarityFileName is the configuration file of record: committed at the
+// root of the repository, read from the trunk's tip. Named here so every
+// reader — the CLI reading a ref's tree, the mobile client reading a
+// fetched commit — asks for the same path.
+const ClarityFileName = ".clarity"
+
 // Config is the parsed surface every caller cares about, whichever format
 // it was read from.
 type Config struct {
@@ -49,11 +59,21 @@ type Config struct {
 	// disagrees. The ref format deliberately has no branch key.
 	BranchPinned bool
 
-	// SetUp reports whether refs/clarity/config exists — the one
-	// unambiguous "clarity has been set up on this repo" signal, which is
-	// what the TUI's welcome screen keys off. Filled by the reader, not
-	// the parser: it is a fact about the repository, not about the bytes.
+	// SetUp reports whether clarity has been set up on this repo: .clarity
+	// on the trunk, the legacy refs/clarity/config, or a working-tree
+	// .clarity whose commit is presumably in flight. The TUI's welcome
+	// screen keys off it. Filled by the reader, not the parser: it is a
+	// fact about the repository, not about the bytes. Only the trunk's
+	// .clarity (or the legacy ref) contributes values; a working-tree file
+	// flips this bit and nothing else.
 	SetUp bool
+
+	// Notice is a one-line situational message for surfaces that can show
+	// one — plain mode's stderr, `git clarity config`'s output: the config
+	// still lives in the legacy ref, or a working-tree .clarity has not
+	// been committed yet. Empty on a fully migrated repo. Never printed by
+	// `check` (silent on green is its contract) or mid-frame in the TUI.
+	Notice string
 
 	// LegacyFile reports whether this Config came from an .ezcd.json that
 	// actually exists. "Configured the old way" must not land on the

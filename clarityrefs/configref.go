@@ -12,14 +12,15 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// ConfigRef is the ref that marks a repository as set up for clarity and
-// carries its shared configuration. Existence is the setup signal — one
-// raceless, binary fact the TUI's welcome screen keys off — and the file
-// inside travels with `git fetch` exactly as the events do, so a client
-// with no checkout (the mobile app) reads the same config everyone else
-// does. The ref is a commit chain: every config change commits on top of
-// the previous one, so plain `git log refs/clarity/config` is the audit
-// trail.
+// ConfigRef is the LEGACY home of clarity's shared configuration: a
+// commit-chained ref holding one git-config-syntax file. It was the config
+// of record briefly and was walked back in favour of a committed `.clarity`
+// file on the trunk — hosting platforms cannot protect custom refs (no
+// branch protection, no required review, silently force-pushable), which
+// is the wrong place for configuration that will eventually name things
+// like event sources. The ref is still read as a fallback until known
+// installs have migrated; the writer below survives for tests and for
+// seeding that state.
 const ConfigRef = "refs/clarity/config"
 
 // ConfigFileName is the single file inside the config ref's tree. Named so

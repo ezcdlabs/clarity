@@ -16,9 +16,9 @@ import (
 // repo's events as this one's.
 const SourceEventsRef = "events-ref"
 
-// ParseClarityConfig parses the file stored at refs/clarity/config:config —
-// git-config syntax, because that is the dialect git users already read and
-// git tooling already edits:
+// ParseClarityConfig parses the `.clarity` file (and the same dialect in
+// the legacy refs/clarity/config) — git-config syntax, because that is the
+// dialect git users already read and git tooling already edits:
 //
 //	[clarity]
 //		source = events-ref

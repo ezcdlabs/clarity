@@ -98,6 +98,7 @@ type Model struct {
 	startupPhase  string
 	startupErr    error
 	welcome       bool
+	welcomeDone   bool
 	welcomeBranch string
 	welcomeIdx    int
 	choices       chan<- WelcomeChoice
@@ -333,6 +334,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.welcome, m.welcomeBranch, m.welcomeIdx = true, msg.Branch, 0
 		m.viewport.SetContent(m.renderBody())
 		return m, nil
+	case SetupDoneMsg:
+		m.welcome, m.welcomeDone, m.welcomeBranch = true, true, msg.Branch
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
 	case StartupErrorMsg:
 		m.startupErr = msg.Err
 		m.viewport.SetContent(m.renderBody())
@@ -359,6 +364,9 @@ func (m Model) renderBody() string {
 		return renderStartupError(m.startupErr)
 	}
 	if !m.received {
+		if m.welcome && m.welcomeDone {
+			return renderSetupDone(m.welcomeBranch)
+		}
 		if m.welcome {
 			return renderWelcome(m.welcomeBranch, m.welcomeIdx)
 		}

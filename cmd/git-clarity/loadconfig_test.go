@@ -10,9 +10,61 @@ import (
 	"github.com/ezcdlabs/clarity/internal/gittest"
 )
 
-// TestLoadConfig_RefConfigWinsAndMarksSetUp: when refs/clarity/config
-// exists it is the config of record — SetUp reports it, its values apply,
-// and a lingering legacy .ezcd.json is ignored rather than merged.
+// TestLoadConfig_TrunkFileIsTheConfigOfRecord: with .clarity committed on
+// the trunk, its values apply and both legacy stores — the config ref and
+// .ezcd.json — are ignored rather than merged, whatever they say.
+func TestLoadConfig_TrunkFileIsTheConfigOfRecord(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	writer := remote.NewClone(t)
+	writer.WriteFile(".clarity", "[clarity]\n\tleadTime = reported\n")
+	writer.CommitAll("add .clarity")
+	writer.Push("main")
+
+	clone := remote.NewClone(t)
+	writeFile(t, clone.Path, ".ezcd.json", `{"clarity": {"leadTime": "pipeline"}}`)
+	refCfg := []byte("[clarity]\n\tleadTime = all\n")
+	if err := clarityrefs.WriteConfigFile(clone.Path, "origin", refCfg, "clarity: set up"); err != nil {
+		t.Fatalf("seed ref config: %v", err)
+	}
+
+	cfg, err := loadConfig(clone.Path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if !cfg.SetUp {
+		t.Error("SetUp = false with .clarity on the trunk")
+	}
+	if cfg.LeadTimeMode() != core.LeadReported {
+		t.Errorf("LeadTimeMode = %q, want %q from .clarity on the trunk", cfg.LeadTimeMode(), core.LeadReported)
+	}
+}
+
+// TestLoadConfig_WorkingTreeClarityContributesNoValues: the config is read
+// from the trunk, never the working tree — editing .clarity locally (or
+// checking out a branch with a different one) must not change what clarity
+// runs.
+func TestLoadConfig_WorkingTreeClarityContributesNoValues(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	writeFile(t, clone.Path, ".clarity", "[clarity]\n\tleadTime = all\n")
+
+	cfg, err := loadConfig(clone.Path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.LeadTimeMode() != core.DefaultLeadTimeMode {
+		t.Errorf("LeadTimeMode = %q from a working-tree .clarity, want the %q default",
+			cfg.LeadTimeMode(), core.DefaultLeadTimeMode)
+	}
+	if !cfg.SetUp {
+		t.Error("SetUp = false — an uncommitted .clarity should still suppress the welcome pane")
+	}
+}
+
+// TestLoadConfig_RefConfigWinsAndMarksSetUp: without a .clarity on the
+// trunk, the legacy refs/clarity/config is still honoured — SetUp reports
+// it, its values apply, and a lingering legacy .ezcd.json is ignored
+// rather than merged.
 func TestLoadConfig_RefConfigWinsAndMarksSetUp(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)

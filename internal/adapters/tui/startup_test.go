@@ -27,10 +27,53 @@ func TestWelcome_OffersSetupAndExit(t *testing.T) {
 	m := New()
 	m = update(t, m, WelcomeMsg{Branch: "master"})
 	body := m.renderBody()
-	for _, want := range []string{"Set up", "Exit", "master", "refs/clarity/config"} {
+	for _, want := range []string{"Set up", "Exit", "master", ".clarity"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("welcome pane is missing %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestSetupDone_ShowsTheCommitInstructions: after setup writes .clarity
+// the pane must say, and keep saying until acknowledged, that committing
+// and pushing the file is what finishes setup — a transient phase line
+// would scroll that away and the file would quietly never land.
+func TestSetupDone_ShowsTheCommitInstructions(t *testing.T) {
+	m := New()
+	m = update(t, m, WelcomeMsg{Branch: "master"})
+	m = update(t, m, KeyMsg("enter")) // choose "Set up this repo"
+	m = update(t, m, SetupDoneMsg{Branch: "master"})
+
+	body := m.renderBody()
+	for _, want := range []string{".clarity", "commit", "push", "master", "Continue"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("setup-done pane is missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestSetupDone_EnterContinuesToTheDashboard: acknowledging the pane sends
+// the continue choice so the orchestrator can carry on, and the pane gives
+// way to startup progress.
+func TestSetupDone_EnterContinuesToTheDashboard(t *testing.T) {
+	choices := make(chan WelcomeChoice, 1)
+	m := New().WithStartupChoices(choices)
+	m = update(t, m, WelcomeMsg{Branch: "main"})
+	m = update(t, m, KeyMsg("enter"))
+	<-choices // the setup choice
+	m = update(t, m, SetupDoneMsg{Branch: "main"})
+	m = update(t, m, KeyMsg("enter"))
+
+	select {
+	case got := <-choices:
+		if got != WelcomeContinue {
+			t.Errorf("choice = %q, want %q", got, WelcomeContinue)
+		}
+	default:
+		t.Fatal("enter on the done pane sent no choice")
+	}
+	if body := m.renderBody(); strings.Contains(body, "Continue") {
+		t.Errorf("the done pane should give way after enter:\n%s", body)
 	}
 }
 

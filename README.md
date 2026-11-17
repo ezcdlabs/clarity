@@ -67,9 +67,9 @@ The oldest week in a truncated window gets **no** divider. `--limit` almost alwa
 
 ### First run and setup: `git clarity init`
 
-A repo nobody has set up has no `refs/clarity/config` (see [The config ref](#the-config-ref-refsclarityconfig)), and on such a repo the TUI opens on a **welcome pane** rather than a dashboard where every commit sits meaninglessly "before CI Passed". The pane names the detected trunk, explains what is missing, and offers two on-screen options — **Set up this repo** and **Exit** — navigated with the arrow keys and confirmed with enter. (On-screen selectables, never bare hotkeys: a visible choice confirmed with enter beats an invisible, instant letter binding.) Choosing setup writes the default config ref and pushes it, then carries straight on into the dashboard; the pane also points at `git clarity onboard` for handing the rest of the wiring to an agent.
+A repo nobody has set up has no `.clarity` on its trunk (see [The config file](#the-config-file-clarity)), and on such a repo the TUI opens on a **welcome pane** rather than a dashboard where every commit sits meaninglessly "before CI Passed". The pane names the detected trunk, explains what is missing, and offers two on-screen options — **Set up this repo** and **Exit** — navigated with the arrow keys and confirmed with enter. (On-screen selectables, never bare hotkeys: a visible choice confirmed with enter beats an invisible, instant letter binding.) Choosing setup writes a default `.clarity` into the working tree, then holds a done pane on screen — `git add .clarity && git commit && git push` — until acknowledged, because committing the file is the one step clarity cannot do for you and a transient message would scroll it away. Acknowledge it and the dashboard carries on; the pane also points at `git clarity onboard` for handing the rest of the wiring to an agent.
 
-`git clarity init` is the same act as a command: it writes `refs/clarity/config` with defaults and pushes it, and does nothing (saying so) when the ref already exists — a re-run must never clobber choices someone has made since. There is nothing to ask, so it is a one-shot, not a wizard: the trunk is detected, the lead time mode has a default, and the events source defaults to the repo's own events ref. It exists alongside the TUI's welcome pane for the caller that cannot press enter in a TUI — a script, a CI bootstrap, or the agent following the onboarding prompt. Setup needs push permission, once, by whoever runs it; the config reaches everyone else by fetch.
+`git clarity init` is the same act as a command: it writes `.clarity` with defaults for you to commit and push to the trunk, and touches nothing (saying so) when the file is already on the trunk or already in the working tree — a re-run must never clobber choices someone has made since. On a repo whose config still lives in the legacy `refs/clarity/config`, init seeds the file from the ref's exact content, so migration carries choices over instead of resetting them. There is nothing to ask, so it is a one-shot, not a wizard: the trunk is detected, the lead time mode has a default, and the events source defaults to the repo's own events ref. It exists alongside the TUI's welcome pane for the caller that cannot press enter in a TUI — a script, a CI bootstrap, or the agent following the onboarding prompt. Init itself pushes nothing: the config lives on the trunk so that review and branch protection cover it, and landing it is an ordinary commit by whoever runs this.
 
 ### Onboarding with an agent: `git clarity onboard`
 
@@ -80,12 +80,14 @@ The prompt lives in the binary rather than on a website on purpose: it is versio
 ### Reading and changing config: `git clarity config`
 
 ```sh
-git clarity config                      # print the stored file
+git clarity config                      # print the config in effect (the trunk's .clarity)
 git clarity config leadTime             # read one key ("pipeline (default)" when unset)
-git clarity config leadTime all         # set it, and push
+git clarity config leadTime all         # rewrite .clarity for you to commit
 ```
 
-A set rewrites the one key, re-parses the **whole** resulting file, and only then commits it onto the config ref's tip and pushes — so a typo'd value fails with the list of valid ones and the shared config never moves. Writes are stricter than reads on purpose: the read path ignores keys it doesn't know (an old binary must survive a newer config), but this command refuses to *write* a key this build cannot validate, because writing forward-compatibly is how typos become permanent shared state. The settable keys are `leadTime` and `source`; `[deploy "…"]` sections are structural and stay a hand edit until a subcommand earns its keep. Setting a key on a repo with no config ref creates it, which is setup, and the output says so. Every change is one commit on `refs/clarity/config` — `git log refs/clarity/config` is the audit trail.
+Reads answer from the trunk — the config in effect — never from the working tree, so `get` cannot report an edit that hasn't landed as though it had. A set rewrites the one key in the working-tree `.clarity` and leaves the commit to you: the config lives on the trunk precisely so that changing it goes through the same review as any other trunk change, and a tool that pushed there itself would bypass exactly that. The seed for the rewrite is, in order, the working-tree file (an uncommitted edit is a change mid-flight, not something to discard), the trunk's file, or the legacy ref — so a set on an unmigrated repo doubles as the migration.
+
+A set re-parses the **whole** resulting file before writing it, so a typo'd value fails with the list of valid ones and no file is touched. Writes are stricter than reads on purpose: the read path ignores keys it doesn't know (an old binary must survive a newer config), but this command refuses to *write* a key this build cannot validate, because writing forward-compatibly is how typos become permanent shared state. The settable keys are `leadTime` and `source`; `[deploy "…"]` sections are structural and stay a hand edit until a subcommand earns its keep. The audit trail is the trunk's own history: `git log -- .clarity`.
 
 ### Lead time
 
@@ -401,11 +403,11 @@ Statuses per stage: `started`, `passed`, `failed`, `skipped`.
 
 Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based development cares about exactly three things, latest HEAD, latest green CI, and latest production deploy, and that maps onto two state transitions. A "test" or "lint" or "integration" stage is not a separate lifecycle position; it's part of CI that either passes or doesn't. Adding more stages would dilute the "is HEAD green?" question this tool exists to answer. The `git clarity report` command rejects any other stage name with an error rather than letting custom names drift in.
 
-### The config ref (`refs/clarity/config`)
+### The config file (`.clarity`)
 
-Clarity's shared configuration lives in a second custom ref, as one file
-(`config`) in git-config syntax — the dialect git users already read and git
-tooling already edits:
+Clarity's shared configuration is a `.clarity` file committed at the root
+of the repository, in git-config syntax — the dialect git users already
+read and git tooling already edits:
 
 ```gitconfig
 [clarity]
@@ -428,36 +430,68 @@ rendering the wrong repo's events as this one's. `clarity.leadTime` is the
 the forward-compat contract — but an unknown `source` is not, because it
 means the events live somewhere this build cannot read.
 
-**Existence is the setup signal.** "Has clarity been set up on this repo?"
-is one raceless, binary fact — the ref exists or it doesn't — which is what
-the TUI's welcome pane keys off, and what `git clarity init` creates. No
-heuristics over event counts, no probing for config files.
+**The file is read from the trunk's tip, never from the working tree.**
+Every reader asks for `origin/<trunk>:.clarity` (the local branch head only
+in a repo with no remote-tracking ref at all), so editing the file locally,
+or checking out a colleague's branch that carries a different one, changes
+nothing about what clarity runs. What the config says is whatever landed on
+the trunk — reviewed, protected, visible in `git log` — and nothing else.
+This matters most for `clarity.source`: configuration that decides where
+data comes from (and will eventually name things that execute) must not be
+switchable by whichever branch happens to be checked out. The one thing a
+working-tree `.clarity` does is count as "set up", so the welcome pane
+doesn't greet the person whose setup commit is still in flight; its values
+wait for the trunk.
 
-**The ref is a commit chain.** Every config change commits on top of the
-previous one, so `git log refs/clarity/config` is the audit trail. That is
-most of what a committed, PR-reviewed file would have bought — and the ref
-avoids that file's real flaw: config about where events come from is
-repo-level truth, not a property of any one commit, and a file at the trunk
-tip leaves every branch and old checkout carrying a possibly-stale copy.
-The ref also travels with `git fetch` exactly as the events do, so a client
-with no checkout at all (the mobile app) reads the same config everyone
-else does, and the working tree stays free of tool droppings.
+**Existence is the setup signal.** "Has clarity been set up on this repo?"
+is one raceless, binary fact — `.clarity` is on the trunk tip or it isn't —
+which is what the TUI's welcome pane keys off, and what committing the file
+`git clarity init` writes establishes. No heuristics over event counts.
+
+**Why a committed file and not a ref.** This is a decision that was made
+twice, in opposite directions, so the reasoning is worth recording. The
+config first shipped in a `refs/clarity/config` ref — a commit chain whose
+history was the audit trail, fetched like the events ref, keeping the
+working tree clean — and was walked back within days, because the ref's
+convenience is exactly its flaw: **hosting platforms cannot protect custom
+refs.** No branch protection, no required review, no CODEOWNERS applies to
+`refs/clarity/*`; anyone with push access can rewrite it, force-push
+included, and no one is notified. That is a tolerable home for machine
+facts like events, and the wrong one for configuration — a config that will
+one day name an event source is a config that decides what runs on
+someone's machine, and "anything that decides what runs lives where code
+review and branch protection apply" is the rule. Each of the ref's
+rationales survives the move: the setup signal is the file's existence at
+the trunk tip, equally raceless; the audit trail is `git log -- .clarity`,
+now made of reviewed commits instead of unreviewable ones; the checkout-less
+mobile client already fetches the trunk's commits to render them, so it
+reads the same blob with no working tree; and stale copies on branches
+don't matter because no reader looks at a branch. The one genuine loss is
+`git clarity config` as an instant set-and-push — a set now writes the file
+and the change takes effect when it lands on the trunk. That slowness is
+the review, and giving it up is the point.
 
 **There is deliberately no `branch` key.** The trunk is detected from the
 repository itself (see [The TUI](#the-tui-git-clarity)); a config that
 could disagree with the repo would just be a second place for that truth
 to go stale. A repo whose trunk detection fails is fixed with
 `git remote set-head origin --auto` — a git repair that helps every
-origin/HEAD reader, not a clarity setting.
+origin/HEAD reader, not a clarity setting. (It also keeps the bootstrap
+non-circular: the config lives on the trunk, so the config cannot be what
+names the trunk.)
 
-**Legacy `.ezcd.json` is a fallback, not a peer.** A committed `.ezcd.json`
-(the original config file, shared with the broader ezcd tooling idea that
-was since dropped) is still honoured when the config ref is absent, so
-existing repos keep working — including its pinned `branch`, the one place
-a branch pin survives. The moment `refs/clarity/config` exists it wins
-outright and the file is ignored rather than merged: two half-applied
-configs would be undebuggable. The file, its parser and this paragraph are
-all scheduled to go once the known installs have migrated.
+**Two legacy stores remain fallbacks, not peers.** Without a `.clarity` on
+the trunk, the `refs/clarity/config` ref is still honoured — with a
+one-line notice pointing at the migration — and without either, a committed
+`.ezcd.json` (the original config file, shared with the broader ezcd
+tooling idea that was since dropped) still loads, including its pinned
+`branch`, the one place a branch pin survives. The moment `.clarity` lands
+on the trunk both are ignored outright rather than merged: two half-applied
+configs would be undebuggable. Migration is one command — `git clarity
+init` on an unmigrated repo seeds `.clarity` from the ref's exact content
+(as does setting any key), leaving the commit to the user. The legacy
+parsers and this paragraph are all scheduled to go once the known installs
+have migrated.
 
 ### Why per-file events on a custom ref
 
@@ -495,7 +529,7 @@ per-subsystem status board.
 and `deploy passed ios` produce two flows, not one flow plus an overlay. A team
 adding mobile doesn't have to touch the web pipeline in the same commit.
 
-**Flows are declared in the clarity config** (see [The config ref](#the-config-ref-refsclarityconfig)),
+**Flows are declared in the clarity config** (see [The config file](#the-config-file-clarity)),
 one `[deploy "<name>"]` section per flow, each mapping the flow to the
 target(s) whose events it contains:
 
@@ -517,7 +551,7 @@ the repo's deployable units, not a UI affordance: plain mode consumes the same
 config to produce stacked sections, and the config is useful documentation of
 what the monorepo actually ships. (The legacy `.ezcd.json` spelling —
 `clarity.deploys`, entries either bare strings or `{name, targets}` objects —
-is still honoured as a fallback; see the config ref section.)
+is still honoured as a fallback; see the config file section.)
 
 **Selecting a flow: `--deploy`.** A root flag, not a plain-mode one — plain mode
 narrows to that flow's section, and the TUI opens with it selected. The latter is
@@ -870,11 +904,13 @@ The events ref isn't fetched by default. The first time `git clarity` runs in a 
     fetch = +refs/clarity/events:refs/clarity/events
 ```
 
-This is a one-time, automatic step. The config ref travels differently: every
-command fetches `refs/clarity/config` explicitly (best-effort, so offline
-answers from the last fetch) rather than through a refspec — the read has to
-work in a fresh CI clone that never ran the TUI, and `report` enforcing
-declared targets is exactly such a reader.
+This is a one-time, automatic step. The config needs no special transport at
+all: `.clarity` rides the trunk, so any clone that can see the trunk — a
+fresh CI checkout included, which is exactly where `report` enforces
+declared targets — already has the config of record. Only the legacy
+`refs/clarity/config` fallback is still fetched explicitly (best-effort, so
+offline answers from the last fetch), for as long as unmigrated repos need
+it.
 
 ---
 
@@ -884,7 +920,7 @@ A live updating terminal view of the most recent commits on the trunk, with pipe
 
 **Which branch is the trunk** is resolved the same way for every command (`loadConfig` in `cmd/git-clarity`): the repository itself is asked — origin/HEAD (the remote's default branch, recorded at clone time, which gets `master`, `trunk` or `develop` right where any name probe cannot), then `main`, then `master`, each candidate only accepted if it actually resolves to a commit, so a stale origin/HEAD falls through (`gitlog.DetectTrunk`). A master-trunk repo therefore works with zero config, and there is no branch setting to drift out of date — only a legacy `.ezcd.json` pin still overrides detection, for as long as that fallback lives. The checked-out branch is deliberately **not** in the chain: silently watching whatever happens to be checked out would point the dashboard — and the `check` push gate — at a feature branch, a wrong answer that looks right. When nothing conventional resolves, the `main` default stands and the source pre-flight fails, hinting at the likely trunk and the git-native fix: `git remote set-head origin --auto`, which repairs origin/HEAD for every tool that reads it. Detection applies to `check` too, so the gate and the dashboard always agree on what "the trunk" means.
 
-**The TUI starts before anything else runs.** Config reading, the first fetch and the branch pre-flight all happen behind a live frame, each step naming itself in place of the old bare "Loading" — `reading clarity config (refs/clarity/config)`, `fetching master from origin`, `reading events` — so a stall shows its stage instead of lying that progress is being made. A repo with no config lands on the welcome pane (see [First run and setup](#first-run-and-setup-git-clarity-init)); a startup failure renders in-frame with its hint attached, rather than on a stderr the alt-screen would eat. Nothing is allowed to sit between "typed the command" and "seeing something": that gap is where a hang is indistinguishable from a tool that simply doesn't work.
+**The TUI starts before anything else runs.** Config reading, the first fetch and the branch pre-flight all happen behind a live frame, each step naming itself in place of the old bare "Loading" — `reading clarity config (.clarity on the trunk)`, `fetching master from origin`, `reading events` — so a stall shows its stage instead of lying that progress is being made. A repo with no config lands on the welcome pane (see [First run and setup](#first-run-and-setup-git-clarity-init)); a startup failure renders in-frame with its hint attached, rather than on a stderr the alt-screen would eat. Nothing is allowed to sit between "typed the command" and "seeing something": that gap is where a hang is indistinguishable from a tool that simply doesn't work.
 
 ```
 your-app · ci: ✓ · deploy: ✓
@@ -2306,7 +2342,7 @@ Three layers of defence, because none is sufficient alone:
 - **Historical retention / `git clarity gc`** — events can grow unbounded; a pruning command for old events
 - **Branch awareness** — currently focused on the main branch; optional support for PR branches with their own pipeline status
 - **A `--branch` flag** — the trunk is auto-detected (see [The TUI](#the-tui-git-clarity)), which resolved the old "auto-detect current branch" question — deliberately *without* falling back to the current checkout, since a silently-wrong trunk misleads both the dashboard and the `check` gate. A per-invocation `--branch` override for looking at a non-trunk branch remains unbuilt until the need arises
-- **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in the config ref is the seam it plugs into
+- **A separate events repository** — a future `clarity.source` value pointing the reader (and the reporter) at a sibling repo's `refs/clarity/events`, so the code repository stays read-only for CI. This is the successor to the retired GitHub Actions live source as the answer to "my reporter can't have write access" (see [The GitHub Actions live source: retired](#the-github-actions-live-source-retired)), and the `source` key in `.clarity` is the seam it plugs into
 - **`git clarity config` for deploy declarations** — the get/set surface exists (see [Reading and changing config](#reading-and-changing-config-git-clarity-config)) but covers scalar keys only; declaring `[deploy "…"]` sections is still a hand edit of the ref's file. A `config deploy add/remove` grammar becomes worth it when the hand edit is the thing a user actually stumbles on
 - **Candidacy in batch mode** — `report --batch` carries stage events only, so a monorepo backfilling its history gets flows but not candidacy, and every historical commit counts towards every flow's lead time. A `scope/` equivalent for the JSONL stream would close it
 - **Flow aliases** — renaming a target is handled by adding both names to one flow's `targets`, which covers everything seen so far. A separate alias mechanism would only be needed if a flow's identity had to change without a config edit; not built until asked for

@@ -18,7 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ezcdlabs/clarity/clarityrefs"
+	"github.com/ezcdlabs/clarity/internal/config"
+	"github.com/ezcdlabs/clarity/internal/configload"
 	"github.com/ezcdlabs/clarity/internal/gitenv"
 	"github.com/ezcdlabs/clarity/internal/initcmd"
 )
@@ -28,21 +29,23 @@ import (
 type Facts struct {
 	RemoteURL          string // credential-redacted
 	Trunk              string // detected; "" when nothing resolved
-	SetUp              bool   // refs/clarity/config exists
+	SetUp              bool   // .clarity on the trunk, or the legacy config ref
 	HasGitHubWorkflows bool   // .github/workflows is present
 }
 
 // GatherFacts inspects the repository. Everything is best-effort — a fact
 // that cannot be gathered becomes its zero value and the prompt degrades
-// to asking the agent to find out — except the config ref, which is
-// fetched first so "set up" reflects the remote's truth when reachable.
+// to asking the agent to find out.
 func GatherFacts(repoPath string) Facts {
 	f := Facts{
 		RemoteURL: remoteURL(repoPath),
 		Trunk:     initcmd.DetectTrunk(repoPath),
 	}
-	_ = clarityrefs.FetchConfigRef(repoPath, "origin")
-	if _, ok, err := clarityrefs.ReadConfigFile(repoPath); err == nil && ok {
+	branch := f.Trunk
+	if branch == "" {
+		branch = config.DefaultBranch
+	}
+	if _, origin, err := configload.Stored(repoPath, branch); err == nil && origin != configload.OriginNone {
 		f.SetUp = true
 	}
 	if info, err := os.Stat(filepath.Join(repoPath, ".github", "workflows")); err == nil && info.IsDir() {
@@ -58,9 +61,9 @@ func Prompt(f Facts) string {
 
 	b.WriteString("Set up clarity (git-clarity) on this repository and backfill its history.\n\n")
 	b.WriteString("clarity is a git-native CD dashboard: it shows the trunk's commits flowing\n")
-	b.WriteString("through CI and deploys, from data stored entirely in git refs — events in\n")
-	b.WriteString("refs/clarity/events, config in refs/clarity/config, both pushed to origin\n")
-	b.WriteString("like any other ref. Pushing them therefore needs write access to the repo.\n\n")
+	b.WriteString("through CI and deploys. Events live in the refs/clarity/events ref, pushed\n")
+	b.WriteString("to origin like any other ref (so reporting needs write access); config\n")
+	b.WriteString("lives in a .clarity file committed at the repo root, read from the trunk.\n\n")
 
 	b.WriteString("Facts gathered by `git clarity onboard` (trust these, don't rediscover them):\n")
 	fmt.Fprintf(&b, "- remote: %s\n", orUnknown(f.RemoteURL))
@@ -69,15 +72,17 @@ func Prompt(f Facts) string {
 	} else {
 		b.WriteString("- trunk: not detected — find out which branch is the trunk, and run\n  `git remote set-head origin --auto` so origin/HEAD records it\n")
 	}
-	fmt.Fprintf(&b, "- clarity already set up (refs/clarity/config exists): %s\n", yesNo(f.SetUp))
+	fmt.Fprintf(&b, "- clarity already set up (.clarity on the trunk, or the legacy config ref): %s\n", yesNo(f.SetUp))
 	fmt.Fprintf(&b, "- GitHub Actions workflows present: %s\n\n", yesNo(f.HasGitHubWorkflows))
 
 	b.WriteString("Do the following:\n\n")
 	if f.SetUp {
-		b.WriteString("1. Setup is already done (refs/clarity/config exists) — skip init.\n\n")
+		b.WriteString("1. Setup is already done — skip init.\n\n")
 	} else {
-		b.WriteString("1. Run `git clarity init`. It writes refs/clarity/config with defaults and\n")
-		b.WriteString("   pushes it; that ref marks the repo as onboarded. Idempotent.\n\n")
+		b.WriteString("1. Run `git clarity init`. It writes a .clarity file with defaults;\n")
+		b.WriteString("   commit it and push it to the trunk — that file on the trunk marks the\n")
+		b.WriteString("   repo as onboarded, and landing it may need a pull request if the trunk\n")
+		b.WriteString("   is protected. Idempotent.\n\n")
 	}
 
 	b.WriteString("2. Instrument the pipeline so runs on the trunk report events:\n")

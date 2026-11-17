@@ -27,8 +27,10 @@ func TestPrompt_IsSelfContained(t *testing.T) {
 		"master",
 		// the mechanism
 		"refs/clarity/events",
-		"refs/clarity/config",
+		".clarity",
 		"git clarity init",
+		// init writes the file; landing it is a commit the agent must make
+		"commit",
 		// the full report grammar, exactly as this build parses it
 		"git clarity report",
 		"started", "passed", "failed", "skipped",
@@ -81,6 +83,21 @@ func TestGatherFacts(t *testing.T) {
 		t.Fatalf("seed config: %v", err)
 	}
 	if f := onboardcmd.GatherFacts(clone.Path); !f.SetUp {
-		t.Error("SetUp = false after the config ref was written")
+		t.Error("SetUp = false after the legacy config ref was written")
+	}
+}
+
+// TestGatherFacts_TrunkClarityFileCountsAsSetUp: the config of record is
+// .clarity on the trunk, so a migrated repo must read as set up.
+func TestGatherFacts_TrunkClarityFileCountsAsSetUp(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	writer := remote.NewClone(t)
+	writer.WriteFile(".clarity", "[clarity]\n\tsource = events-ref\n")
+	writer.CommitAll("clarity: set up")
+	writer.Push("main")
+
+	clone := remote.NewClone(t)
+	if f := onboardcmd.GatherFacts(clone.Path); !f.SetUp {
+		t.Error("SetUp = false with .clarity on the trunk")
 	}
 }

@@ -29,7 +29,10 @@ Thumbs.db
 .claude/
 
 # Local-only demo artifacts (the .gif IS committed because the README
-# renders it inline; the .mp4 is regenerable for Discord/Slack sharing,
+# renders it inline; .mp4s are regenerable for Discord/Slack sharing,
 # and per-frame PNGs are explicitly opt-in via FRAMES=1).
 /assets/*.mp4
 /assets/*.frames/
+# Except the README's demo video: the gif links to it, and GitHub's blob
+# page gives readers a scrubbable player, so it ships with the repo.
+!/assets/happy-path.mp4

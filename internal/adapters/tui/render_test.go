@@ -262,6 +262,41 @@ func TestRenderSnapshot_TwoBatches_TwoSubheaders(t *testing.T) {
 	}
 }
 
+// Two consecutive failed deploys inside CI Passed are independent attempts,
+// and they must read as such the way Deployed batches do: a blank line
+// between the groups. The first batch gets no gap above it — it sits
+// directly under whatever precedes it, exactly like the first Deployed
+// batch sits directly under its section header.
+func TestRenderSnapshot_InFlightBatches_BlankLineBetweenButNotAboveFirst(t *testing.T) {
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
+			{SHA: "c", Author: "carol", Subject: "newer failure", Events: []clarityrefs.Event{
+				ev("ci", "passed", 100), ev("deploy", "failed", 400),
+			}},
+			{SHA: "b", Author: "bob", Subject: "older failure", Events: []clarityrefs.Event{
+				ev("ci", "passed", 90), ev("deploy", "failed", 300),
+			}},
+		},
+	}
+	out := renderSnap(view(snap), 80, time.Time{}, 0)
+	lines := strings.Split(out, "\n")
+	var headers []int
+	for i, l := range lines {
+		if strings.Contains(l, "deploy failed") {
+			headers = append(headers, i)
+		}
+	}
+	if len(headers) != 2 {
+		t.Fatalf("expected two 'deploy failed' subheaders, got %d in:\n%s", len(headers), out)
+	}
+	if lines[headers[0]-1] == "" {
+		t.Errorf("first in-flight batch should not have a blank line above it:\n%s", out)
+	}
+	if lines[headers[1]-1] != "" {
+		t.Errorf("expected a blank line between consecutive in-flight batches:\n%s", out)
+	}
+}
+
 // The topmost passed batch in Deployed gets a "live on production" prefix
 // to distinguish "what's running right now" from settled deploy history.
 // Older batches keep the plain "deployed Xm ago" label.

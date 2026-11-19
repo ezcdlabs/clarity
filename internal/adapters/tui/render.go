@@ -191,7 +191,14 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 		b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 		b.WriteString("\n")
 	}
-	for _, batch := range g.InFlight {
+	for i, batch := range g.InFlight {
+		// Consecutive batches here are independent deploy attempts, and they
+		// read as such the same way Deployed batches do: a gap between
+		// groups. The gap goes above rather than below so the last batch
+		// doesn't double up with the section gap that follows the loop.
+		if i > 0 {
+			b.WriteString("\n")
+		}
 		// In-flight batches are never "live on production" — they're still
 		// deploying or stuck-failed. isLive only applies to passed batches.
 		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, false, width))

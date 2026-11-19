@@ -268,8 +268,9 @@ func renderFlowBlock(
 }
 
 // plainHeader produces the one-line status: "<repo>  ci: <icon> <state>  deploy: <icon> <state>".
-// The statuses arrive already resolved on View.Header — see "The header
-// badges" in README.md for which event each one speaks for.
+// The statuses arrive already resolved on View.Header — see "Why the badges
+// follow the newest commit" in docs/design/tui.md for which event each one
+// speaks for.
 func plainHeader(repoName string, h core.HeaderStatus, flows []core.FlowView, named bool) string {
 	ci := plainBadge(h.CI)
 

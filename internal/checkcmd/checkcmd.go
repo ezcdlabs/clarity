@@ -9,7 +9,7 @@
 // header badge uses.
 //
 // Why this is a convention (`git clarity check && git push`) rather than an
-// installed pre-push hook is recorded in README.md. The short version: a hook
+// installed pre-push hook is recorded in docs/design/check.md. The short version: a hook
 // has to offer a bypass, because a red trunk is fixed by pushing and the person
 // fixing it meets the gate first — and whatever bypass exists becomes the thing
 // everyone reaches for. Dropping the conjunction is the one form of bypass that

@@ -20,7 +20,7 @@ type timeRef struct{ unix int64 }
 
 // CollapseStages returns the latest status per stage from the given event
 // stream, in the order each stage's latest event was observed (chronological).
-// This is the "render-time status collapse" described in README.md.
+// This is the "render-time status collapse" described in docs/design/data-model.md.
 func CollapseStages(events []clarityrefs.Event) []StageStatus {
 	latestByStage := map[string]clarityrefs.Event{}
 	firstSeen := map[string]int64{}

@@ -3,7 +3,7 @@
 **Status: steps 1–8 have landed; steps 9–10 have not.** The port shape, the
 core/adapter split, `CachedLens` + `View.Stale`, the `.ezcd.json` loader, the
 ghsource adapter and `git clarity init --github` are all in the tree. For how
-those behave today, read the code and README.md — this doc is the reasoning
+those behave today, read the code and the design docs in this folder — this doc is the reasoning
 that produced them, kept for the trade-offs it records, and it is not
 maintained as a description of the current system.
 
@@ -463,7 +463,7 @@ they don't have to hand-write the mapping.
 2. If a Snapshot yields, the writer computes the new tree using
    content-addressed event filenames. If the resulting tree hash
    matches the parent's, `WriteEvents`' idempotency short-circuit (see
-   [clarityrefs.go:updateEventsRef](../clarityrefs/clarityrefs.go)) skips
+   [clarityrefs.go:updateEventsRef](../../clarityrefs/clarityrefs.go)) skips
    the commit and push entirely.
 3. A push only happens when actual new events landed (different content
    → different filenames → different tree).

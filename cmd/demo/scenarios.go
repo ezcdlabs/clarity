@@ -220,7 +220,7 @@ var happyPath = Scenario{
 }
 
 // deployFailure shows the "failed deploy → newer deploy starts → merge"
-// transition from the README's TBD model:
+// transition from the trunk-based model in docs/design/problem-and-concept.md:
 //   - frame 1: alice's deploy is in flight
 //   - frame 2: alice's deploy fails — a "deploy failed" batch appears
 //   - frame 3: bob lands and starts a newer deploy — alice is absorbed into

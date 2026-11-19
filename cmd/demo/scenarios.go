@@ -219,6 +219,47 @@ var happyPath = Scenario{
 	},
 }
 
+// dashboard is the README's headline recording: the steady state from
+// happy-path's first frame, with no typed prelude and no scene changes, so
+// the only motion is the in-flight build's spinner and the lead-time timers
+// counting. A GIF that jumps between states is hard to read as a page
+// decoration; this one just sits on an illustrative dashboard. The
+// command-entry framing lives on in happy-path, which the docs embed.
+var dashboard = Scenario{
+	Name:         "dashboard",
+	Repo:         "your-app",
+	InitialDelay: 0,
+	Frames: []Frame{
+		{
+			Snapshot: core.Snapshot{Commits: []core.CommitView{
+				commit("bob01", "bob", "add billing endpoint", -30*time.Second),
+				commit("dave02", "dave", "update dependencies", -2*time.Minute,
+					ev("ci", "started", -90*time.Second),
+				),
+				commit("alice3", "alice", "refactor user model", -5*time.Minute,
+					ev("ci", "passed", -4*time.Minute),
+				),
+				commit("carol4", "carol", "tweak homepage", -10*time.Minute,
+					ev("ci", "passed", -9*time.Minute),
+				),
+				commit("frank5", "frank", "fix payment bug", -25*time.Minute,
+					ev("ci", "passed", -24*time.Minute),
+					ev("deploy", "passed", -5*time.Minute),
+				),
+				commit("grace6", "grace", "improve search index", -1*time.Hour,
+					ev("ci", "passed", -59*time.Minute),
+					ev("deploy", "passed", -30*time.Minute),
+				),
+				commit("ivy007", "ivy", "rewrite onboarding flow", -8*24*time.Hour-30*time.Minute,
+					ev("ci", "passed", -8*24*time.Hour-15*time.Minute),
+					ev("deploy", "passed", -8*24*time.Hour),
+				),
+			}},
+			Hold: 12 * time.Second,
+		},
+	},
+}
+
 // deployFailure shows the "failed deploy → newer deploy starts → merge"
 // transition from the trunk-based model in docs/design/problem-and-concept.md:
 //   - frame 1: alice's deploy is in flight
@@ -410,6 +451,7 @@ var ciFailure = Scenario{
 
 var allScenarios = map[string]*Scenario{
 	"happy-path":     &happyPath,
+	"dashboard":      &dashboard,
 	"deploy-failure": &deployFailure,
 	"ci-failure":     &ciFailure,
 }

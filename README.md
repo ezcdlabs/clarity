@@ -7,7 +7,7 @@
 
 <p align="center"><strong>Live pipeline status for trunk-based development, in your terminal.</strong></p>
 
-[![demo](assets/happy-path.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/happy-path.mp4)
+[![demo](assets/dashboard.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/dashboard.mp4)
 
 - **The commit is the object.** CI UIs show runs; clarity shows your trunk's commits with their current resolved status — retries and parallel jobs collapse into one answer per stage.
 - **No server.** Pipeline events live on a dedicated git ref (`refs/clarity/events`) in your own repository, written from CI with one command. Auth is whatever git auth you already have.

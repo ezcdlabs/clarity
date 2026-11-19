@@ -1,5 +1,7 @@
 # Watching: `git clarity`
 
+[![demo: running git clarity](../assets/happy-path.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/happy-path.mp4)
+
 In any git repository, run:
 
 ```sh

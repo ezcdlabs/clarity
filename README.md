@@ -4,10 +4,6 @@
 
 **Live pipeline status for trunk-based development, in your terminal.**
 
-[![CI](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml/badge.svg)](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/ezcdlabs/clarity)](https://github.com/ezcdlabs/clarity/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/ezcdlabs/clarity/clarityrefs.svg)](https://pkg.go.dev/github.com/ezcdlabs/clarity/clarityrefs)
-
 - **The commit is the object.** CI UIs show runs; clarity shows your trunk's commits with their current resolved status — retries and parallel jobs collapse into one answer per stage.
 - **No server.** Pipeline events live on a dedicated git ref (`refs/clarity/events`) in your own repository, written from CI with one command. Auth is whatever git auth you already have.
 - **Works with any CI.** `git clarity report ci passed` is the whole integration; GitHub Actions gets a one-step setup action on top.

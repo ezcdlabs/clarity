@@ -2,7 +2,7 @@
 
 [![demo](assets/happy-path.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/happy-path.mp4)
 
-Commit-centric pipeline status TUI for trunk-based development. Answers "is main green?" at a glance — the most recent commits on main with their per-stage CI status in a live updating view. No server, no database, no proprietary format. Just git refs.
+clarity shows the commits on your trunk with their live CI and deploy status — "is main green?" at a glance, with no server, just git refs.
 
 [![CI](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml/badge.svg)](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/ezcdlabs/clarity)](https://github.com/ezcdlabs/clarity/releases)

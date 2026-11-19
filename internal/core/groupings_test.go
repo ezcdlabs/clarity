@@ -229,6 +229,154 @@ func TestGroupCommits_SkippedDeploy_SweptLikeABareCommit(t *testing.T) {
 	}
 }
 
+// --- Candidacy under the lead time modes --------------------------------------
+
+// TestGroupCommitsForFlow_CandidacyByMode pins how candidacy meets each lead
+// time mode. Under `all` every commit is its own sample, so its own record
+// decides. Under `pipeline` and `reported` one event-bearing commit holds the
+// sample for its whole run — itself plus the event-less commits swept below
+// it, down to the previous event-bearing commit — so the sample survives if
+// ANY commit the run carried is a candidate: the tip of a push can be
+// unaffected while an older commit in the same push holds the change this
+// flow ships, and that run still delivered it. Silence means candidate, so a
+// swept commit with no record keeps its run counting.
+func TestGroupCommitsForFlow_CandidacyByMode(t *testing.T) {
+	x := core.Flow{Name: "x", Targets: []string{"x"}}
+	// Per-commit spec: withEvents gives the commit a ci started/passed pair
+	// (it is the pushed tip CI ran on); scope is "aff", "unaff" or "" (no
+	// record — silence).
+	type spec struct {
+		withEvents bool
+		scope      string
+	}
+	build := func(specs []spec) []core.CommitView {
+		commits := make([]core.CommitView, len(specs))
+		for i, s := range specs {
+			c := cv(string(rune('a' + i)))
+			c.Time = time.Unix(int64(50+i), 0)
+			if s.withEvents {
+				c.Events = []clarityrefs.Event{ev("ci", "started", 100), ev("ci", "passed", 200)}
+			}
+			switch s.scope {
+			case "aff":
+				c.Scope = []clarityrefs.Scope{{Target: "x", Affected: true, Time: time.Unix(0, 10)}}
+			case "unaff":
+				c.Scope = []clarityrefs.Scope{{Target: "x", Affected: false, Time: time.Unix(0, 10)}}
+			}
+			commits[i] = c
+		}
+		return commits
+	}
+
+	cases := []struct {
+		name    string
+		mode    core.LeadTimeMode
+		commits []spec
+		wantOK  []bool // per index: does LeadTime return a measurement?
+	}{
+		{
+			name: "pipeline: swept affected commit keeps the run's sample",
+			mode: core.LeadPipeline,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"}, // the tip CI ran on
+				{scope: "unaff"},
+				{scope: "aff"}, // the change this flow ships
+			},
+			wantOK: []bool{true, false, false},
+		},
+		{
+			name: "pipeline: a run of only unaffected commits is excluded",
+			mode: core.LeadPipeline,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"},
+				{scope: "unaff"},
+			},
+			wantOK: []bool{false, false},
+		},
+		{
+			name: "pipeline: a silent swept commit keeps the run counting",
+			mode: core.LeadPipeline,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"},
+				{scope: ""},
+			},
+			wantOK: []bool{true, false},
+		},
+		{
+			name: "pipeline: spans end at the previous event-bearing commit",
+			mode: core.LeadPipeline,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"}, // run 1: this and the next
+				{scope: "unaff"},
+				{withEvents: true, scope: "unaff"}, // run 2: this and the next
+				{scope: "aff"},
+			},
+			// Run 2 carried the affected commit; run 1 did not and must not
+			// be rescued by it.
+			wantOK: []bool{false, false, true, false},
+		},
+		{
+			name: "all: every commit is its own sample, own record decides",
+			mode: core.LeadAll,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"},
+				{scope: "unaff"},
+				{scope: "aff"},
+			},
+			wantOK: []bool{false, false, true},
+		},
+		{
+			name: "reported: same run semantics as pipeline",
+			mode: core.LeadReported,
+			commits: []spec{
+				{withEvents: true, scope: "unaff"},
+				{scope: "aff"},
+			},
+			wantOK: []bool{true, false},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			g := core.GroupCommitsForFlow(build(c.commits), c.mode, x)
+			for i, want := range c.wantOK {
+				if _, _, ok := g.LeadTime(i, time.Unix(300, 0)); ok != want {
+					t.Errorf("commit %d: lead time ok = %v, want %v", i, ok, want)
+				}
+			}
+		})
+	}
+}
+
+// TestGroupCommitsForFlow_ExposesUnaffected: renderers must tell a commit
+// with no measurement from one resolved unaffected — blank and the ∅ marker
+// are different answers. The exposure is per-commit truth (its own record),
+// not the per-run OR that lead-time survival uses: the marker marks the
+// commit itself. Without a flow there is no target to be unaffected for, so
+// flow-less groupings mark nothing.
+func TestGroupCommitsForFlow_ExposesUnaffected(t *testing.T) {
+	x := core.Flow{Name: "x", Targets: []string{"x"}}
+	commits := []core.CommitView{
+		{SHA: "b", Scope: []clarityrefs.Scope{{Target: "x", Affected: false, Time: time.Unix(0, 10)}}},
+		{SHA: "a"},
+	}
+
+	g := core.GroupCommitsForFlow(commits, core.LeadPipeline, x)
+	if !g.Unaffected(0) {
+		t.Errorf("commit 0 is resolved unaffected and should say so")
+	}
+	if g.Unaffected(1) {
+		t.Errorf("a silent commit is a candidate, not unaffected")
+	}
+	if g.Unaffected(99) || g.Unaffected(-1) {
+		t.Errorf("out of range must be false, not a panic or a claim")
+	}
+
+	if flowless := core.GroupCommits(commits); flowless.Unaffected(0) {
+		t.Errorf("a grouping derived without a flow has no target to be unaffected for")
+	}
+}
+
 // --- Stale stage rule (ci only) ----------------------------------------------
 
 func TestIsStaleStage(t *testing.T) {

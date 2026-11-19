@@ -44,6 +44,12 @@ type Groupings struct {
 	// average. Precomputed here so the per-row display and the weekly
 	// aggregate cannot disagree about which commits count.
 	leadStart []time.Time
+
+	// unaffected marks commits resolved unaffected for the flow this grouping
+	// was derived for (nil when derived without a flow). Per-commit truth —
+	// its own candidacy record — unlike the per-run OR that decides whether a
+	// lead-time sample survives. See Unaffected.
+	unaffected []bool
 }
 
 // DeployBatch is a subgroup within Deployed (or InFlight): one deploy
@@ -329,12 +335,61 @@ func latestPerStage(events []clarityrefs.Event) map[string]string {
 // events: a zero leadStart. The intent is to stop a commit skewing the number,
 // not to hide that it shipped — a web-only commit really is in the iOS build,
 // it just says nothing about how fast iOS changes reach users.
+//
+// How a record applies depends on what a sample stands for in the mode. Under
+// `all`, every commit is its own sample, so its own record decides. Under
+// `pipeline` and `reported`, one event-bearing commit holds the sample for a
+// whole pipeline run — CI ran on the pushed tip, and the event-less commits
+// swept below it went through CI in that same run — so the tip's record alone
+// cannot decide: the tip of a push can be unaffected while an older commit in
+// the same push holds the change this flow ships, and that run still
+// delivered it. The sample survives if ANY commit the run carried is a
+// candidate. Silence means candidate here as everywhere, so a swept commit
+// with no record keeps its run counting — one partially-reported push can
+// only err towards counting, the same direction the candidacy tie-break errs.
 func GroupCommitsForFlow(commits []CommitView, mode LeadTimeMode, f Flow) Groupings {
 	g := GroupCommitsMode(commits, mode)
+	g.unaffected = make([]bool, len(commits))
 	for i, c := range commits {
-		if !IsCandidate(c.Scope, f) {
+		g.unaffected[i] = !IsCandidate(c.Scope, f)
+	}
+	if mode != LeadPipeline && mode != LeadReported {
+		for i := range commits {
+			if g.unaffected[i] {
+				g.leadStart[i] = time.Time{}
+			}
+		}
+		return g
+	}
+	// One sample per run: commits are newest-first, so a run is an
+	// event-bearing commit plus the event-less commits that follow it, ending
+	// before the next event-bearing commit (the previous run's tip).
+	for i, c := range commits {
+		if len(c.Events) == 0 {
+			continue
+		}
+		candidate := !g.unaffected[i]
+		for j := i + 1; j < len(commits) && len(commits[j].Events) == 0 && !candidate; j++ {
+			candidate = !g.unaffected[j]
+		}
+		if !candidate {
 			g.leadStart[i] = time.Time{}
 		}
 	}
 	return g
+}
+
+// Unaffected reports whether the commit at index was resolved unaffected for
+// the flow this grouping was derived for — its own record, not the per-run
+// OR that decides lead-time survival, because a marker marks the commit
+// itself. False for a grouping derived without a flow (GroupCommits /
+// GroupCommitsMode): with no flow there is no target to be unaffected for.
+// Renderers need this because a commit with no measurement and a commit
+// resolved unaffected both have no lead time, and blank and the ∅ marker
+// are different answers.
+func (g Groupings) Unaffected(index int) bool {
+	if index < 0 || index >= len(g.unaffected) {
+		return false
+	}
+	return g.unaffected[index]
 }

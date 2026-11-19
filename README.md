@@ -820,6 +820,26 @@ than reporting only exclusions:
 Because the default is "candidate", nothing moves for a repo that never reports
 candidacy. Same principle that makes `all` the default lead-time mode.
 
+**Candidacy under each lead time mode.** How a record applies depends on what a
+sample stands for. Under `all`, every commit is its own sample, so its own
+record decides. Under `pipeline` and `reported`, one event-bearing commit holds
+the sample for a whole pipeline run — CI ran on the pushed tip, and the
+event-less commits swept below it went through CI in that same run. The tip's
+record alone therefore cannot decide: a push's tip can be unaffected while an
+older commit in the same push holds the change this flow ships, and that run
+still delivered it. The sample survives if **any** commit the run carried is a
+candidate, and silence means candidate here as everywhere, so one
+partially-reported push can only err towards counting — the same direction the
+tie-break errs. Records stay truthful per commit; the mode decides how they
+aggregate. The alternative — reporting one base..head verdict on the tip,
+nx-style — was rejected because it makes a record's meaning depend on which
+lead mode reads it, and a later switch to `all` would turn every tip record
+into a per-commit lie.
+
+The CI recipe that follows: evaluate each commit's own diff rather than the
+push's, e.g. loop `git rev-list $BASE..$HEAD` and report `affected` /
+`unaffected` per commit against each target's scope.
+
 **Rendering needs no new concept.** A non-candidate commit appears in that flow's
 log with no right-hand column and contributes nothing to the average — exactly
 how `reported` and `pipeline` modes already treat a commit with no events. The

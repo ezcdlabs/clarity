@@ -53,7 +53,8 @@ func RenderWeekly(view core.View, selected string, width int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(weeklyBar(view, flow, width))
+	bar, _ := weeklyBar(view, flow, width)
+	b.WriteString(bar)
 	b.WriteString("\n\n")
 
 	plotCols, barCols := weeklyLayout(width)
@@ -100,7 +101,11 @@ func RenderWeekly(view core.View, selected string, width int) string {
 //
 // What belongs here instead is what the reader needs to know they are looking
 // at: the repo, and the span of weeks on screen.
-func weeklyBar(view core.View, flow core.FlowView, width int) string {
+//
+// The second return is each flow cell's visible-column extent on this row,
+// for click hit-testing — nil when no strip is rendered. Same render, so the
+// hit areas cannot drift from the layout.
+func weeklyBar(view core.View, flow core.FlowView, width int) (string, []stripSpan) {
 	name := view.Snapshot.RepoName
 	left := lipgloss.NewStyle().Bold(true).Render(name)
 
@@ -108,19 +113,22 @@ func weeklyBar(view core.View, flow core.FlowView, width int) string {
 		left += dimStyle().Render("  ·  " + period)
 	}
 
+	var spans []stripSpan
 	if len(view.Flows) > 1 {
 		// The strip takes what the name and period leave. Without status
 		// glyphs a cell is its name, so names shorten but a flow is never
 		// dropped — the one you cannot see is the one you cannot select.
 		budget := width - lipgloss.Width(left) - 2
-		strip := renderStrip(view.Flows, flow.Name, nil, nil, budget, false)
+		strip, s := renderStrip(view.Flows, flow.Name, nil, nil, budget, false)
 		gap := width - lipgloss.Width(left) - lipgloss.Width(strip)
 		if gap < 2 {
 			gap = 2
 		}
+		offsetSpans(s, lipgloss.Width(left)+gap)
+		spans = s
 		left += strings.Repeat(" ", gap) + strip
 	}
-	return ClipRight(left, width)
+	return ClipRight(left, width), spans
 }
 
 // weeklyPeriod names the span on screen, oldest to newest. A single week is

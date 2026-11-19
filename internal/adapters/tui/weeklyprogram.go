@@ -64,12 +64,12 @@ func (m WeeklyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key := msg.String(); key {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
-		case "tab", "right", "l":
+		case "right", "l":
 			if n := len(m.view.Flows); n > 1 {
 				m.selected = m.view.Flows[(m.flowIndex()+1)%n].Name
 			}
 			return m, nil
-		case "shift+tab", "left", "h":
+		case "left", "h":
 			if n := len(m.view.Flows); n > 1 {
 				m.selected = m.view.Flows[(m.flowIndex()-1+n)%n].Name
 			}
@@ -98,6 +98,19 @@ func (m WeeklyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+	case tea.MouseClickMsg:
+		// A tab you can see is a tab you can press. The strip sits on the top
+		// bar (row 0); spans come from the same render the screen shows, so
+		// hit-testing cannot drift from layout.
+		if msg.Button == tea.MouseLeft && msg.Y == 0 && len(m.view.Flows) > 1 {
+			_, spans := weeklyBar(m.view, m.view.Flows[m.flowIndex()], m.width)
+			for i, s := range spans {
+				if msg.X >= s.start && msg.X < s.end {
+					m.selected = m.view.Flows[i].Name
+					return m, nil
+				}
+			}
+		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -110,6 +123,12 @@ func (m WeeklyModel) View() tea.View {
 	// v2 sets terminal features declaratively on the View each frame rather
 	// than as a program option.
 	v.AltScreen = true
+	// Mouse capture costs the terminal its own click-drag text selection, so
+	// it is bought only when there is something to click — same bargain as
+	// the live view.
+	if len(m.view.Flows) > 1 {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
@@ -180,7 +199,7 @@ func (m WeeklyModel) render() string {
 func (m WeeklyModel) footer() string {
 	var keys []string
 	if len(m.view.Flows) > 1 {
-		keys = append(keys, "tab switch deploy")
+		keys = append(keys, "←→ switch deploy")
 	}
 	total := 0
 	for _, f := range m.view.Flows {

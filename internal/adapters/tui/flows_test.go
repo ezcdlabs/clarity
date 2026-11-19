@@ -167,17 +167,93 @@ func TestModel_SelectionSurvivesReordering(t *testing.T) {
 	}
 }
 
-// tab cycles forward and wraps, so the strip is navigable without knowing how
-// many flows there are.
-func TestModel_TabCyclesFlows(t *testing.T) {
+// right cycles forward and wraps, so the strip is navigable without knowing
+// how many flows there are. The strip is the only thing on screen with a left
+// and a right — the body clips every line to the terminal width and never
+// scrolls horizontally — so the horizontal arrows belong to it.
+func TestModel_RightArrowCyclesFlows(t *testing.T) {
 	m, _ := newModel("clarity").Update(tui.ViewMsg(twoFlowView()))
 	model := m.(tui.Model)
 
-	if got := press(model, "tab").SelectedFlow(); got != "ios" {
-		t.Errorf("tab selected %q, want ios", got)
+	if got := press(model, "right").SelectedFlow(); got != "ios" {
+		t.Errorf("right selected %q, want ios", got)
 	}
-	if got := press(press(model, "tab"), "tab").SelectedFlow(); got != "deploy" {
-		t.Errorf("tab did not wrap back to the first flow, got %q", got)
+	if got := press(press(model, "right"), "right").SelectedFlow(); got != "deploy" {
+		t.Errorf("right did not wrap back to the first flow, got %q", got)
+	}
+}
+
+// tab belonged to the strip once and was rebound to the horizontal arrows. A
+// stray tab must move nothing — passing this while the right-arrow test
+// passes is what proves the rebind rather than an alias.
+func TestModel_TabNoLongerSwitchesFlows(t *testing.T) {
+	m, _ := newModel("clarity").Update(tui.ViewMsg(twoFlowView()))
+	model := m.(tui.Model)
+
+	if got := press(model, "tab").SelectedFlow(); got != "deploy" {
+		t.Errorf("tab still switches flows, selected %q", got)
+	}
+	if got := press(model, "shift+tab").SelectedFlow(); got != "deploy" {
+		t.Errorf("shift+tab still switches flows, selected %q", got)
+	}
+}
+
+func clickAt(m tui.Model, x, y int) tui.Model {
+	next, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	return next.(tui.Model)
+}
+
+// A tab you can see is a tab you can press: clicking a cell selects its flow.
+func TestModel_ClickSelectsAFlowCell(t *testing.T) {
+	m, _ := tui.New().WithSize(100, 40).Update(tui.ViewMsg(twoFlowView()))
+	model := m.(tui.Model)
+
+	header := headerOf(model)
+	idx := strings.Index(header, "ios")
+	if idx < 0 {
+		t.Fatalf("strip does not name ios:\n%q", header)
+	}
+	col := lipgloss.Width(header[:idx])
+
+	if got := clickAt(model, col, 0).SelectedFlow(); got != "ios" {
+		t.Errorf("clicking the ios cell selected %q", got)
+	}
+}
+
+// The hit area is the cell, not the whole header, and not the body.
+func TestModel_ClickOutsideTheStripIsIgnored(t *testing.T) {
+	m, _ := tui.New().WithSize(100, 40).Update(tui.ViewMsg(twoFlowView()))
+	model := press(m.(tui.Model), "2")
+	if got := model.SelectedFlow(); got != "ios" {
+		t.Fatalf("setup: selected %q, want ios", got)
+	}
+
+	if got := clickAt(model, 0, 0).SelectedFlow(); got != "ios" {
+		t.Errorf("clicking the repo name changed the selection to %q", got)
+	}
+	if got := clickAt(model, 40, 5).SelectedFlow(); got != "ios" {
+		t.Errorf("clicking the body changed the selection to %q", got)
+	}
+}
+
+// Mouse capture costs the terminal its own click-drag text selection, which
+// matters in a tool people copy SHAs out of. It is bought only when there is
+// something to click: a strip. A single-flow repo keeps native selection.
+func TestModel_MouseReportingOnlyWithAStrip(t *testing.T) {
+	multi, _ := tui.New().WithSize(100, 40).Update(tui.ViewMsg(twoFlowView()))
+	if got := multi.(tui.Model).View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("multi-flow view mouse mode = %v, want cell motion", got)
+	}
+
+	snap := core.Snapshot{
+		RepoName: "clarity",
+		Commits: []core.CommitView{
+			{SHA: "a", Author: "alice", Subject: "x", Events: []clarityrefs.Event{ev("deploy", "passed", 100)}},
+		},
+	}
+	single, _ := tui.New().WithSize(100, 40).Update(tui.ViewMsg(core.DeriveView(snap, core.DefaultLeadTimeMode, nil)))
+	if got := single.(tui.Model).View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("single-flow view captures the mouse with nothing to click, mode %v", got)
 	}
 }
 
@@ -428,18 +504,16 @@ func TestModel_LightTerminalDarkensTheChrome(t *testing.T) {
 	}
 }
 
-// shift+tab has to cycle backwards. The helper must also produce what a real
-// terminal produces — CSI Z decodes to KeyTab carrying ModShift — or this
-// passes while the binding does nothing.
-func TestModel_ShiftTabCyclesBackwards(t *testing.T) {
+// left has to cycle backwards and wrap.
+func TestModel_LeftArrowCyclesBackwards(t *testing.T) {
 	m, _ := newModel("clarity").Update(tui.ViewMsg(manyFlowView(3)))
 	model := m.(tui.Model)
 
-	if got := press(model, "shift+tab").SelectedFlow(); got != "ios" {
-		t.Errorf("shift+tab from the first flow selected %q, want the last (ios)", got)
+	if got := press(model, "left").SelectedFlow(); got != "ios" {
+		t.Errorf("left from the first flow selected %q, want the last (ios)", got)
 	}
-	if got := press(press(model, "2"), "shift+tab").SelectedFlow(); got != "deploy" {
-		t.Errorf("shift+tab from the second flow selected %q, want deploy", got)
+	if got := press(press(model, "2"), "left").SelectedFlow(); got != "deploy" {
+		t.Errorf("left from the second flow selected %q, want deploy", got)
 	}
 }
 

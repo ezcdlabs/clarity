@@ -13,13 +13,13 @@ import (
 // prevent.
 func TestHeader_DegradedSourceIsMarked(t *testing.T) {
 	view := core.View{Snapshot: core.Snapshot{RepoName: "app", Degraded: "helper exited 1"}}
-	line := renderHeader(view, "", 100, nil, nil, "⠋")
+	line, _ := renderHeader(view, "", 100, nil, nil, "⠋")
 	if !strings.Contains(line, "⚠") || !strings.Contains(line, "source") {
 		t.Errorf("header does not mark the degraded source:\n%s", line)
 	}
 
 	healthy := core.View{Snapshot: core.Snapshot{RepoName: "app"}}
-	if line := renderHeader(healthy, "", 100, nil, nil, "⠋"); strings.Contains(line, "⚠") {
+	if line, _ := renderHeader(healthy, "", 100, nil, nil, "⠋"); strings.Contains(line, "⚠") {
 		t.Errorf("a healthy source shows a warning:\n%s", line)
 	}
 }

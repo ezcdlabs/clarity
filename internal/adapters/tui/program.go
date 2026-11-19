@@ -89,7 +89,8 @@ type Model struct {
 	requestResolved bool
 	// flowErr records a --deploy that named nothing. The TUI quits rather
 	// than opening on some other flow: a user who asked for ios and silently
-	// got web has no way to tell, and README promises this is an error.
+	// got web has no way to tell, and docs/design/deploy-targets.md promises
+	// this is an error.
 	flowErr error
 	// Startup state (see startup.go): the phase line that replaces the bare
 	// "Loading", the welcome pane for a repo with no config ref, and an
@@ -151,7 +152,13 @@ func KeyMsg(key string) tea.Msg {
 func keyCode(key string) rune {
 	switch key {
 	case "tab", "shift+tab":
+		// tab no longer binds to anything; it stays constructible so a test
+		// can prove exactly that.
 		return tea.KeyTab
+	case "left":
+		return tea.KeyLeft
+	case "right":
+		return tea.KeyRight
 	case "up":
 		return tea.KeyUp
 	case "down":
@@ -278,12 +285,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "tab":
+		// The horizontal arrows drive the strip. The body never scrolls
+		// horizontally — every line is clipped to the terminal width — so the
+		// strip is the only thing on screen with a left and a right, and the
+		// keys are consumed here rather than leaking to the viewport.
+		case "right":
 			if n := len(m.view.Flows); n > 1 {
 				return m.selectFlow((m.flowIndex() + 1) % n), nil
 			}
 			return m, nil
-		case "shift+tab":
+		case "left":
 			if n := len(m.view.Flows); n > 1 {
 				return m.selectFlow((m.flowIndex() - 1 + n) % n), nil
 			}
@@ -293,6 +304,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.selectFlow(int(key[0] - '1')), nil
 		}
 		// fall through to viewport for scroll keys (up/down/pgup/pgdn/k/j/g/G)
+	case tea.MouseClickMsg:
+		// A tab you can see is a tab you can press. The strip sits on row 0;
+		// spans come from the same render the screen shows, so hit-testing
+		// cannot drift from layout. Other clicks are consumed — wheel events
+		// are a different message type and still reach the viewport.
+		if msg.Button == tea.MouseLeft && msg.Y == 0 && len(m.view.Flows) > 1 {
+			_, spans := renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), spinnerFrame(m.spinnerIdx))
+			for i, s := range spans {
+				if msg.X >= s.start && msg.X < s.end {
+					return m.selectFlow(i), nil
+				}
+			}
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -386,7 +411,8 @@ func (m Model) renderBody() string {
 
 func (m Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), spinnerFrame(m.spinnerIdx)))
+	header, _ := renderHeader(m.view, m.selectedFlow, m.width, m.chrome(), m.terminalBackground(), spinnerFrame(m.spinnerIdx))
+	b.WriteString(header)
 	b.WriteString("\n\n")
 	b.WriteString(m.viewport.View())
 	v := tea.NewView(b.String())
@@ -394,6 +420,14 @@ func (m Model) View() tea.View {
 	// terminal features declarative (set on the View each frame) rather than
 	// imperative (set once at NewProgram).
 	v.AltScreen = true
+	// Mouse capture costs the terminal its own click-drag text selection,
+	// which matters in a tool people copy SHAs out of — so it is bought only
+	// when there is something to click: a strip. (Most terminals keep native
+	// selection reachable under shift.) Wheel scrolling of the viewport rides
+	// along for free where it is on.
+	if len(m.view.Flows) > 1 {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	return v
 }
 
@@ -413,7 +447,12 @@ func (m Model) View() tea.View {
 //
 // spinner is the current animation frame; the caller owns the animation
 // counter, this function only places the frame.
-func renderHeader(view core.View, selected string, width int, chrome, base color.Color, spinner string) string {
+//
+// The second return is the visible-column extent of each flow cell on this
+// row, for click hit-testing — nil when no strip is rendered. It comes out of
+// the same call that renders the screen so the hit areas cannot drift from
+// the layout.
+func renderHeader(view core.View, selected string, width int, chrome, base color.Color, spinner string) (string, []stripSpan) {
 	snap := view.Snapshot
 	ciStatus := view.Header.CI
 	deployStatus := view.Header.Deploy
@@ -471,6 +510,7 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 	}
 
 	deploy := on(lipgloss.NewStyle().Foreground(colorGray)).Render("deploy:") + sp + statusIcon(deployStatus, bg)
+	var spans []stripSpan
 	if len(view.Flows) > 1 {
 		// The strip takes whatever the fixed parts leave. If that isn't
 		// enough the indicator's word goes first, then its spinner, and only
@@ -494,15 +534,18 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 				}
 			}
 		}
-		deploy = renderStrip(view.Flows, selected, chrome, base, budget, true)
+		deploy, spans = renderStrip(view.Flows, selected, chrome, base, budget, true)
+		// The strip renders after the left block and its two-column gap, so
+		// its cell spans shift by that much to become row coordinates.
+		offsetSpans(spans, lipgloss.Width(left)+2)
 	}
 
 	line := left + gap + deploy
 	if width <= 0 {
 		if right == "" {
-			return line
+			return line, spans
 		}
-		return line + gap + right
+		return line + gap + right, spans
 	}
 
 	// Single-flow rows have no strip to negotiate with, but the same
@@ -523,7 +566,18 @@ func renderHeader(view core.View, selected string, width int, chrome, base color
 	if barred {
 		fill = fill.Background(chrome)
 	}
-	return line + fill.Render(strings.Repeat(" ", pad)) + right
+	return line + fill.Render(strings.Repeat(" ", pad)) + right, spans
+}
+
+// stripSpan is the visible-column extent of one flow cell, end exclusive.
+type stripSpan struct{ start, end int }
+
+// offsetSpans shifts spans in place from strip-relative to row coordinates.
+func offsetSpans(spans []stripSpan, by int) {
+	for i := range spans {
+		spans[i].start += by
+		spans[i].end += by
+	}
 }
 
 // stripWidth is how many columns the strip wants before any truncation: the
@@ -540,7 +594,9 @@ func stripWidth(flows []core.FlowView) int {
 // renderStrip renders the deploy flows as selectable cells after a "deploy:"
 // group label. The selected cell is the only one rendered in full weight; the
 // rest stay dim, so the strip reads as one control with one active member.
-func renderStrip(flows []core.FlowView, selected string, chrome, base color.Color, budget int, withStatus bool) string {
+// The second return is each cell's visible-column extent relative to the
+// strip's own first column, for click hit-testing.
+func renderStrip(flows []core.FlowView, selected string, chrome, base color.Color, budget int, withStatus bool) (string, []stripSpan) {
 	active := 0
 	for i, f := range flows {
 		if f.Name == selected {
@@ -566,14 +622,31 @@ func renderStrip(flows []core.FlowView, selected string, chrome, base color.Colo
 	}
 
 	sep := ""
+	sepW := 0
 	if withSep {
 		sepStyle := lipgloss.NewStyle().Foreground(colorGray)
 		if chrome != nil {
 			sepStyle = sepStyle.Background(chrome)
 		}
 		sep = sepStyle.Render(" ")
+		sepW = 1
 	}
-	return label + strings.Join(cells, sep)
+
+	var b strings.Builder
+	b.WriteString(label)
+	off := lipgloss.Width(label)
+	spans := make([]stripSpan, len(cells))
+	for i, cell := range cells {
+		if i > 0 {
+			b.WriteString(sep)
+			off += sepW
+		}
+		w := lipgloss.Width(cell)
+		spans[i] = stripSpan{start: off, end: off + w}
+		b.WriteString(cell)
+		off += w
+	}
+	return b.String(), spans
 }
 
 // stripLayout picks the widest arrangement that fits the budget, degrading in

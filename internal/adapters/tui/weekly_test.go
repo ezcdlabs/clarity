@@ -174,10 +174,11 @@ func TestRenderWeekly_ShowsTheDeployStripForSeveralFlows(t *testing.T) {
 	}
 }
 
-// TestWeeklyModel_TabSwitchesFlow is the reason this view is a Bubble Tea
+// TestWeeklyModel_ArrowsSwitchFlow is the reason this view is a Bubble Tea
 // program rather than a one-shot print: the deploy strip is a control, and a
-// tab bar that cannot be pressed is not one.
-func TestWeeklyModel_TabSwitchesFlow(t *testing.T) {
+// tab bar that cannot be pressed is not one. The horizontal arrows drive it,
+// matching the live view; tab was rebound away and must move nothing.
+func TestWeeklyModel_ArrowsSwitchFlow(t *testing.T) {
 	view := core.View{Flows: []core.FlowView{
 		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3)),
 		flowWith("ios", weekOf(2026, 39, 2, 40, 50)),
@@ -192,10 +193,12 @@ func TestWeeklyModel_TabSwitchesFlow(t *testing.T) {
 		key  string
 		want string
 	}{
-		{"tab", "ios"},
-		{"tab", "android"},
-		{"tab", "web"}, // wraps
-		{"shift+tab", "android"},
+		{"right", "ios"},
+		{"right", "android"},
+		{"right", "web"}, // wraps
+		{"left", "android"},
+		{"tab", "android"},       // rebound: must move nothing
+		{"shift+tab", "android"}, // rebound: must move nothing
 		{"3", "android"},
 		{"1", "web"},
 	} {
@@ -204,6 +207,68 @@ func TestWeeklyModel_TabSwitchesFlow(t *testing.T) {
 		if got := m.SelectedFlow(); got != step.want {
 			t.Fatalf("after %q: selected %q, want %q", step.key, got, step.want)
 		}
+	}
+}
+
+// A tab you can see is a tab you can press: clicking a cell in the top bar
+// selects its flow, and a click anywhere else moves nothing.
+func TestWeeklyModel_ClickSelectsAFlowCell(t *testing.T) {
+	view := core.View{Flows: []core.FlowView{
+		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3)),
+		flowWith("ios", weekOf(2026, 39, 2, 40, 50)),
+	}}
+	m := tui.NewWeeklyModel(view, "", 100, 30)
+
+	bar := strings.SplitN(stripANSI(m.View().Content), "\n", 2)[0]
+	idx := strings.Index(bar, "ios")
+	if idx < 0 {
+		t.Fatalf("top bar does not name ios:\n%q", bar)
+	}
+	col := lipgloss.Width(bar[:idx])
+
+	next, _ := m.Update(tea.MouseClickMsg{X: col, Y: 0, Button: tea.MouseLeft})
+	if got := next.(tui.WeeklyModel).SelectedFlow(); got != "ios" {
+		t.Errorf("clicking the ios cell selected %q", got)
+	}
+
+	miss, _ := m.Update(tea.MouseClickMsg{X: col, Y: 5, Button: tea.MouseLeft})
+	if got := miss.(tui.WeeklyModel).SelectedFlow(); got != "web" {
+		t.Errorf("clicking the body changed the selection to %q", got)
+	}
+}
+
+// Mouse capture is bought only when there is something to click, same as the
+// live view: a lone flow keeps the terminal's native text selection.
+func TestWeeklyModel_MouseReportingOnlyWithAStrip(t *testing.T) {
+	multi := tui.NewWeeklyModel(core.View{Flows: []core.FlowView{
+		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3)),
+		flowWith("ios", weekOf(2026, 39, 2, 40, 50)),
+	}}, "", 100, 30)
+	if got := multi.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Errorf("multi-flow weekly mouse mode = %v, want cell motion", got)
+	}
+
+	single := tui.NewWeeklyModel(core.View{Flows: []core.FlowView{
+		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3)),
+	}}, "", 100, 30)
+	if got := single.View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("single-flow weekly captures the mouse with nothing to click, mode %v", got)
+	}
+}
+
+// The footer teaches the binding that exists, not the one that used to.
+func TestWeeklyModel_FooterAdvertisesTheArrows(t *testing.T) {
+	view := core.View{Flows: []core.FlowView{
+		flowWith("web", weekOf(2026, 39, 5, 1, 2, 3)),
+		flowWith("ios", weekOf(2026, 39, 2, 40, 50)),
+	}}
+	body := stripANSI(tui.NewWeeklyModel(view, "", 100, 30).View().Content)
+
+	if !strings.Contains(body, "←→ switch deploy") {
+		t.Errorf("footer does not advertise the arrow binding:\n%s", body)
+	}
+	if strings.Contains(body, "tab") {
+		t.Errorf("footer still advertises tab:\n%s", body)
 	}
 }
 
@@ -232,7 +297,7 @@ func TestWeeklyModel_RendersTheSelectedFlowsNumbers(t *testing.T) {
 	if body := stripANSI(m.View().Content); !strings.Contains(body, "17") {
 		t.Errorf("web's deploy count is missing:\n%s", body)
 	}
-	next, _ := m.Update(keyPress("tab"))
+	next, _ := m.Update(keyPress("right"))
 	m = next.(tui.WeeklyModel)
 	body := stripANSI(m.View().Content)
 	if !strings.Contains(body, " 4") {
@@ -244,9 +309,14 @@ func TestWeeklyModel_RendersTheSelectedFlowsNumbers(t *testing.T) {
 }
 
 // keyPress builds the KeyPressMsg for a key name, mirroring how Bubble Tea
-// reports it — tab carries a code, a digit carries its rune and text.
+// reports it — an arrow or tab carries a code, a digit carries its rune and
+// text. tab stays constructible so a test can prove it no longer binds.
 func keyPress(name string) tea.KeyPressMsg {
 	switch name {
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
 	case "tab":
 		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "shift+tab":

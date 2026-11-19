@@ -192,6 +192,43 @@ func TestGroupCommits_TwoFailedDeploys_NoNewer_StaySeparateInFlight(t *testing.T
 	}
 }
 
+// A deploy:skipped event is inert in grouping. The status is retired from
+// the write path, but old refs still carry it, and it used to anchor an
+// unlabeled in-flight batch with a ticking timer — a commit that reads as
+// "waiting to ship" on the say-so of an event that ships nothing. A skipped
+// commit is an ordinary idle commit.
+func TestGroupCommits_SkippedDeploy_IsInert(t *testing.T) {
+	commits := []core.CommitView{
+		cv("b", ev("ci", "passed", 200), ev("deploy", "skipped", 250)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
+	}
+	got := core.GroupCommits(commits)
+	if len(got.InFlight) != 0 {
+		t.Fatalf("a skipped deploy anchored an in-flight batch: %+v", got.InFlight)
+	}
+	if len(got.CIPassed) != 1 || got.CIPassed[0].SHA != "b" {
+		t.Errorf("expected b idle in CIPassed, got %+v", got.CIPassed)
+	}
+}
+
+// Below the deploy line a skipped commit sweeps into the newer passed batch
+// exactly like a commit with no deploy events at all — the newer deploy's
+// tree really does contain it.
+func TestGroupCommits_SkippedDeploy_SweptLikeABareCommit(t *testing.T) {
+	commits := []core.CommitView{
+		cv("c", ev("ci", "passed", 300), ev("deploy", "passed", 350)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "skipped", 250)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
+	}
+	got := core.GroupCommits(commits)
+	if len(got.Deployed) != 2 {
+		t.Fatalf("expected 2 deployed batches, got %+v", got.Deployed)
+	}
+	if len(got.Deployed[0].Commits) != 2 || got.Deployed[0].Commits[1].SHA != "b" {
+		t.Errorf("expected b swept into c's batch, got %+v", got.Deployed[0].Commits)
+	}
+}
+
 // --- Stale stage rule (ci only) ----------------------------------------------
 
 func TestIsStaleStage(t *testing.T) {

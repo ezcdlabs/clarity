@@ -165,7 +165,7 @@ Inside your pipelines:
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
-In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, `failed`, or `skipped`.
+In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, or `failed`.
 
 A monorepo that deploys several things adds an optional target to its deploy
 reports — `git clarity report deploy passed ios` — and the TUI gains a selectable
@@ -215,7 +215,7 @@ Inputs:
 
 - `version` — explicit version override (e.g. `v0.1.1`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
 - `stage` — pipeline stage to report (`ci` or `deploy`). When combined with `status`, the action runs `git clarity report <stage> <status>` after install.
-- `status` — status to report (`started` / `passed` / `failed` / `skipped`).
+- `status` — status to report (`started` / `passed` / `failed`).
 - `target` — which deployable a `deploy` event is about, for a repo shipping several from one trunk (e.g. `ios`). Rejected on `ci`. Omit it for the untargeted deploy.
 
 `actions/checkout` must run first so the action has a repository to push events from.
@@ -403,7 +403,19 @@ hash to different files.
 
 The optional **`ci` block** is opaque metadata captured from the environment when available. Clarity opportunistically reads common env vars (`GITHUB_*`, `GITLAB_*`, `CI_*`) and populates the block. Renderers may surface this metadata where useful but never depend on its presence.
 
-Statuses per stage: `started`, `passed`, `failed`, `skipped`.
+Statuses per stage: `started`, `passed`, `failed`.
+
+**`skipped` is retired.** It arrived with the conventional CI status set (it is
+what GitHub Actions calls a job whose condition said not to run), but an event
+that ships nothing says nothing about a commit's lifecycle, and no derivation
+ever gave it positive meaning — its only effect in practice was to anchor an
+unlabeled batch whose commit read as waiting to ship forever. Every real use
+turned out to mean "this commit does not affect this target", and that is
+[candidacy](#candidacy-affected--unaffected), a property of the commit rather
+than the outcome of an attempt: `git clarity report unaffected <target>`.
+`report` rejects `skipped` with an error saying exactly that. Reads still
+tolerate it — old refs carry it — and grouping treats a skipped deploy event
+as no deploy event at all.
 
 Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based development cares about exactly three things, latest HEAD, latest green CI, and latest production deploy, and that maps onto two state transitions. A "test" or "lint" or "integration" stage is not a separate lifecycle position; it's part of CI that either passes or doesn't. Adding more stages would dilute the "is HEAD green?" question this tool exists to answer. The `git clarity report` command rejects any other stage name with an error rather than letting custom names drift in.
 
@@ -759,7 +771,9 @@ touches neither the behind-count nor the deployed/not-deployed grouping.
 Candidacy is not an attempt — nothing was tried. It is a property of the commit,
 true from the moment the commit exists, which is why it can be reported before
 `ci started` has even run. `affected` is the word nx, turbo and bazel already
-use, so whoever writes that `affected` helper is using it too.
+use, so whoever writes that `affected` helper is using it too. The `skipped`
+event status used to be the nearest-looking tool for this job and was retired
+in candidacy's favour — see [Event content](#event-content).
 
 **The record.** Candidacy lives in a sibling `scope/` tree on the same ref, at
 `scope/<sha>/<unix-ts>-<hash>.json`:
@@ -975,7 +989,7 @@ The `ci: ✓ · deploy: ✓` badges on the header line summarise the whole branc
 
 Two rules follow from that, and they pull in different directions:
 
-- **Only `passed` and `failed` resolve a stage.** `started` and `skipped` are ignored, so a badge holds its colour through a retry instead of flickering to neutral every time a build kicks off, and a commit whose deploy was skipped doesn't blank out the badge the commit below it earned. A stage no commit has ever resolved renders neutral.
+- **Only `passed` and `failed` resolve a stage.** `started` and `skipped` (retired, but still present in old refs) are ignored, so a badge holds its colour through a retry instead of flickering to neutral every time a build kicks off, and a commit whose deploy was skipped doesn't blank out the badge the commit below it earned. A stage no commit has ever resolved renders neutral.
 - **Recency is measured in commits, not timestamps.** Two pushes close together put two CI runs in flight at once, and the older commit's run can finish *last*: push a bad commit, revert it 60 seconds later, and the revert reports green seconds before the bad commit reports red. Ranking events by timestamp would then paint the header red for a commit that is no longer HEAD and was already reverted — while `deploy` stayed green, because the bad commit never emitted a deploy event to overtake with (its deploy job `needs: build`, so it was skipped). That asymmetry between the two badges is the signature of the bug. The newest commit with an answer is the one the header speaks for; a commit that has gone quiet on a stage defers to the one below it.
 
 Per-commit rows are unaffected — they were always scoped to their own commit.
@@ -1123,7 +1137,7 @@ Examples:
 
 ### What it does
 
-1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`/`skipped` — rejects anything else. A `<target>` is accepted only for `deploy`, and only if declared in the clarity config when it declares any
+1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed` — rejects anything else (`skipped` is retired, and its error points at `report unaffected`). A `<target>` is accepted only for `deploy`, and only if declared in the clarity config when it declares any
 2. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
 3. Builds the event JSON (core fields + auto-detected `ci` metadata block)
 4. Generates a unique filename: `<unix-ts>-<short-uuid>.json`

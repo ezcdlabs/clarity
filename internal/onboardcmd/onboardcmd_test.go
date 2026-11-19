@@ -33,7 +33,10 @@ func TestPrompt_IsSelfContained(t *testing.T) {
 		"commit",
 		// the full report grammar, exactly as this build parses it
 		"git clarity report",
-		"started", "passed", "failed", "skipped",
+		"started", "passed", "failed",
+		// candidacy, not a "skipped" status, is how a commit opts out of a
+		// target's numbers — the prompt must steer the agent there
+		"report unaffected",
 		"deploy",
 		// backfill: batch form and the JSONL field names
 		"--batch",

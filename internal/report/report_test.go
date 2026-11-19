@@ -412,6 +412,40 @@ func TestRunBatch_RejectsInvalidStatus(t *testing.T) {
 	}
 }
 
+// The "skipped" status is retired. Every real use of it turned out to mean
+// "this commit does not affect this target" — which is candidacy, a property
+// of the commit, not an outcome of an attempt. The error has to point there,
+// or the next person reaches for the same wrong tool and ends up with a
+// commit that reads as waiting to ship forever.
+func TestRun_SkippedStatusIsRetired(t *testing.T) {
+	_, err := report.Run(report.Options{Stage: "deploy", Status: "skipped"})
+	if err == nil {
+		t.Fatal("deploy skipped was accepted")
+	}
+	for _, want := range []string{"retired", "unaffected"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
+	}
+}
+
+func TestRunBatch_SkippedStatusIsRetired(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, []report.BatchEvent{
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120000, 0), Stage: "deploy", Status: "skipped"},
+	})
+	if err == nil {
+		t.Fatal("a skipped event in a batch was accepted")
+	}
+	if !strings.Contains(err.Error(), "retired") {
+		t.Errorf("error should say the status is retired: %v", err)
+	}
+}
+
 func TestRunBatch_RejectsMissingSHA(t *testing.T) {
 	remote := gittest.NewRemote(t)
 	clone := remote.NewClone(t)

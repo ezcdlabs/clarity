@@ -16,7 +16,7 @@ inputs:
     required: false
     default: ''
   status:
-    description: 'Status to report (started, passed, failed, skipped). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
+    description: 'Status to report (started, passed, failed). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
     required: false
     default: ''
   target:

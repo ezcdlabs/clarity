@@ -276,9 +276,15 @@ func (g Groupings) totalInFlight() int {
 }
 
 // hasDeployEvent reports whether the commit has any deploy event of any kind.
+// hasDeployEvent and latestDeployEvent both ignore "skipped": the status is
+// retired from the write path, but old refs still carry it, and a skip ships
+// nothing — letting it anchor a batch rendered an unlabeled group whose
+// commit read as waiting to ship forever. A commit whose only deploy events
+// are skips groups exactly like a commit with none. ("This commit does not
+// affect this target" is candidacy, not an event — see report unaffected.)
 func hasDeployEvent(events []clarityrefs.Event) bool {
 	for _, e := range events {
-		if e.Stage == "deploy" {
+		if e.Stage == "deploy" && e.Status != "skipped" {
 			return true
 		}
 	}
@@ -291,7 +297,7 @@ func latestDeployEvent(events []clarityrefs.Event) (clarityrefs.Event, bool) {
 	var latest clarityrefs.Event
 	found := false
 	for _, e := range events {
-		if e.Stage != "deploy" {
+		if e.Stage != "deploy" || e.Status == "skipped" {
 			continue
 		}
 		if !found || e.Time.After(latest.Time) {

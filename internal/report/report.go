@@ -37,11 +37,15 @@ var validStages = map[string]bool{
 }
 
 // validStatuses is the closed set of statuses recognised per stage.
+// "skipped" is retired: it came along with the conventional CI status set,
+// but an event that ships nothing has no lifecycle meaning, and every real
+// use of it turned out to mean "this commit does not affect this target" —
+// which is candidacy (`report unaffected`), a property of the commit rather
+// than an outcome of an attempt. Reads still tolerate it in old refs.
 var validStatuses = map[string]bool{
 	"started": true,
 	"passed":  true,
 	"failed":  true,
-	"skipped": true,
 }
 
 // Run resolves the SHA, attaches CI metadata, and writes one event. Returns
@@ -184,8 +188,14 @@ func validateStageStatus(stage, status string) error {
 	if status == "" {
 		return fmt.Errorf("status is required")
 	}
+	if status == "skipped" {
+		// Its own error rather than the generic list: the person writing
+		// "skipped" is not making a typo, they are reaching for a concept the
+		// tool spells differently, and the generic error would not say how.
+		return fmt.Errorf("the 'skipped' status is retired — a skipped deploy ships nothing, so it says nothing about the commit's lifecycle; if this commit does not affect a deploy target, report candidacy instead: git clarity report unaffected <target>")
+	}
 	if !validStatuses[status] {
-		return fmt.Errorf("status must be 'started', 'passed', 'failed' or 'skipped', got %q", status)
+		return fmt.Errorf("status must be 'started', 'passed' or 'failed', got %q", status)
 	}
 	return nil
 }

@@ -86,8 +86,10 @@ func Prompt(f Facts) string {
 	}
 
 	b.WriteString("2. Instrument the pipeline so runs on the trunk report events:\n")
-	b.WriteString("   - stages are exactly `ci` and `deploy`; statuses are `started`, `passed`,\n")
-	b.WriteString("     `failed` or `skipped`.\n")
+	b.WriteString("   - stages are exactly `ci` and `deploy`; statuses are `started`, `passed`\n")
+	b.WriteString("     or `failed`. There is no `skipped` — a deploy step that runs nothing\n")
+	b.WriteString("     reports nothing; a commit that does not affect a deploy target is\n")
+	b.WriteString("     reported as candidacy: `git clarity report unaffected <target>`.\n")
 	b.WriteString("   - from any pipeline step: `git clarity report ci started`,\n")
 	b.WriteString("     `git clarity report ci passed` (or `failed`), and for deploys\n")
 	b.WriteString("     `git clarity report deploy passed [<target>]` — <target> names the\n")

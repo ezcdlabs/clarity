@@ -2,7 +2,7 @@
 
 [![demo](assets/happy-path.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/happy-path.mp4)
 
-clarity shows the commits on your trunk with their live CI and deploy status — "is main green?" at a glance, with no server, just git refs.
+**Live CI and deploy status for every commit on your trunk.**
 
 [![CI](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml/badge.svg)](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/ezcdlabs/clarity)](https://github.com/ezcdlabs/clarity/releases)

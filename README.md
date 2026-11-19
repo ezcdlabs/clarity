@@ -840,10 +840,23 @@ The CI recipe that follows: evaluate each commit's own diff rather than the
 push's, e.g. loop `git rev-list $BASE..$HEAD` and report `affected` /
 `unaffected` per commit against each target's scope.
 
-**Rendering needs no new concept.** A non-candidate commit appears in that flow's
-log with no right-hand column and contributes nothing to the average — exactly
-how `reported` and `pipeline` modes already treat a commit with no events. The
-intent is to stop it skewing the number, not to hide that it shipped.
+**Rendering: one deliberate new concept.** A commit resolved unaffected keeps
+its place in the flow's log (never reordered, never hidden) but renders as
+resolved: a gray italic `∅` in the lead-time slot — where a ticking timer
+would otherwise imply "waiting to ship" — and a dimmed subject, so a stretch
+of unaffected commits recedes and the one genuinely waiting commit is the
+bright row. Both signals on purpose: gray is relative (light themes,
+colour-blindness), so the glyph is the explicit answer sitting in the column
+where the eye looks for a number — one says "skim past me", the other says
+why. `∅` rather than a dash (which collides with the idle `·` and the rules
+and is nearly invisible) or the word (which dominates the section when most
+commits are unaffected, which is the monorepo norm). Blank stays distinct:
+blank means "no measurement", `∅` means "resolved — nothing to deliver here".
+A commit that is itself unaffected but holds its run's surviving sample keeps
+its timer and stays bright: that row carries a real measurement. `--plain`
+spells `unaffected` in full — that renderer exists for grep and for agents,
+where a word is searchable and a glyph is a trap. The intent is unchanged:
+stop the commit skewing the number, not hide that it shipped.
 
 **Candidacy records are not pipeline events.** The `reported` and `pipeline` lead
 time modes count "commits carrying at least one pipeline event"; a commit whose

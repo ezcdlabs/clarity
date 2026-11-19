@@ -504,9 +504,9 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 	icon := ciIcon(view.Events, group, index, spinnerIdx)
 	author := lipgloss.NewStyle().Foreground(colorGray).Render(view.Author)
 	subject := view.Subject
-	left := fmt.Sprintf("  %s  %s  %s", icon, author, subject)
 
 	timer := ""
+	dim := false
 	if group != nil {
 		if d, frozen, ok := group.LeadTime(index, now); ok {
 			// Gray while ticking; blue once the deploy that pushed this
@@ -518,8 +518,21 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 				color = colorBlue
 			}
 			timer = lipgloss.NewStyle().Foreground(color).Render(core.FormatElapsed(d))
+		} else if group.Unaffected(index) {
+			// No measurement AND resolved unaffected for this flow: ∅ in the
+			// slot where a ticking timer would imply waiting, and a dimmed
+			// subject so a stretch of these recedes and the one genuinely
+			// waiting commit is the bright row. Two signals on purpose: gray
+			// is relative (light themes, colour-blindness), so the glyph is
+			// the explicit answer in the column where the eye looks for a
+			// number — one says "skim past me", the other says why. A commit
+			// that is unaffected but carries its run's surviving sample keeps
+			// its timer and stays bright: that row holds a real measurement.
+			timer = lipgloss.NewStyle().Foreground(colorGray).Italic(true).Render("∅")
+			dim = true
 		}
 	}
+	left := fmt.Sprintf("  %s  %s  %s", icon, author, dimmed(subject, dim))
 
 	if width <= 0 {
 		if timer == "" {
@@ -551,7 +564,7 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 	if lipgloss.Width(subject) > room {
 		subject = ClipRight(subject, room)
 	}
-	left = fmt.Sprintf("  %s  %s  %s", icon, author, subject)
+	left = fmt.Sprintf("  %s  %s  %s", icon, author, dimmed(subject, dim))
 	if lipgloss.Width(left) > width {
 		// Nothing left to give: clip the assembled row.
 		left = ClipRight(left, width)
@@ -569,6 +582,16 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 	// protect — but the row still must not be wider than the screen, because
 	// a single over-wide line is what makes the viewport pan sideways.
 	return ClipRight(left+strings.Repeat(" ", pad)+timer, width)
+}
+
+// dimmed grays a subject when dim is set — the row-level "skim past me" for
+// unaffected commits. The style is applied to the already-clipped text so the
+// width arithmetic above only ever measures plain strings.
+func dimmed(subject string, dim bool) string {
+	if !dim {
+		return subject
+	}
+	return lipgloss.NewStyle().Foreground(colorGray).Render(subject)
 }
 
 // fitLine clips a whole line to the terminal width. width <= 0 means unknown,

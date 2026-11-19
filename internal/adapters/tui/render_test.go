@@ -419,6 +419,55 @@ func renderSnap(v core.View, width int, now time.Time, spinnerIdx int) string {
 	return tui.RenderSnapshot(v, v.Flows[0], width, now, spinnerIdx)
 }
 
+// --- Unaffected rows ----------------------------------------------------------
+
+// An unaffected commit answers "do I need to deploy this?" with no: a gray ∅
+// in the lead-time slot where a ticking timer would otherwise imply waiting,
+// and a dimmed subject so a stretch of unaffected commits recedes and the one
+// genuinely waiting commit is the bright row. Both signals on purpose — gray
+// alone is relative (light themes, colour-blindness), the glyph alone is a
+// single character; together one says "skim past me" and the other says why.
+func TestRenderSnapshot_UnaffectedRow_NullSetAndDimmedSubject(t *testing.T) {
+	snap := core.Snapshot{Commits: []core.CommitView{
+		{SHA: "b", Author: "bob", Subject: "web only polish", Time: time.Unix(90, 0),
+			Events: []clarityrefs.Event{ev("ci", "passed", 200)},
+			Scope:  []clarityrefs.Scope{{Target: "api", Affected: false, Time: time.Unix(0, 10)}}},
+		{SHA: "a", Author: "alice", Subject: "api retry logic", Time: time.Unix(80, 0),
+			Events: []clarityrefs.Event{ev("ci", "passed", 100)}},
+	}}
+	v := core.DeriveView(snap, core.LeadPipeline, []core.Flow{{Name: "api", Targets: []string{"api"}}})
+	out := tui.RenderSnapshot(v, v.Flows[0], 80, time.Unix(300, 0), 0)
+
+	var unaffLine, waitingLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "web only polish") {
+			unaffLine = line
+		}
+		if strings.Contains(line, "api retry logic") {
+			waitingLine = line
+		}
+	}
+	if unaffLine == "" || waitingLine == "" {
+		t.Fatalf("fixture rows missing from output:\n%s", out)
+	}
+
+	if !strings.Contains(unaffLine, "∅") {
+		t.Errorf("unaffected row should carry ∅ in the lead-time slot: %q", unaffLine)
+	}
+	if !strings.Contains(unaffLine, "\x1b[90mweb only polish") {
+		t.Errorf("unaffected row's subject should be dimmed gray: %q", unaffLine)
+	}
+	if strings.Contains(waitingLine, "∅") {
+		t.Errorf("a waiting commit must not be marked unaffected: %q", waitingLine)
+	}
+	if strings.Contains(waitingLine, "\x1b[90mapi retry logic") {
+		t.Errorf("a waiting commit's subject must stay bright: %q", waitingLine)
+	}
+	if !strings.Contains(waitingLine, "3m 20s") {
+		t.Errorf("the waiting commit keeps its ticking timer: %q", waitingLine)
+	}
+}
+
 // --- Limit notice -------------------------------------------------------------
 
 // truncatedSnap is a snapshot the walk cut short at limit, with one deployed

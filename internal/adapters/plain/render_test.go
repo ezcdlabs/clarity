@@ -270,6 +270,31 @@ func view(snap core.Snapshot) core.View {
 	return core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
 }
 
+// TestRenderPlain_UnaffectedRow_SaysSo mirrors the TUI's ∅ marker, spelled
+// out: plain output exists for grep and for agents, where a word is
+// searchable and a glyph is a trap.
+func TestRenderPlain_UnaffectedRow_SaysSo(t *testing.T) {
+	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	snap := core.Snapshot{Commits: []core.CommitView{
+		{SHA: fakeSHA1, Author: "bob", Subject: "web only polish", Time: c,
+			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(2 * time.Minute)}},
+			Scope:  []clarityrefs.Scope{{Target: "api", Affected: false, Time: c}}},
+		{SHA: fakeSHA2, Author: "alice", Subject: "api retry logic", Time: c.Add(-time.Hour),
+			Events: []clarityrefs.Event{{Stage: "ci", Status: "passed", Time: c.Add(time.Minute)}}},
+	}}
+	v := core.DeriveView(snap, core.LeadPipeline, []core.Flow{{Name: "api", Targets: []string{"api"}}})
+	out := plain.RenderSnapshot("clarity", v, c.Add(time.Hour), plain.Options{})
+
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "web only polish") && !strings.Contains(line, "unaffected") {
+			t.Errorf("the unaffected row should say so: %q", line)
+		}
+		if strings.Contains(line, "api retry logic") && strings.Contains(line, "unaffected") {
+			t.Errorf("a waiting commit must not be marked unaffected: %q", line)
+		}
+	}
+}
+
 // TestRenderPlain_TruncatedListEndsWithTheLimitNotice mirrors the TUI notice
 // in plain mode. Piped output is read without a scrollbar to hint at the
 // cut, so if anything the ambiguity is worse here.

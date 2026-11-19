@@ -342,6 +342,10 @@ func plainRow(view core.CommitView, group *core.Groupings, index int, now time.T
 		if d, _, ok := group.LeadTime(index, now); ok {
 			b.WriteString("  ")
 			b.WriteString(core.FormatElapsed(d))
+		} else if group.Unaffected(index) {
+			// The TUI's ∅, spelled out: plain output exists for grep and for
+			// agents, where a word is searchable and a glyph is a trap.
+			b.WriteString("  unaffected")
 		}
 	}
 	return b.String()

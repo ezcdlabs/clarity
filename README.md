@@ -2,7 +2,7 @@
 
 [![demo](assets/happy-path.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/happy-path.mp4)
 
-**Live CI and deploy status for every commit on your trunk.**
+**Live pipeline status for trunk-based development, in your terminal.**
 
 [![CI](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml/badge.svg)](https://github.com/ezcdlabs/clarity/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/ezcdlabs/clarity)](https://github.com/ezcdlabs/clarity/releases)

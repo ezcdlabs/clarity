@@ -36,3 +36,4 @@ Thumbs.db
 # Except the README's demo video: the gif links to it, and GitHub's blob
 # page gives readers a scrubbable player, so it ships with the repo.
 !/assets/happy-path.mp4
+!/assets/dashboard.mp4

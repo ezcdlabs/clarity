@@ -520,20 +520,20 @@ func TestDeployedHeader_ShowsOnlyTheCurrentWeek(t *testing.T) {
 	// line-saving reason it was merged there in the first place — and it must
 	// appear *only* there. Marking it again below would spend the line the
 	// merge exists to save, and show the same totals twice.
-	if got := deployedLine(current); !strings.Contains(got, "W2026-39") {
+	if got := deployedLine(current); !strings.Contains(got, "2026-W39") {
 		t.Errorf("a deploy this week did not reach the Deployed header: %q", got)
 	}
-	if n := strings.Count(current, "W2026-39"); n != 1 {
+	if n := strings.Count(current, "2026-W39"); n != 1 {
 		t.Errorf("the current week is marked %d times, want 1:\n%s", n, current)
 	}
 
 	// Last deploy a week ago: the header carries nothing, and the week gets
 	// its own divider below where it cannot be mistaken for now.
 	stale := render(lastWeek)
-	if got := deployedLine(stale); strings.Contains(got, "W2026-38") {
+	if got := deployedLine(stale); strings.Contains(got, "2026-W38") {
 		t.Errorf("last week's totals were merged onto the Deployed header: %q", got)
 	}
-	if !strings.Contains(stale, "W2026-38") {
+	if !strings.Contains(stale, "2026-W38") {
 		t.Errorf("last week's totals vanished entirely instead of moving below:\n%s", stale)
 	}
 }
@@ -569,7 +569,7 @@ func TestDeployedHeader_OutOfOrderRedeployMarksEachWeekOnce(t *testing.T) {
 	view := core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
 	out := plain.RenderSnapshot("clarity", view, now, plain.Options{})
 
-	for _, week := range []string{"W2026-39", "W2026-38"} {
+	for _, week := range []string{"2026-W39", "2026-W38"} {
 		if n := strings.Count(out, week); n != 1 {
 			t.Errorf("%s is marked %d times, want 1:\n%s", week, n, out)
 		}
@@ -627,7 +627,7 @@ func TestDeployedHeader_RenderedStates(t *testing.T) {
 
 	t.Run("deployed this week", func(t *testing.T) {
 		out := render(deployedSnapshot(false, thisWeek, lastWeek))
-		if got := headerOf(out); !strings.Contains(got, "W2026-39") || !strings.Contains(got, "avg") {
+		if got := headerOf(out); !strings.Contains(got, "2026-W39") || !strings.Contains(got, "avg") {
 			t.Errorf("header does not summarise this week: %q", got)
 		}
 		if blankAfterHeader(out) {
@@ -637,7 +637,7 @@ func TestDeployedHeader_RenderedStates(t *testing.T) {
 
 	t.Run("nothing this week", func(t *testing.T) {
 		out := render(deployedSnapshot(false, lastWeek))
-		if got := headerOf(out); !strings.Contains(got, "W2026-39 0 deploys") {
+		if got := headerOf(out); !strings.Contains(got, "2026-W39 0 deploys") {
 			t.Errorf("header does not report an empty current week: %q", got)
 		}
 		if strings.Contains(headerOf(out), "avg") {

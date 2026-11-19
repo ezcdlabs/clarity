@@ -266,7 +266,7 @@ func TestDeriveView_PutsTheAxisOnEveryFlow(t *testing.T) {
 		// the flow itself reports that something was left outside it.
 		for _, w := range f.Weekly {
 			if w.Leads.N > 0 && w.Leads.Max > f.LeadAxis.Max && !f.LeadAxis.Clamped {
-				t.Errorf("flow %q: W%d-%02d has a lead of %v beyond the axis %v, "+
+				t.Errorf("flow %q: %d-W%02d has a lead of %v beyond the axis %v, "+
 					"but the flow does not report clamping",
 					f.Name, w.Year, w.Week, w.Leads.Max, f.LeadAxis.Max)
 			}

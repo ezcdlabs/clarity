@@ -172,8 +172,8 @@ func TestRenderSnapshot_WeekDivider_AppearsAboveDeployedBatch(t *testing.T) {
 			Events: []clarityrefs.Event{ev("ci", "passed", c+60), ev("deploy", "passed", d)}},
 	}}
 	out := renderSnap(view(snap), 80, time.Unix(d+3600, 0), 0)
-	if !strings.Contains(out, "W2026-02") {
-		t.Errorf("expected W2026-02 week divider in output, got:\n%s", out)
+	if !strings.Contains(out, "2026-W02") {
+		t.Errorf("expected 2026-W02 week divider in output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "1 deploy") {
 		t.Errorf("expected '1 deploy' on divider, got:\n%s", out)
@@ -210,16 +210,16 @@ func TestRenderSnapshot_WeekDivider_MergedIntoDeployedHeaderForTopWeek(t *testin
 	if deployedLine == "" {
 		t.Fatalf("no Deployed line found in output:\n%s", out)
 	}
-	if !strings.Contains(deployedLine, "W2026-03") {
-		t.Errorf("expected newest week (W2026-03) merged into Deployed header line, got: %q", deployedLine)
+	if !strings.Contains(deployedLine, "2026-W03") {
+		t.Errorf("expected newest week (2026-W03) merged into Deployed header line, got: %q", deployedLine)
 	}
 
 	// The OLDER week still gets its own standalone divider line.
-	if !strings.Contains(out, "W2026-02") {
-		t.Errorf("expected W2026-02 standalone divider for older week, got:\n%s", out)
+	if !strings.Contains(out, "2026-W02") {
+		t.Errorf("expected 2026-W02 standalone divider for older week, got:\n%s", out)
 	}
 	// And that older divider must NOT be on the Deployed header line.
-	if strings.Contains(deployedLine, "W2026-02") {
+	if strings.Contains(deployedLine, "2026-W02") {
 		t.Errorf("older week should not appear on the Deployed header line, got: %q", deployedLine)
 	}
 }
@@ -230,8 +230,15 @@ func TestRenderSnapshot_WeekDivider_NotShownForEmptyDeployed(t *testing.T) {
 			Events: []clarityrefs.Event{ev("ci", "passed", 100)}},
 	}}
 	out := renderSnap(view(snap), 80, time.Unix(200, 0), 0)
-	if strings.Contains(out, "W20") {
-		t.Errorf("expected no week divider when nothing has been deployed, got:\n%s", out)
+	// The Deployed header always names the current week on its right side,
+	// so the check is that no *standalone* divider appears. "-W" is the ISO
+	// week marker — the one substring every week label has and nothing else
+	// in this render does. (The check used to probe for "W20", which the
+	// header's "W1970-01" dodged by a century: it never guarded anything.)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "-W") && !strings.Contains(line, "Deployed") {
+			t.Errorf("week label outside the Deployed header: %q\n%s", line, out)
+		}
 	}
 }
 

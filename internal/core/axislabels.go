@@ -6,14 +6,16 @@ import (
 	"time"
 )
 
-// WeekLabel is the one spelling of an ISO week: "W2026-39".
+// WeekLabel is the one spelling of an ISO week: "2026-W39" — ISO 8601's own
+// order, year then week. (The first release wrote "W2026-39", which looked
+// ISO-ish without being it.)
 //
 // Here rather than at each call site because it is written into a deploy
 // divider, a metrics row and a mobile payload, and three spellings of the same
 // week would read as three different weeks. Zero-padded so a column of them
-// lines up and W2026-9 cannot be misread as week 90-something.
+// lines up and 2026-W9 cannot be misread as week 90-something.
 func WeekLabel(s WeekStat) string {
-	return fmt.Sprintf("W%d-%02d", s.Year, s.Week)
+	return fmt.Sprintf("%d-W%02d", s.Year, s.Week)
 }
 
 // FormatAxisTick labels one tick on a lead time axis.

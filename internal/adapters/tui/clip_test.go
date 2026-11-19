@@ -68,7 +68,7 @@ func TestClip_MarksTheCut(t *testing.T) {
 	if got := tui.ClipRight("refactor the billing subsystem", 12); !strings.Contains(got, "…") {
 		t.Errorf("ClipRight did not mark the cut: %q", got)
 	}
-	if got := tui.ClipLeft("W2026-38  4 deploys  6d avg", 12); !strings.Contains(got, "…") && !strings.HasPrefix(got, "6d") {
+	if got := tui.ClipLeft("2026-W38  4 deploys  6d avg", 12); !strings.Contains(got, "…") && !strings.HasPrefix(got, "6d") {
 		t.Errorf("ClipLeft did not mark the cut: %q", got)
 	}
 }

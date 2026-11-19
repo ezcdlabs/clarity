@@ -74,7 +74,7 @@ func TestRenderWeekly_ShowsAWeekPerRow(t *testing.T) {
 	)
 	out := tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100)
 
-	for _, want := range []string{"W2026-39", "W2026-38", "18", "24"} {
+	for _, want := range []string{"2026-W39", "2026-W38", "18", "24"} {
 		if !strings.Contains(stripANSI(out), want) {
 			t.Errorf("output is missing %q:\n%s", want, out)
 		}
@@ -84,14 +84,14 @@ func TestRenderWeekly_ShowsAWeekPerRow(t *testing.T) {
 	// compare header text rather than rows.
 	var rows []string
 	for _, line := range plainLines(out) {
-		if strings.HasPrefix(strings.TrimSpace(line), "W2026-") {
+		if strings.HasPrefix(strings.TrimSpace(line), "2026-W") {
 			rows = append(rows, strings.TrimSpace(line))
 		}
 	}
 	if len(rows) < 2 {
 		t.Fatalf("expected two week rows, got %d", len(rows))
 	}
-	if !strings.HasPrefix(rows[0], "W2026-39") || !strings.HasPrefix(rows[1], "W2026-38") {
+	if !strings.HasPrefix(rows[0], "2026-W39") || !strings.HasPrefix(rows[1], "2026-W38") {
 		t.Errorf("weeks should read newest first, got %q then %q", rows[0], rows[1])
 	}
 }
@@ -128,7 +128,7 @@ func TestRenderWeekly_EmptyWeekIsNotAZeroLengthPlot(t *testing.T) {
 
 	var emptyRow string
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "W2026-38") {
+		if strings.Contains(line, "2026-W38") {
 			emptyRow = line
 		}
 	}
@@ -150,7 +150,7 @@ func TestRenderWeekly_TooFewDeploysPlotsPointsNotQuartiles(t *testing.T) {
 	out := stripANSI(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100))
 
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.Contains(line, "W2026-38") {
+		if !strings.Contains(line, "2026-W38") {
 			continue
 		}
 		if strings.ContainsAny(line, "├┤") {
@@ -323,7 +323,7 @@ func TestRenderWeekly_ClampArrowKeepsTheMedian(t *testing.T) {
 	}
 	row := ""
 	for _, line := range plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{slow}}, "deploy", 100)) {
-		if strings.Contains(line, "W2026-39") {
+		if strings.Contains(line, "2026-W39") {
 			row = line
 		}
 	}
@@ -375,7 +375,7 @@ func TestRenderWeekly_HeaderAlignsWithTheRows(t *testing.T) {
 			if strings.Contains(l, "deploys") {
 				header = l
 			}
-			if strings.Contains(l, "W2026-39") {
+			if strings.Contains(l, "2026-W39") {
 				row = l
 			}
 		}
@@ -413,7 +413,7 @@ func TestWeeklyModel_ScrollingStopsAtTheOldestWeek(t *testing.T) {
 	if strings.Contains(body, "no deploys recorded yet") {
 		t.Fatalf("scrolled past the end into an empty view:\n%s", body)
 	}
-	if !strings.Contains(body, "W2026-21") {
+	if !strings.Contains(body, "2026-W21") {
 		t.Errorf("the oldest week should be on screen at the end of the scroll:\n%s", body)
 	}
 
@@ -458,14 +458,14 @@ func TestWeeklyModel_FooterMentionsHowToGetBack(t *testing.T) {
 // as a description of what moved.
 func TestRenderWeekly_GoldenLayout(t *testing.T) {
 	want := []string{
-		"app  ·  W2026-36 – W2026-40",
+		"app  ·  2026-W36 – 2026-W40",
 		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
-		"  W2026-40     ├────▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓────────────────────────┤         █████████████████████  18",
-		"  W2026-39     ├─▓█▓▓─┤                                             ████████████████████████████  24",
-		"  W2026-38                   ▫        ▫        ▫                                            ████   3",
-		"  W2026-37 · no deploys                                                                            0",
-		"  W2026-36          ├────▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓───────────────┤                        ███████████   9",
+		"  2026-W40     ├────▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓────────────────────────┤         █████████████████████  18",
+		"  2026-W39     ├─▓█▓▓─┤                                             ████████████████████████████  24",
+		"  2026-W38                   ▫        ▫        ▫                                            ████   3",
+		"  2026-W37 · no deploys                                                                            0",
+		"  2026-W36          ├────▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓───────────────┤                        ███████████   9",
 		"           0────────────3h────────────6h───────────9h──────────12h",
 		"",
 	}
@@ -496,10 +496,10 @@ func TestRenderWeekly_GoldenClampedRow(t *testing.T) {
 		}},
 	}
 	want := []string{
-		"app  ·  W2026-39",
+		"app  ·  2026-W39",
 		"",
 		"           lead time  ·  median, p25–p75                                                     deploys",
-		"  W2026-39              ├───────▓▓▓▓▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓───┤→  ████████████████████████████   6",
+		"  2026-W39              ├───────▓▓▓▓▓▓▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓───┤→  ████████████████████████████   6",
 		"           0────────────2h────────────4h───────────6h──────────8h+",
 		"",
 	}
@@ -528,7 +528,7 @@ func TestRenderWeekly_PlotsEverySample(t *testing.T) {
 		f := flowWith("deploy", weekOf(2026, 39, n, leads...))
 		var row string
 		for _, line := range plainLines(tui.RenderWeekly(core.View{Flows: []core.FlowView{f}}, "deploy", 100)) {
-			if strings.Contains(line, "W2026-39") {
+			if strings.Contains(line, "2026-W39") {
 				row = line
 			}
 		}
@@ -555,7 +555,7 @@ func TestRenderWeekly_AlwaysHasATopBar(t *testing.T) {
 	}
 	// What the reader needs is the span on screen, not a status that answers
 	// the live view's question with a value frozen at launch.
-	if !strings.Contains(first, "W2026-39") {
+	if !strings.Contains(first, "2026-W39") {
 		t.Errorf("the bar should name the period it is showing: %q", first)
 	}
 	if strings.Contains(first, "ci:") {

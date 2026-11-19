@@ -15,14 +15,16 @@ func TestWeekLabel(t *testing.T) {
 		year, week int
 		want       string
 	}{
-		{2026, 39, "W2026-39"},
+		// ISO 8601's own spelling: year, then week. The first release wrote
+		// "W2026-39", which looked ISO-ish without being it.
+		{2026, 39, "2026-W39"},
 		// Zero-padded, so labels are the same width and a column of them
-		// lines up — and so W2026-9 cannot be misread as week 90-something.
-		{2026, 9, "W2026-09"},
-		{2026, 1, "W2026-01"},
+		// lines up — and so 2026-W9 cannot be misread as week 90-something.
+		{2026, 9, "2026-W09"},
+		{2026, 1, "2026-W01"},
 		// ISO year, which at a year boundary is not the calendar year. Week 53
 		// exists and has to survive the formatting.
-		{2025, 53, "W2025-53"},
+		{2025, 53, "2025-W53"},
 	}
 	for _, c := range cases {
 		got := core.WeekLabel(core.WeekStat{Year: c.year, Week: c.week})

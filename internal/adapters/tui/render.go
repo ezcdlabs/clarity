@@ -376,7 +376,7 @@ func renderSectionDividerWithRight(label string, leftColor color.Color, rightLab
 
 // ClipLeft shortens text from its start, keeping the tail.
 //
-// The week label reads "W2026-38  4 deploys  6d 4h avg" — three self-contained
+// The week label reads "2026-W38  4 deploys  6d 4h avg" — three self-contained
 // facts separated by double spaces — so whole facts are dropped before any
 // characters are, giving "4 deploys  6d 4h avg" and then "6d 4h avg". Cutting
 // mid-token instead produces fragments like "…0-02  4 deploys", which reads as

@@ -79,7 +79,7 @@ func TestCurrentWeekStat_UsesUTC(t *testing.T) {
 func TestWeekDividerLabel_NoDeploys(t *testing.T) {
 	label := core.WeekDividerLabel(core.WeekStat{Year: 2026, Week: 39})
 
-	if !strings.Contains(label, "W2026-39") {
+	if !strings.Contains(label, "2026-W39") {
 		t.Errorf("label does not name the week: %q", label)
 	}
 	if !strings.Contains(label, "0 deploys") {
@@ -108,7 +108,7 @@ func TestCurrentWeekStat_AlwaysDescribesTheCurrentWeek(t *testing.T) {
 		t.Error("reported deploys for a week that had none")
 	}
 	if stat.Year != 2026 || stat.Week != 39 {
-		t.Errorf("stat describes W%d-%02d, want W2026-39", stat.Year, stat.Week)
+		t.Errorf("stat describes %d-W%02d, want 2026-W39", stat.Year, stat.Week)
 	}
 	if stat.Deploys != 0 {
 		t.Errorf("stat reports %d deploys, want 0", stat.Deploys)

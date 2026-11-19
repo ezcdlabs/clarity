@@ -55,11 +55,11 @@ When `stdout` is not a terminal (e.g. piped to another command, redirected to a 
 
 The plain output is intentionally grep-friendly: `grep ✗` finds failed commits, `grep deploying` finds in-flight deploys, `grep "(live)"` finds the currently-live batch.
 
-The Deployed section also surfaces per-ISO-week DORA throughput inline: a `W<year>-<NN>  N deploys  Xh Ym avg` summary on each week boundary. **Only the current week shares the `Deployed` header row**; every other week, including last week, gets its own divider below.
+The Deployed section also surfaces per-ISO-week DORA throughput inline: a `<year>-W<NN>  N deploys  Xh Ym avg` summary on each week boundary. **Only the current week shares the `Deployed` header row**; every other week, including last week, gets its own divider below.
 
 That position reads as the current state, so whatever sits in it is taken for now. Merging the *newest* week there instead meant a repo whose last deploy was a week ago showed last week's totals as its headline — "36 deploys" where a glance reads this week's velocity. Two repos side by side made it plain: one had deployed this week and one hadn't, and nothing in the headline distinguished them.
 
-The current week is reported whether or not it has deploys — `W2026-39  0 deploys` — because that is what makes two repos comparable at a glance, and it leaves no headline slot for an older week to occupy. A week with no deploys has no average, so the label omits it rather than printing a placeholder: `0s avg` reads as an extraordinarily fast week rather than an empty one.
+The current week is reported whether or not it has deploys — `2026-W39  0 deploys` — because that is what makes two repos comparable at a glance, and it leaves no headline slot for an older week to occupy. A week with no deploys has no average, so the label omits it rather than printing a placeholder: `0s avg` reads as an extraordinarily fast week rather than an empty one.
 
 An empty current week is followed by a blank line, so the section opens the way `HEAD` and `CI Passed` do when they are empty. Without it the next week's divider butts directly against the header and the eye binds its totals to it, which is the misreading this whole rule exists to prevent. "Deploys" counts distinct deploy batches (not per-commit events) and "avg" averages the per-commit lead times shown on the right of each row — see [Lead time](#lead-time) for what those measure and how to change it. ISO weeks are computed in UTC so the same data renders into the same buckets regardless of the user's locale.
 
@@ -1062,7 +1062,7 @@ They now drop a fact at a time from the left — the week number, then the count
 leaving the average, which is the number worth reading:
 
 ```
- 54 ─────Deployed ──── W1970-02  1 deploy  2m 00s avg ────
+ 54 ─────Deployed ──── 1970-W02  1 deploy  2m 00s avg ────
  46 ─────Deployed ────── 1 deploy  2m 00s avg ────
  38 ─────Deployed ──────── 2m 00s avg ────
  26 ─────Deployed ────────────
@@ -1487,12 +1487,12 @@ One row per ISO week, newest first: a box plot of that week's lead times on the 
 
 ```
              lead time  ·  median, p25–p75                                    deploys
-  W2026-39       ├─────▓▓▓▓█▓▓▓───────────────┤                █████████████████  18
-  W2026-38     ├───▓▓▓▓█▓▓────────────┤                   ██████████████████████  24
-  W2026-37          ├─────▓▓▓▓▓▓▓█▓▓▓──────────────────┤                ████████   9
-  W2026-36        ├─────▓▓▓▓▓▓█▓▓────────────────┤                    ██████████  11
-  W2026-35      ├────▓▓▓▓█▓▓▓───────────────┤                    ███████████████  16
-  W2026-34     ├───▓▓▓█▓▓───────────┤                        ███████████████████  21
+  2026-W39       ├─────▓▓▓▓█▓▓▓───────────────┤                █████████████████  18
+  2026-W38     ├───▓▓▓▓█▓▓────────────┤                   ██████████████████████  24
+  2026-W37          ├─────▓▓▓▓▓▓▓█▓▓▓──────────────────┤                ████████   9
+  2026-W36        ├─────▓▓▓▓▓▓█▓▓────────────────┤                    ██████████  11
+  2026-W35      ├────▓▓▓▓█▓▓▓───────────────┤                    ███████████████  16
+  2026-W34     ├───▓▓▓█▓▓───────────┤                        ███████████████████  21
             0─────────2h─────────4h─────────6h────────8h
 ```
 
@@ -1760,7 +1760,7 @@ column and broke it.
 
 ### Weeks are divided where the terminal divides them
 
-The Deployed section carries this week's throughput on its own rule — "W2026-40
+The Deployed section carries this week's throughput on its own rule — "2026-W40
  3 deploys  2h 14m avg" — and every other week is named above its first batch.
 Both strings come from `core.WeekDividerLabel`, the same function the TUI and
 the plain renderer use, so the format cannot drift between them.

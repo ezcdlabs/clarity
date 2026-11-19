@@ -22,7 +22,7 @@ import (
 // leaving the reader tracking two opposing signals.
 
 const (
-	// weekLabelWidth fits "W2026-39" plus a space.
+	// weekLabelWidth fits "2026-W39" plus a space.
 	weekLabelWidth = 9
 	// countWidth fits a four-figure deploy count, right-aligned.
 	countWidth = 4

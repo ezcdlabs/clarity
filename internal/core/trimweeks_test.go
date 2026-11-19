@@ -88,7 +88,7 @@ func TestTrimToWholeWeeks_RecomputesTheAxis(t *testing.T) {
 	}
 	for _, w := range got.Flows[0].Weekly {
 		if w.Leads.Max > axis.Max {
-			t.Errorf("W%d-%02d has a lead of %v beyond the axis %v",
+			t.Errorf("%d-W%02d has a lead of %v beyond the axis %v",
 				w.Year, w.Week, w.Leads.Max, axis.Max)
 		}
 	}

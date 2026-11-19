@@ -156,7 +156,7 @@ func TestRenderPlain_Limit_TruncatesCommits(t *testing.T) {
 
 func TestRenderPlain_WeekDivider_AppearsAboveFirstBatchOfWeek(t *testing.T) {
 	// One deploy in ISO week 2 of 2026. Plain output should include a
-	// "W2026-02" divider line with deploy count and avg lead time.
+	// "2026-W02" divider line with deploy count and avg lead time.
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 	d := time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC)
 	snap := core.Snapshot{Commits: []core.CommitView{
@@ -165,8 +165,8 @@ func TestRenderPlain_WeekDivider_AppearsAboveFirstBatchOfWeek(t *testing.T) {
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d}}},
 	}}
 	out := plain.RenderSnapshot("clarity", view(snap), d.Add(time.Hour), plain.Options{})
-	if !strings.Contains(out, "W2026-02") {
-		t.Errorf("expected W2026-02 week divider, got:\n%s", out)
+	if !strings.Contains(out, "2026-W02") {
+		t.Errorf("expected 2026-W02 week divider, got:\n%s", out)
 	}
 	if !strings.Contains(out, "1 deploy") {
 		t.Errorf("expected '1 deploy' on divider, got:\n%s", out)
@@ -186,18 +186,18 @@ func TestRenderPlain_WeekDivider_TwoWeeks_TwoDividers(t *testing.T) {
 			Events: []clarityrefs.Event{{Stage: "deploy", Status: "passed", Time: d1}}},
 	}}
 	out := plain.RenderSnapshot("clarity", view(snap), d2.Add(time.Hour), plain.Options{})
-	if !strings.Contains(out, "W2026-03") {
-		t.Errorf("expected W2026-03 divider, got:\n%s", out)
+	if !strings.Contains(out, "2026-W03") {
+		t.Errorf("expected 2026-W03 divider, got:\n%s", out)
 	}
-	if !strings.Contains(out, "W2026-02") {
-		t.Errorf("expected W2026-02 divider, got:\n%s", out)
+	if !strings.Contains(out, "2026-W02") {
+		t.Errorf("expected 2026-W02 divider, got:\n%s", out)
 	}
 	// Order: newer week appears above older week (matches the snapshot's
 	// newest-first commit order).
-	idxNewer := strings.Index(out, "W2026-03")
-	idxOlder := strings.Index(out, "W2026-02")
+	idxNewer := strings.Index(out, "2026-W03")
+	idxOlder := strings.Index(out, "2026-W02")
 	if idxNewer == -1 || idxOlder == -1 || idxNewer > idxOlder {
-		t.Errorf("expected W2026-03 to appear above W2026-02, got positions %d vs %d", idxNewer, idxOlder)
+		t.Errorf("expected 2026-W03 to appear above 2026-W02, got positions %d vs %d", idxNewer, idxOlder)
 	}
 }
 
@@ -214,8 +214,8 @@ func TestRenderPlain_WeekDivider_MergedIntoDeployedHeader(t *testing.T) {
 	out := plain.RenderSnapshot("clarity", view(snap), d.Add(time.Hour), plain.Options{})
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasPrefix(line, "Deployed") {
-			if !strings.Contains(line, "W2026-02") {
-				t.Errorf("expected merged Deployed + W2026-02 header line, got: %q", line)
+			if !strings.Contains(line, "2026-W02") {
+				t.Errorf("expected merged Deployed + 2026-W02 header line, got: %q", line)
 			}
 			return
 		}
@@ -237,7 +237,7 @@ func TestRenderPlain_WeekDivider_OnlyForDeployedSection(t *testing.T) {
 	// no *standalone* divider appears — week dividers stay a Deployed-section
 	// feature and must not leak into HEAD or CI Passed.
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.Contains(line, "W2026") {
+		if !strings.Contains(line, "2026-W") {
 			continue
 		}
 		if !strings.HasPrefix(line, "Deployed") {

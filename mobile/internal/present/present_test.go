@@ -505,7 +505,7 @@ func TestView_ThisWeeksThroughputRidesOnTheSection(t *testing.T) {
 		t.Fatal("the Deployed section carries no throughput summary")
 	}
 	year, week := now.UTC().ISOWeek()
-	if want := fmt.Sprintf("W%d-%02d", year, week); !strings.HasPrefix(shipped.Summary, want) {
+	if want := fmt.Sprintf("%d-W%02d", year, week); !strings.HasPrefix(shipped.Summary, want) {
 		t.Errorf("summary = %q, want it to name %s", shipped.Summary, want)
 	}
 	if !strings.Contains(shipped.Summary, "deploy") {
@@ -533,7 +533,7 @@ func TestView_OlderWeeksAreNamedAboveTheirFirstBatch(t *testing.T) {
 		t.Fatal("the older week has no divider, so its rows read as this week's")
 	}
 	lastYear, lastWeek := now.AddDate(0, 0, -9).UTC().ISOWeek()
-	if want := fmt.Sprintf("W%d-%02d", lastYear, lastWeek); !strings.HasPrefix(batches[1].WeekLabel, want) {
+	if want := fmt.Sprintf("%d-W%02d", lastYear, lastWeek); !strings.HasPrefix(batches[1].WeekLabel, want) {
 		t.Errorf("divider = %q, want it to name %s", batches[1].WeekLabel, want)
 	}
 }

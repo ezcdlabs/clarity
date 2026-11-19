@@ -827,7 +827,7 @@ func TestRenderMetricsOnce_DefaultsToTheFirstFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderMetricsOnce: %v", err)
 	}
-	if !strings.Contains(out, "W2026-39") {
+	if !strings.Contains(out, "2026-W39") {
 		t.Errorf("expected the week row:\n%s", out)
 	}
 }

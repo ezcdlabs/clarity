@@ -140,7 +140,7 @@ func TestRenderSnapshot_WeekStatsDropWholeFactsWhenShortened(t *testing.T) {
 		if divider == "" {
 			t.Fatalf("no Deployed divider at width %d", width)
 		}
-		// A fragment of the week number ("W1970-02" cut mid-token) is the
+		// A fragment of the week number ("1970-W02" cut mid-token) is the
 		// failure; whole segments surviving is the success.
 		if strings.Contains(divider, "…") && !strings.Contains(divider, "… ") {
 			t.Errorf("at width %d the label was cut mid-token: %q", width, divider)

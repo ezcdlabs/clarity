@@ -1,0 +1,34 @@
+name: Bug report
+description: Something broke, rendered wrongly, or behaved unexpectedly
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: clarity version
+      description: Output of `git clarity --version`
+      placeholder: v0.1.6
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and terminal (or CI provider, if it happened in a pipeline), and `git --version`
+      placeholder: "Ubuntu 24.04, kitty, git 2.45.2"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. Paste exact error output where there is any.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The commands you ran, in order. If it's a rendering issue, the output of `git clarity --plain` often captures it.
+    validations:
+      required: false

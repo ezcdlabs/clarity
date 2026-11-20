@@ -9,11 +9,11 @@
 
 [![demo](assets/dashboard.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/dashboard.mp4)
 
-Clarity is the missing view of your trunk-based pipeline. It compacts what you need to see into a single clear screen.
+Clarity is the missing view of your trunk-based pipeline: a lightweight tool that presents events from your pipeline in the context of your trunk history. It compacts what you need to see into a single clear screen.
 
-It's a live updating TUI, so you sit back and watch your commits flow through your pipeline to production. A red pipeline is unmissable.
+The view is a live-updating TUI, so you can sit back and watch your commits flow through your pipeline to production without leaving your terminal. You always know the state of the whole pipeline: what's green, what's flowing, what's stuck. You learn what a normal day looks like, and you naturally spot when the pipeline is misbehaving. You also get a baseline, and when lead time creeps up over the weeks you can decide to act and bring it back down.
 
-It's effortless to set up and needs no server: a single Go binary that installs as a git extension and runs with `git clarity`. The one thing it needs is events about your pipeline — you (or your AI agent) instrument your CI with `git clarity report`, and the events live on a git ref in your own repository.
+Setup is effortless and there's no server to run: Clarity is a single Go binary that installs as a git extension and runs with `git clarity`. The one thing it needs is events. You (or your AI agent) instrument your CI with `git clarity report`, and the events live on a git ref in your own repository.
 
 ---
 

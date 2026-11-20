@@ -9,11 +9,11 @@
 
 [![demo](assets/dashboard.gif)](https://cdn.jsdelivr.net/gh/ezcdlabs/clarity@main/assets/dashboard.mp4)
 
-- **The commit is the object.** CI UIs show runs; clarity shows your trunk's commits with their current resolved status — retries and parallel jobs collapse into one answer per stage.
-- **No server.** Pipeline events live on a dedicated git ref (`refs/clarity/events`) in your own repository, written from CI with one command. Auth is whatever git auth you already have.
-- **Works with any CI.** `git clarity report ci passed` is the whole integration; GitHub Actions gets a one-step setup action on top.
-- **A pre-push convention.** `git clarity check && git push` stops you landing on a red trunk.
-- **DORA numbers for free.** Per-commit lead time inline, and `git clarity metrics` draws weekly lead-time and deploy-frequency trends.
+Clarity is the missing view of your trunk-based pipeline. It compacts what you need to see into a single clear screen.
+
+It's a live updating TUI, so you sit back and watch your commits flow through your pipeline to production. A red pipeline is unmissable.
+
+It's effortless to set up and needs no server: a single Go binary that installs as a git extension and runs with `git clarity`. The one thing it needs is events about your pipeline — you (or your AI agent) instrument your CI with `git clarity report`, and the events live on a git ref in your own repository.
 
 ---
 

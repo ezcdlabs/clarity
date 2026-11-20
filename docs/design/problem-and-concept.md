@@ -8,6 +8,8 @@ CI/CD UIs have this backwards. GitHub Actions, GitLab Pipelines, and others pres
 
 This is the wrong model. The commit is the right object. A pipeline run is just a thing that happened to a commit, and what users need to see is the commit with its current status — not a log of every event that ever touched it.
 
+**Field note (November 2026): green is the common case.** On a working trunk team, main is green nearly all of the time, so "is main green?" is not a question anyone keeps asking — in practice the dashboard's job is to be unmissable on the rare red, and to show enough of what is happening that its quiet is believed. The detail on screen is what makes the absence of an alarm credible. A second observation from the same period: before clarity, most teams have no view of the trunk at all — only `git log` and the CI's job history, where one knows the commits and the other knows the runs. The README's introduction is written from both framings.
+
 `clarity` is built around the correct model. It is a single binary, distributed as a git extension (`git clarity`), that:
 
 - runs as a TUI in any repo with no setup beyond install

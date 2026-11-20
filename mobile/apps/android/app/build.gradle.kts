@@ -12,8 +12,14 @@ android {
         applicationId = "dev.ezcd.clarity"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI passes the real values, derived from the release tag (see
+        // mobile-assets.yml): versionName is the semver, versionCode is
+        // major·10⁶ + minor·10³ + patch so it rises with every release and
+        // Android accepts each APK as an update to the last. A local build
+        // without the properties is versionCode 1, which no release will ever
+        // be again — so a dev install always offers to "update" to a real one.
+        versionCode = (project.findProperty("clarityVersionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("clarityVersionName") as String?) ?: "0.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // The bound core is ~9 MB per ABI, so an APK carrying all four is mostly
@@ -24,18 +30,38 @@ android {
         }
     }
 
+    // The release key lives only in CI (and in Steven's backup): the keystore
+    // is written to disk by the workflow and named through these variables.
+    // Without them — every local build — release falls back to the debug key,
+    // which keeps `assembleRelease` working on a laptop while making it
+    // impossible to produce something that installs AS an update to the
+    // published app by accident. Android enforces signature continuity, so
+    // which key signed the APK is the whole difference between "update" and
+    // "please uninstall first".
+    val releaseStore = System.getenv("CLARITY_KEYSTORE_FILE")
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("CLARITY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CLARITY_KEY_ALIAS")
+                keyPassword = System.getenv("CLARITY_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         // Debug is what you build while working; release is what you install on
         // a real phone. Unshrunk, the app is 22 MB of Compose dex nobody calls.
-        //
-        // It signs with the debug key: there is no upload key, nothing is
-        // published, and the point of this build type is a side-loadable APK,
-        // not a shippable one.
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseStore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

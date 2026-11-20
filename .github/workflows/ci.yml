@@ -242,6 +242,22 @@ jobs:
         if: steps.ver.outputs.next == ''
         run: echo "No feat/fix/breaking commits since the last tag — skipping release."
 
+  # The phone apps, built at the tag just cut and attached to its release.
+  # After release rather than inside it: goreleaser owns the CLI artefacts and
+  # this owns the apps, and a mobile build failure then leaves a usable CLI
+  # release rather than no release — the assets can be re-attached by
+  # dispatching mobile-assets.yml against the tag.
+  mobile-assets:
+    name: Mobile assets
+    needs: release
+    if: needs.release.outputs.version != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/mobile-assets.yml
+    with:
+      tag: ${{ needs.release.outputs.version }}
+    secrets: inherit
+
   # Post-release smoke: does the thing we just published actually install?
   #
   # This is the question the action job structurally cannot answer. It runs

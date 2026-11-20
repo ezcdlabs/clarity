@@ -35,6 +35,20 @@ disappears when the fetch lands; when the deploy strip needs the room, the
 word is shed before any flow name is touched and the animated spinner alone
 remains (see the strip's overflow order below).
 
+**Live "ago" timers decay their precision as they age.** Precision is what
+makes a timer tick, so a week-old deploy ticking "192h 00m 07s ago" claims a
+second-level relevance it does not have — a user said exactly this. The
+`FormatAge` ladder gives elapsed-since timers seconds below the hour, minutes
+below two days, and whole days beyond ("8d"); the 48-hour threshold means
+"1d" never appears, so a day count is never mistaken for something finer. An
+old subheader therefore changes once a day instead of every second, and the
+calm follows from honest precision rather than a separate no-ticking rule.
+The lead-time column deliberately keeps `FormatElapsed`, with seconds at
+every scale: a column is read down as much as across, and a consistent unit
+shape is what makes the vertical comparison scannable — a `2d` cell beside a
+`4m 12s` cell would wreck it. The same split reaches the phone and `check`'s
+"broke … ago" through the shared formatters, per the one-formatter rule.
+
 **Nothing is allowed past the right edge.** A commit subject longer than the
 terminal used to push the lead time off-screen, and the viewport then scrolled
 sideways to reach a column that is supposed to be pinned to the edge. The

@@ -472,7 +472,7 @@ func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isL
 	case "passed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
 		}
 		if isLive {
 			// The currently-live batch is the present state, not a past
@@ -486,7 +486,7 @@ func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isL
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
 		}
 		return lipgloss.NewStyle().Foreground(colorRed).Italic(true).
 			Render(fitLine("  deploy failed"+ago, width)) + "\n"

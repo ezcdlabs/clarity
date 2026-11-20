@@ -161,7 +161,7 @@ func batch(b core.DeployBatch, live bool, g *core.Groupings, index map[string]in
 	}
 	if !b.Time.IsZero() {
 		out.DeployedUnixSeconds = b.Time.Unix()
-		out.DeployedAgo = fmt.Sprintf("%s ago", core.FormatElapsed(now.Sub(b.Time)))
+		out.DeployedAgo = fmt.Sprintf("%s ago", core.FormatAge(now.Sub(b.Time)))
 	}
 	return out
 }

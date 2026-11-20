@@ -308,7 +308,7 @@ func plainBatchSubheader(b core.DeployBatch, now time.Time, isLive bool) string 
 	case "passed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
 		}
 		if isLive {
 			return "  deployed" + ago + "  (live)\n"
@@ -317,7 +317,7 @@ func plainBatchSubheader(b core.DeployBatch, now time.Time, isLive bool) string 
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {
-			ago = " " + core.FormatElapsed(now.Sub(b.Time)) + " ago"
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
 		}
 		return "  deploy failed" + ago + "\n"
 	default:

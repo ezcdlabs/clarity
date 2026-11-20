@@ -153,7 +153,7 @@ func age(when, now time.Time) string {
 	if d <= 0 {
 		return "just now"
 	}
-	return core.FormatElapsed(d) + " ago"
+	return core.FormatAge(d) + " ago"
 }
 
 // shortSHA is the 7-character form every git UI shows and every git command

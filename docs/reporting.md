@@ -8,10 +8,11 @@ Inside your pipelines:
 - run: git clarity report ci started
 - run: ./build.sh
 - run: git clarity report ci passed
+- run: git clarity report deploy started
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
-In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, or `failed`.
+In GitHub Actions no additional secrets are needed, but the job must grant the token write access — `permissions: contents: write` — because clarity reports by pushing to a git ref. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, or `failed`.
 
 A monorepo that deploys several things adds an optional target to its deploy
 reports — `git clarity report deploy passed ios` — and the TUI gains a selectable

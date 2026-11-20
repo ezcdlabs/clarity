@@ -38,6 +38,9 @@ func TestPrompt_IsSelfContained(t *testing.T) {
 		// target's numbers — the prompt must steer the agent there
 		"report unaffected",
 		"deploy",
+		// a deploy reports its start too — "deploying…" in the TUI and the
+		// deploy's own duration both come from it
+		"report deploy started",
 		// backfill: batch form and the JSONL field names
 		"--batch",
 		"\"sha\"", "\"at\"", "RFC3339",

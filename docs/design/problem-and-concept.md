@@ -80,6 +80,7 @@ The same binary is also used inside CI to report events:
 - run: git clarity report ci started
 - run: ./build.sh
 - run: git clarity report ci passed
+- run: git clarity report deploy started
 - run: ./deploy.sh
 - run: git clarity report deploy passed
 ```

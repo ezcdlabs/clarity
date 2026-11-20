@@ -56,7 +56,7 @@ One caveat: the auto-detected `ci` metadata block is part of that content. Re-ru
 
 ## Authentication in CI
 
-Uses whatever git credentials are already available to the CI runner. In GitHub Actions the existing `GITHUB_TOKEN` is sufficient — no additional secrets needed.
+Uses whatever git credentials are already available to the CI runner. In GitHub Actions the `GITHUB_TOKEN` suffices once the job grants it `contents: write` — no additional secrets needed.
 
 ## Which version the action installs
 

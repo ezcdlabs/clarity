@@ -71,10 +71,11 @@ Inside your pipelines:
 - run: git clarity report ci started
 - run: ./build.sh
 - run: git clarity report ci passed
+- run: git clarity report deploy started
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
-In GitHub Actions the existing `GITHUB_TOKEN` is sufficient, and the [`ezcdlabs/clarity` action](docs/reporting.md#reporting-from-github-actions-ezcdlabsclarity) installs and reports in one step.
+In GitHub Actions no extra secrets are needed — grant the job `permissions: contents: write` (clarity reports by pushing to a git ref) — and the [`ezcdlabs/clarity` action](docs/reporting.md#reporting-from-github-actions-ezcdlabsclarity) installs and reports in one step.
 
 ## Documentation
 

@@ -193,6 +193,25 @@ message Commit {
   int64 lead_time_anchor_unix_seconds = 13;
 }
 
+// AppUpdate is the self-updater's verdict: whether the latest published
+// release is newer than the running app, and where to get it. The decision —
+// semver comparison, which asset, whether a checksum exists — is made on the
+// Go side; the platform is left with what is platform by nature, downloading
+// the file and handing it to the system installer.
+message AppUpdate {
+  bool available = 1;
+  string version = 2;       // bare semver, no v — what the app displays
+  string download_url = 3;
+  int64 size_bytes = 4;
+
+  // Bare hex sha256 of the download, from the checksum asset published next
+  // to it. May be empty: the checksum guards against a corrupted download,
+  // not a hostile one — that is the platform installer's job, which refuses
+  // any APK signed with a different key than the installed app. Empty means
+  // "install without pre-verification", never "do not install".
+  string sha256 = 5;
+}
+
 // RepoList is the menu of tracked repositories.
 message RepoList {
   repeated RepoSummary repos = 1;

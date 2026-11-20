@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/ezcdlabs/clarity/mobile/internal/present"
 	"github.com/ezcdlabs/clarity/mobile/internal/registry"
 	"github.com/ezcdlabs/clarity/mobile/internal/remote"
+	"github.com/ezcdlabs/clarity/mobile/internal/update"
 	"github.com/ezcdlabs/clarity/mobile/internal/watch"
 	v1 "github.com/ezcdlabs/clarity/proto/gen/go/clarityv1"
 	"github.com/go-git/go-billy/v5/osfs"
@@ -94,6 +96,36 @@ func Elapsed(seconds int64) string {
 		seconds = 0
 	}
 	return core.FormatElapsed(time.Duration(seconds) * time.Second)
+}
+
+// CheckUpdate returns an encoded clarity.v1.AppUpdate: whether the latest
+// published release is newer than the running app (its versionName), and
+// where to download it. One anonymous request to the repository's GitHub
+// releases feed — no user data crosses, and the unauthenticated rate limit is
+// generous for a check on app open. Package-level rather than on Client
+// because it touches nothing the client guards: no repository, no store, no
+// lock.
+//
+// The decision lives in mobile/internal/update, where it is tested; this is
+// the usual translation into FFI-friendly bytes.
+func CheckUpdate(currentVersion string) ([]byte, error) {
+	res, err := update.Check(
+		&http.Client{Timeout: 15 * time.Second},
+		"https://api.github.com",
+		"ezcdlabs/clarity",
+		"clarity-android.apk",
+		currentVersion,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return proto.Marshal(&v1.AppUpdate{
+		Available:   res.Available,
+		Version:     res.Version,
+		DownloadUrl: res.DownloadURL,
+		SizeBytes:   res.Size,
+		Sha256:      res.SHA256,
+	})
 }
 
 // Client is the whole surface an app talks to. One per process; the app

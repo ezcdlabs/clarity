@@ -694,6 +694,42 @@ class ClarityModelTest {
         assertTrue(model.state.value.error!!.contains("reference not found"))
     }
 
+    // --- the self-updater ----------------------------------------------------
+
+    @Test
+    fun `an available update is surfaced for the switcher to offer`() = test {
+        bridge.update = dev.ezcd.clarity.proto.AppUpdate.newBuilder()
+            .setAvailable(true).setVersion("9.9.9")
+            .setDownloadUrl("https://example.test/clarity-android.apk")
+            .build()
+        val model = model()
+        model.checkUpdate("1.0.0")
+
+        assertEquals("9.9.9", model.state.value.update?.version)
+    }
+
+    @Test
+    fun `being current leaves no update to offer`() = test {
+        bridge.update = dev.ezcd.clarity.proto.AppUpdate.newBuilder()
+            .setAvailable(false).setVersion("1.0.0").build()
+        val model = model()
+        model.checkUpdate("1.0.0")
+
+        assertNull(model.state.value.update)
+    }
+
+    @Test
+    fun `a failed update check stays quiet`() = test {
+        // The check runs unasked on every open, and it needs the network. An
+        // error bar about a background courtesy would outweigh the courtesy.
+        bridge.failCheckUpdate = "api.github.com: no route to host"
+        val model = model()
+        model.checkUpdate("1.0.0")
+
+        assertNull(model.state.value.update)
+        assertNull(model.state.value.error)
+    }
+
     // --- harness -------------------------------------------------------------
 
     private class TestBody(

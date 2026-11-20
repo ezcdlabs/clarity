@@ -180,6 +180,16 @@ class FakeBridge : ClarityBridge {
 
     // Not the real formatter — the model only passes through to it, so a test
     // that asserted the wording would be testing Go through two layers.
+    /** What a [checkUpdate] comes back with. Default: nothing newer. */
+    var update: dev.ezcd.clarity.proto.AppUpdate = dev.ezcd.clarity.proto.AppUpdate.getDefaultInstance()
+    var failCheckUpdate: String? = null
+
+    override fun checkUpdate(currentVersion: String): dev.ezcd.clarity.proto.AppUpdate {
+        calls += "checkUpdate"
+        failCheckUpdate?.let { throw RuntimeException(it) }
+        return update
+    }
+
     override fun elapsed(seconds: Long): String = seconds.toString() + "s"
 
     override fun view(repoId: String, limit: Int): View {

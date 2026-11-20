@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material3.AlertDialog
@@ -32,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ezcd.clarity.AppState
+import dev.ezcd.clarity.update.AppUpdater
 import dev.ezcd.clarity.ClarityModel
 import dev.ezcd.clarity.proto.RepoSummary
 import dev.ezcd.clarity.subtitle
@@ -134,6 +137,8 @@ fun Switcher(state: AppState, model: ClarityModel, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f).padding(start = 10.dp),
                 )
             }
+
+            state.update?.let { UpdateRow(it) }
         }
     }
 
@@ -142,6 +147,54 @@ fun Switcher(state: AppState, model: ClarityModel, onDismiss: () -> Unit) {
     }
     removing?.let { repo ->
         RemoveDialog(repo, model) { removing = null }
+    }
+}
+
+/**
+ * The row the self-updater lives behind: present only when a newer release
+ * exists, absent rather than saying "up to date" — a row spent saying nothing.
+ * The phase comes from [AppUpdater] rather than the model because an install
+ * in flight belongs to the process: this sheet can close mid-download and the
+ * next one picks the progress back up.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UpdateRow(update: dev.ezcd.clarity.proto.AppUpdate) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val phase by AppUpdater.phase.collectAsStateWithLifecycle()
+
+    val label = when (val p = phase) {
+        is AppUpdater.Phase.Downloading ->
+            if (p.fraction < 0) "Downloading…"
+            else "Downloading… ${(p.fraction * 100).toInt()}%"
+        is AppUpdater.Phase.Installing -> "Waiting for the installer…"
+        is AppUpdater.Phase.Failed -> "Update failed — tap to retry"
+        else -> "Update to ${update.version}"
+    }
+    val busy = phase is AppUpdater.Phase.Downloading || phase is AppUpdater.Phase.Installing
+
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(enabled = !busy, onClick = {
+                AppUpdater.run(context, update, scope)
+            })
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.Download, null,
+            tint = if (phase is AppUpdater.Phase.Failed) Ink.red else Ink.blue,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            label,
+            style = Type.bodySmall,
+            color = if (phase is AppUpdater.Phase.Failed) Ink.red else Ink.blue,
+            maxLines = 1,
+            modifier = Modifier.weight(1f).padding(start = 10.dp),
+        )
     }
 }
 

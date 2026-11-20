@@ -18,6 +18,16 @@
          still apply, because the tone goes out on the notification stream. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The self-updater: the app is distributed through its own GitHub
+         releases, not a store, so updating IS handling a package. The system
+         still runs its own confirmation dialog, the user approves installs
+         from this app exactly once, and Android refuses any APK whose signing
+         key differs from the installed app's — this permission opens the
+         door to the system installer, nothing more. (It also forecloses a
+         Play Store listing, which forbids self-updating apps; that is a
+         recorded trade, not an oversight.) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -34,5 +44,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Where the update install session reports back. Not exported: only
+             the system installer, replying to our own session's IntentSender,
+             ever sends here. -->
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false" />
     </application>
 </manifest>

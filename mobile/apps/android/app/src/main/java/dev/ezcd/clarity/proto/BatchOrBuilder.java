@@ -21,7 +21,8 @@ public interface BatchOrBuilder extends
   /**
    * <pre>
    * Label is the subheader the TUI writes above the batch: "deploying…",
-   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * "deployed", "deploy failed", "deploy no-op", or the live forms
+   * "live on production · deployed" / "live on production · deploy no-op". The time
    * is not part of it — deployed_ago carries that separately so a client can
    * place it apart and keep it ticking.
    * </pre>
@@ -33,7 +34,8 @@ public interface BatchOrBuilder extends
   /**
    * <pre>
    * Label is the subheader the TUI writes above the batch: "deploying…",
-   * "deployed", "deploy failed", or "live on production · deployed". The time
+   * "deployed", "deploy failed", "deploy no-op", or the live forms
+   * "live on production · deployed" / "live on production · deploy no-op". The time
    * is not part of it — deployed_ago carries that separately so a client can
    * place it apart and keep it ticking.
    * </pre>
@@ -72,8 +74,10 @@ public interface BatchOrBuilder extends
 
   /**
    * <pre>
-   * Live marks the newest passing batch: what is running in production right
-   * now, as opposed to settled history. Exactly one batch in a flow has it.
+   * Live marks the newest completed batch: what is running in production
+   * right now, as opposed to settled history. Exactly one batch in a flow has
+   * it. A state claim, so a NOOP batch on top holds it — the pipeline just
+   * verified production equals that batch's tree.
    * </pre>
    *
    * <code>bool live = 5;</code>

@@ -55,6 +55,12 @@ class ClarityViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         model.start()
+        // Once per process, not per resume: a release lands at most a few
+        // times a day, and the person looking at their phone six times an
+        // hour does not need the feed asked six times an hour.
+        model.checkUpdate(
+            app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "0.0.0-dev",
+        )
     }
 }
 

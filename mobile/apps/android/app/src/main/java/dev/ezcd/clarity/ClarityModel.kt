@@ -369,6 +369,26 @@ class ClarityModel(
     fun dismissError() = _state.update { it.copy(error = null) }
 
     /**
+     * Asks the releases feed whether a newer app exists, and surfaces it for
+     * the switcher to offer. Quiet on failure, deliberately: the check runs
+     * unasked on app open and needs the network, and an error bar about a
+     * background courtesy would outweigh the courtesy. Quiet when current,
+     * too — "you are up to date" is a row spent saying nothing.
+     */
+    fun checkUpdate(currentVersion: String) {
+        scope.launch {
+            val result = try {
+                withContext(io) { bridge.checkUpdate(currentVersion) }
+            } catch (e: Exception) {
+                return@launch
+            }
+            if (result.available) {
+                _state.update { it.copy(update = result) }
+            }
+        }
+    }
+
+    /**
      * Formats a duration, for the timers the UI ticks between fetches.
      *
      * The view arrives with every duration preformatted, which is right for the

@@ -795,6 +795,92 @@ func (x *Commit) GetLeadTimeAnchorUnixSeconds() int64 {
 	return 0
 }
 
+// AppUpdate is the self-updater's verdict: whether the latest published
+// release is newer than the running app, and where to get it. The decision —
+// semver comparison, which asset, whether a checksum exists — is made on the
+// Go side; the platform is left with what is platform by nature, downloading
+// the file and handing it to the system installer.
+type AppUpdate struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Available   bool                   `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
+	Version     string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // bare semver, no v — what the app displays
+	DownloadUrl string                 `protobuf:"bytes,3,opt,name=download_url,json=downloadUrl,proto3" json:"download_url,omitempty"`
+	SizeBytes   int64                  `protobuf:"varint,4,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	// Bare hex sha256 of the download, from the checksum asset published next
+	// to it. May be empty: the checksum guards against a corrupted download,
+	// not a hostile one — that is the platform installer's job, which refuses
+	// any APK signed with a different key than the installed app. Empty means
+	// "install without pre-verification", never "do not install".
+	Sha256        string `protobuf:"bytes,5,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppUpdate) Reset() {
+	*x = AppUpdate{}
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppUpdate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppUpdate) ProtoMessage() {}
+
+func (x *AppUpdate) ProtoReflect() protoreflect.Message {
+	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppUpdate.ProtoReflect.Descriptor instead.
+func (*AppUpdate) Descriptor() ([]byte, []int) {
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AppUpdate) GetAvailable() bool {
+	if x != nil {
+		return x.Available
+	}
+	return false
+}
+
+func (x *AppUpdate) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *AppUpdate) GetDownloadUrl() string {
+	if x != nil {
+		return x.DownloadUrl
+	}
+	return ""
+}
+
+func (x *AppUpdate) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *AppUpdate) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
 // RepoList is the menu of tracked repositories.
 type RepoList struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -808,7 +894,7 @@ type RepoList struct {
 
 func (x *RepoList) Reset() {
 	*x = RepoList{}
-	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	mi := &file_clarity_v1_view_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +906,7 @@ func (x *RepoList) String() string {
 func (*RepoList) ProtoMessage() {}
 
 func (x *RepoList) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[5]
+	mi := &file_clarity_v1_view_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +919,7 @@ func (x *RepoList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoList.ProtoReflect.Descriptor instead.
 func (*RepoList) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{5}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RepoList) GetRepos() []*RepoSummary {
@@ -887,7 +973,7 @@ type RepoSummary struct {
 
 func (x *RepoSummary) Reset() {
 	*x = RepoSummary{}
-	mi := &file_clarity_v1_view_proto_msgTypes[6]
+	mi := &file_clarity_v1_view_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +985,7 @@ func (x *RepoSummary) String() string {
 func (*RepoSummary) ProtoMessage() {}
 
 func (x *RepoSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[6]
+	mi := &file_clarity_v1_view_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +998,7 @@ func (x *RepoSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoSummary.ProtoReflect.Descriptor instead.
 func (*RepoSummary) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{6}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RepoSummary) GetId() string {
@@ -996,7 +1082,7 @@ type FlowSummary struct {
 
 func (x *FlowSummary) Reset() {
 	*x = FlowSummary{}
-	mi := &file_clarity_v1_view_proto_msgTypes[7]
+	mi := &file_clarity_v1_view_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1008,7 +1094,7 @@ func (x *FlowSummary) String() string {
 func (*FlowSummary) ProtoMessage() {}
 
 func (x *FlowSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[7]
+	mi := &file_clarity_v1_view_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1021,7 +1107,7 @@ func (x *FlowSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowSummary.ProtoReflect.Descriptor instead.
 func (*FlowSummary) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{7}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FlowSummary) GetName() string {
@@ -1062,7 +1148,7 @@ type SyncResult struct {
 
 func (x *SyncResult) Reset() {
 	*x = SyncResult{}
-	mi := &file_clarity_v1_view_proto_msgTypes[8]
+	mi := &file_clarity_v1_view_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1074,7 +1160,7 @@ func (x *SyncResult) String() string {
 func (*SyncResult) ProtoMessage() {}
 
 func (x *SyncResult) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[8]
+	mi := &file_clarity_v1_view_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1087,7 +1173,7 @@ func (x *SyncResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncResult.ProtoReflect.Descriptor instead.
 func (*SyncResult) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{8}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SyncResult) GetOutcome() Outcome {
@@ -1129,7 +1215,7 @@ type HostKey struct {
 
 func (x *HostKey) Reset() {
 	*x = HostKey{}
-	mi := &file_clarity_v1_view_proto_msgTypes[9]
+	mi := &file_clarity_v1_view_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1141,7 +1227,7 @@ func (x *HostKey) String() string {
 func (*HostKey) ProtoMessage() {}
 
 func (x *HostKey) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[9]
+	mi := &file_clarity_v1_view_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1154,7 +1240,7 @@ func (x *HostKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostKey.ProtoReflect.Descriptor instead.
 func (*HostKey) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{9}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HostKey) GetHost() string {
@@ -1210,7 +1296,7 @@ type Metrics struct {
 
 func (x *Metrics) Reset() {
 	*x = Metrics{}
-	mi := &file_clarity_v1_view_proto_msgTypes[10]
+	mi := &file_clarity_v1_view_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1222,7 +1308,7 @@ func (x *Metrics) String() string {
 func (*Metrics) ProtoMessage() {}
 
 func (x *Metrics) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[10]
+	mi := &file_clarity_v1_view_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1235,7 +1321,7 @@ func (x *Metrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metrics.ProtoReflect.Descriptor instead.
 func (*Metrics) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{10}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Metrics) GetFlows() []*MetricsFlow {
@@ -1285,7 +1371,7 @@ type MetricsFlow struct {
 
 func (x *MetricsFlow) Reset() {
 	*x = MetricsFlow{}
-	mi := &file_clarity_v1_view_proto_msgTypes[11]
+	mi := &file_clarity_v1_view_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1383,7 @@ func (x *MetricsFlow) String() string {
 func (*MetricsFlow) ProtoMessage() {}
 
 func (x *MetricsFlow) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[11]
+	mi := &file_clarity_v1_view_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1396,7 @@ func (x *MetricsFlow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsFlow.ProtoReflect.Descriptor instead.
 func (*MetricsFlow) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{11}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MetricsFlow) GetName() string {
@@ -1370,7 +1456,7 @@ type LeadAxis struct {
 
 func (x *LeadAxis) Reset() {
 	*x = LeadAxis{}
-	mi := &file_clarity_v1_view_proto_msgTypes[12]
+	mi := &file_clarity_v1_view_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1382,7 +1468,7 @@ func (x *LeadAxis) String() string {
 func (*LeadAxis) ProtoMessage() {}
 
 func (x *LeadAxis) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[12]
+	mi := &file_clarity_v1_view_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1395,7 +1481,7 @@ func (x *LeadAxis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeadAxis.ProtoReflect.Descriptor instead.
 func (*LeadAxis) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{12}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *LeadAxis) GetMaxSeconds() int64 {
@@ -1429,7 +1515,7 @@ type AxisTick struct {
 
 func (x *AxisTick) Reset() {
 	*x = AxisTick{}
-	mi := &file_clarity_v1_view_proto_msgTypes[13]
+	mi := &file_clarity_v1_view_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1441,7 +1527,7 @@ func (x *AxisTick) String() string {
 func (*AxisTick) ProtoMessage() {}
 
 func (x *AxisTick) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[13]
+	mi := &file_clarity_v1_view_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1454,7 +1540,7 @@ func (x *AxisTick) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AxisTick.ProtoReflect.Descriptor instead.
 func (*AxisTick) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{13}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AxisTick) GetFraction() float64 {
@@ -1508,7 +1594,7 @@ type Week struct {
 
 func (x *Week) Reset() {
 	*x = Week{}
-	mi := &file_clarity_v1_view_proto_msgTypes[14]
+	mi := &file_clarity_v1_view_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1520,7 +1606,7 @@ func (x *Week) String() string {
 func (*Week) ProtoMessage() {}
 
 func (x *Week) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[14]
+	mi := &file_clarity_v1_view_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1533,7 +1619,7 @@ func (x *Week) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Week.ProtoReflect.Descriptor instead.
 func (*Week) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{14}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Week) GetLabel() string {
@@ -1636,7 +1722,7 @@ type Changes struct {
 
 func (x *Changes) Reset() {
 	*x = Changes{}
-	mi := &file_clarity_v1_view_proto_msgTypes[15]
+	mi := &file_clarity_v1_view_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1648,7 +1734,7 @@ func (x *Changes) String() string {
 func (*Changes) ProtoMessage() {}
 
 func (x *Changes) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[15]
+	mi := &file_clarity_v1_view_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1661,7 +1747,7 @@ func (x *Changes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Changes.ProtoReflect.Descriptor instead.
 func (*Changes) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{15}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Changes) GetChanges() []*Change {
@@ -1714,7 +1800,7 @@ type Change struct {
 
 func (x *Change) Reset() {
 	*x = Change{}
-	mi := &file_clarity_v1_view_proto_msgTypes[16]
+	mi := &file_clarity_v1_view_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1726,7 +1812,7 @@ func (x *Change) String() string {
 func (*Change) ProtoMessage() {}
 
 func (x *Change) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[16]
+	mi := &file_clarity_v1_view_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1739,7 +1825,7 @@ func (x *Change) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Change.ProtoReflect.Descriptor instead.
 func (*Change) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{16}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Change) GetRepoId() string {
@@ -1808,7 +1894,7 @@ type ViewResult struct {
 
 func (x *ViewResult) Reset() {
 	*x = ViewResult{}
-	mi := &file_clarity_v1_view_proto_msgTypes[17]
+	mi := &file_clarity_v1_view_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1820,7 +1906,7 @@ func (x *ViewResult) String() string {
 func (*ViewResult) ProtoMessage() {}
 
 func (x *ViewResult) ProtoReflect() protoreflect.Message {
-	mi := &file_clarity_v1_view_proto_msgTypes[17]
+	mi := &file_clarity_v1_view_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1833,7 +1919,7 @@ func (x *ViewResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewResult.ProtoReflect.Descriptor instead.
 func (*ViewResult) Descriptor() ([]byte, []int) {
-	return file_clarity_v1_view_proto_rawDescGZIP(), []int{17}
+	return file_clarity_v1_view_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ViewResult) GetView() *View {
@@ -1899,7 +1985,14 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	" \x01(\x03R\x0fleadTimeSeconds\x12\x1b\n" +
 	"\tlead_time\x18\v \x01(\tR\bleadTime\x12$\n" +
 	"\x0elead_time_live\x18\f \x01(\bR\fleadTimeLive\x12@\n" +
-	"\x1dlead_time_anchor_unix_seconds\x18\r \x01(\x03R\x19leadTimeAnchorUnixSeconds\"o\n" +
+	"\x1dlead_time_anchor_unix_seconds\x18\r \x01(\x03R\x19leadTimeAnchorUnixSeconds\"\x9d\x01\n" +
+	"\tAppUpdate\x12\x1c\n" +
+	"\tavailable\x18\x01 \x01(\bR\tavailable\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
+	"\fdownload_url\x18\x03 \x01(\tR\vdownloadUrl\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\x05 \x01(\tR\x06sha256\"o\n" +
 	"\bRepoList\x12-\n" +
 	"\x05repos\x18\x01 \x03(\v2\x17.clarity.v1.RepoSummaryR\x05repos\x124\n" +
 	"\x16generated_unix_seconds\x18\x02 \x01(\x03R\x14generatedUnixSeconds\"\xa2\x02\n" +
@@ -2027,7 +2120,7 @@ func file_clarity_v1_view_proto_rawDescGZIP() []byte {
 }
 
 var file_clarity_v1_view_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_clarity_v1_view_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_clarity_v1_view_proto_goTypes = []any{
 	(Status)(0),         // 0: clarity.v1.Status
 	(SectionKind)(0),    // 1: clarity.v1.SectionKind
@@ -2038,19 +2131,20 @@ var file_clarity_v1_view_proto_goTypes = []any{
 	(*Section)(nil),     // 6: clarity.v1.Section
 	(*Batch)(nil),       // 7: clarity.v1.Batch
 	(*Commit)(nil),      // 8: clarity.v1.Commit
-	(*RepoList)(nil),    // 9: clarity.v1.RepoList
-	(*RepoSummary)(nil), // 10: clarity.v1.RepoSummary
-	(*FlowSummary)(nil), // 11: clarity.v1.FlowSummary
-	(*SyncResult)(nil),  // 12: clarity.v1.SyncResult
-	(*HostKey)(nil),     // 13: clarity.v1.HostKey
-	(*Metrics)(nil),     // 14: clarity.v1.Metrics
-	(*MetricsFlow)(nil), // 15: clarity.v1.MetricsFlow
-	(*LeadAxis)(nil),    // 16: clarity.v1.LeadAxis
-	(*AxisTick)(nil),    // 17: clarity.v1.AxisTick
-	(*Week)(nil),        // 18: clarity.v1.Week
-	(*Changes)(nil),     // 19: clarity.v1.Changes
-	(*Change)(nil),      // 20: clarity.v1.Change
-	(*ViewResult)(nil),  // 21: clarity.v1.ViewResult
+	(*AppUpdate)(nil),   // 9: clarity.v1.AppUpdate
+	(*RepoList)(nil),    // 10: clarity.v1.RepoList
+	(*RepoSummary)(nil), // 11: clarity.v1.RepoSummary
+	(*FlowSummary)(nil), // 12: clarity.v1.FlowSummary
+	(*SyncResult)(nil),  // 13: clarity.v1.SyncResult
+	(*HostKey)(nil),     // 14: clarity.v1.HostKey
+	(*Metrics)(nil),     // 15: clarity.v1.Metrics
+	(*MetricsFlow)(nil), // 16: clarity.v1.MetricsFlow
+	(*LeadAxis)(nil),    // 17: clarity.v1.LeadAxis
+	(*AxisTick)(nil),    // 18: clarity.v1.AxisTick
+	(*Week)(nil),        // 19: clarity.v1.Week
+	(*Changes)(nil),     // 20: clarity.v1.Changes
+	(*Change)(nil),      // 21: clarity.v1.Change
+	(*ViewResult)(nil),  // 22: clarity.v1.ViewResult
 }
 var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 0: clarity.v1.View.ci:type_name -> clarity.v1.Status
@@ -2064,23 +2158,23 @@ var file_clarity_v1_view_proto_depIdxs = []int32{
 	0,  // 8: clarity.v1.Batch.status:type_name -> clarity.v1.Status
 	8,  // 9: clarity.v1.Batch.commits:type_name -> clarity.v1.Commit
 	0,  // 10: clarity.v1.Commit.ci:type_name -> clarity.v1.Status
-	10, // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
+	11, // 11: clarity.v1.RepoList.repos:type_name -> clarity.v1.RepoSummary
 	0,  // 12: clarity.v1.RepoSummary.ci:type_name -> clarity.v1.Status
 	0,  // 13: clarity.v1.RepoSummary.deploy:type_name -> clarity.v1.Status
-	11, // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
+	12, // 14: clarity.v1.RepoSummary.flows:type_name -> clarity.v1.FlowSummary
 	0,  // 15: clarity.v1.FlowSummary.deploy:type_name -> clarity.v1.Status
 	2,  // 16: clarity.v1.SyncResult.outcome:type_name -> clarity.v1.Outcome
-	13, // 17: clarity.v1.SyncResult.host_key:type_name -> clarity.v1.HostKey
-	15, // 18: clarity.v1.Metrics.flows:type_name -> clarity.v1.MetricsFlow
-	16, // 19: clarity.v1.MetricsFlow.axis:type_name -> clarity.v1.LeadAxis
-	18, // 20: clarity.v1.MetricsFlow.weeks:type_name -> clarity.v1.Week
-	17, // 21: clarity.v1.LeadAxis.ticks:type_name -> clarity.v1.AxisTick
+	14, // 17: clarity.v1.SyncResult.host_key:type_name -> clarity.v1.HostKey
+	16, // 18: clarity.v1.Metrics.flows:type_name -> clarity.v1.MetricsFlow
+	17, // 19: clarity.v1.MetricsFlow.axis:type_name -> clarity.v1.LeadAxis
+	19, // 20: clarity.v1.MetricsFlow.weeks:type_name -> clarity.v1.Week
+	18, // 21: clarity.v1.LeadAxis.ticks:type_name -> clarity.v1.AxisTick
 	3,  // 22: clarity.v1.Week.plot:type_name -> clarity.v1.Plot
-	20, // 23: clarity.v1.Changes.changes:type_name -> clarity.v1.Change
+	21, // 23: clarity.v1.Changes.changes:type_name -> clarity.v1.Change
 	0,  // 24: clarity.v1.Change.from:type_name -> clarity.v1.Status
 	0,  // 25: clarity.v1.Change.to:type_name -> clarity.v1.Status
 	4,  // 26: clarity.v1.ViewResult.view:type_name -> clarity.v1.View
-	20, // 27: clarity.v1.ViewResult.changes:type_name -> clarity.v1.Change
+	21, // 27: clarity.v1.ViewResult.changes:type_name -> clarity.v1.Change
 	28, // [28:28] is the sub-list for method output_type
 	28, // [28:28] is the sub-list for method input_type
 	28, // [28:28] is the sub-list for extension type_name
@@ -2099,7 +2193,7 @@ func file_clarity_v1_view_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clarity_v1_view_proto_rawDesc), len(file_clarity_v1_view_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

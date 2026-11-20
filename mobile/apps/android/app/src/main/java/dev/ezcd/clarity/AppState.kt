@@ -1,5 +1,6 @@
 package dev.ezcd.clarity
 
+import dev.ezcd.clarity.proto.AppUpdate
 import dev.ezcd.clarity.proto.HostKey
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoSummary
@@ -91,6 +92,12 @@ data class AppState(
      * away — the first time you need it, and after that you do not.
      */
     val keyHasConnected: Boolean = false,
+    /**
+     * A newer published release of this app, or null — not checked, current,
+     * or the check failed, which all look the same because they all mean the
+     * same thing to the switcher: no row to show.
+     */
+    val update: AppUpdate? = null,
     val error: String? = null,
     /**
      * Epoch seconds, advanced by the model while the UI is visible. Every timer

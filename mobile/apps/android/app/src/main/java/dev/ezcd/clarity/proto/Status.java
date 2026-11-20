@@ -46,6 +46,17 @@ public enum Status
    * <code>STATUS_SKIPPED = 5;</code>
    */
   STATUS_SKIPPED(5),
+  /**
+   * <pre>
+   * The deploy ran and found production already matching the desired state —
+   * delivery complete, nothing shipped. Carried on a batch; never on a badge,
+   * which folds it into PASSED before it crosses (a badge answers "is
+   * production current?", and after a no-op it is).
+   * </pre>
+   *
+   * <code>STATUS_NOOP = 6;</code>
+   */
+  STATUS_NOOP(6),
   UNRECOGNIZED(-1),
   ;
 
@@ -81,6 +92,17 @@ public enum Status
    * <code>STATUS_SKIPPED = 5;</code>
    */
   public static final int STATUS_SKIPPED_VALUE = 5;
+  /**
+   * <pre>
+   * The deploy ran and found production already matching the desired state —
+   * delivery complete, nothing shipped. Carried on a batch; never on a badge,
+   * which folds it into PASSED before it crosses (a badge answers "is
+   * production current?", and after a no-op it is).
+   * </pre>
+   *
+   * <code>STATUS_NOOP = 6;</code>
+   */
+  public static final int STATUS_NOOP_VALUE = 6;
 
 
   @java.lang.Override
@@ -110,6 +132,7 @@ public enum Status
       case 3: return STATUS_PASSED;
       case 4: return STATUS_FAILED;
       case 5: return STATUS_SKIPPED;
+      case 6: return STATUS_NOOP;
       default: return null;
     }
   }

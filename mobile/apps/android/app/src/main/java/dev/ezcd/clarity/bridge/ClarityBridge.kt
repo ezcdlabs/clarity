@@ -1,5 +1,6 @@
 package dev.ezcd.clarity.bridge
 
+import dev.ezcd.clarity.proto.AppUpdate
 import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
@@ -103,4 +104,14 @@ interface ClarityBridge {
      * the rule — one more place for "3m 29s" to drift into "3:29".
      */
     fun elapsed(seconds: Long): String
+
+    /**
+     * Asks the project's releases feed whether a newer app exists.
+     *
+     * One anonymous network request; the decision — semver comparison, which
+     * asset, whether a checksum exists — is Go's, because it can be tested
+     * there. The platform is left with downloading the file and handing it to
+     * the system installer, which is platform by nature.
+     */
+    fun checkUpdate(currentVersion: String): AppUpdate
 }

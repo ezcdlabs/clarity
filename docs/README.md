@@ -27,6 +27,7 @@ The [design documents](design/README.md) record the decisions behind clarity and
 - [CI reporting](design/reporting.md) — what `report` does, recovery, backfill and migration
 - [Pre-push checking](design/check.md) — why `check` is a convention, not a hook
 - [Weekly metrics](design/metrics.md) — box plots, axes, and what crosses to the phone
+- [Mobile distribution](design/mobile-distribution.md) — releases as the store: the signed APK, the self-updater, AltStore
 - [Mobile](design/mobile.md) and [mobile engineering notes](design/mobile-engineering.md) — native apps over the same core
 - [Architecture refactor](design/architecture-refactor.md) — historical: the reasoning behind the hexagonal split
 

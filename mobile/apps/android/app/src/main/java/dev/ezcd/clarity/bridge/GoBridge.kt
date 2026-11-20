@@ -2,6 +2,7 @@ package dev.ezcd.clarity.bridge
 
 import dev.ezcd.clarity.core.Client
 import dev.ezcd.clarity.core.Core
+import dev.ezcd.clarity.proto.AppUpdate
 import dev.ezcd.clarity.proto.Changes
 import dev.ezcd.clarity.proto.Metrics
 import dev.ezcd.clarity.proto.RepoList
@@ -59,6 +60,9 @@ class GoBridge(private val client: Client) : ClarityBridge {
         Changes.parseFrom(client.check(timeoutSeconds.toLong()))
 
     override fun elapsed(seconds: Long): String = Core.elapsed(seconds)
+
+    override fun checkUpdate(currentVersion: String): AppUpdate =
+        AppUpdate.parseFrom(Core.checkUpdate(currentVersion))
 
     companion object {
         private val instances = mutableMapOf<String, GoBridge>()

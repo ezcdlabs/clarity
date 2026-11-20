@@ -41,6 +41,13 @@ One row per ISO week, newest first: a box plot of that week's lead times on the 
 
 The two halves are one signal. A bad week pushes the box right *and* pulls the bar back, so degradation reads as ink migrating rightward across the whole row — which is the entire reason the bars are mirrored rather than growing from a shared left edge.
 
+The two halves also count different events when a deploy no-ops (see
+[Event content](data-model.md#event-content)): a `noop` batch's commits
+contribute their lead times to the box — the pipeline took as long to verify
+convergence as it would have to deploy, and the measurement is real — while
+the bar counts only `passed` batches, because nothing shipped. A week of
+revert pairs therefore reads as it should: lead times measured, zero deploys.
+
 ## On a phone
 
 The Android app draws the same view, reached from a chart icon in the repository

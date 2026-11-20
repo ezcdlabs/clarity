@@ -106,6 +106,9 @@ func weeklyStats(snap Snapshot, g Groupings) ([]WeekStat, []time.Duration) {
 	}
 
 	for _, b := range g.Deployed {
+		// Only "passed" is a deploy. A "noop" batch sits in Deployed too, but
+		// it shipped nothing — its commits' lead times land in the loop above
+		// (deployedAt is the noop time) while the count stays honest here.
 		if b.Status != "passed" {
 			continue
 		}
@@ -266,12 +269,29 @@ func CurrentWeekSummary(g Groupings, statsByWeek map[int64]WeekStat, now time.Ti
 }
 
 // CurrentWeekHasDeploys reports whether the Deployed section will render a
-// batch belonging to the current week directly below its header.
+// batch belonging to the current week directly below its header. A layout
+// question, so a noop batch counts: it renders there like any completed
+// batch, even though it contributes nothing to the week's deploy count.
 func CurrentWeekHasDeploys(g Groupings, now time.Time) bool {
 	year, week := now.UTC().ISOWeek()
-	return currentWeekHasBatch(g, WeekKey(year, week))
+	key := WeekKey(year, week)
+	for _, b := range g.Deployed {
+		if !deployCompleted(b.Status) {
+			continue
+		}
+		year, week := b.Time.UTC().ISOWeek()
+		if WeekKey(year, week) == key {
+			return true
+		}
+	}
+	return false
 }
 
+// currentWeekHasBatch answers CurrentWeekSummary's narrower question: does the
+// section show an actual DEPLOY from this week? Here a noop batch does not
+// count — the WeekUnknown guard exists so "0 deploys" is never printed above a
+// deploy it denies, and a noop batch under a "0 deploys" header is not a
+// contradiction.
 func currentWeekHasBatch(g Groupings, key int64) bool {
 	for _, b := range g.Deployed {
 		if b.Status != "passed" {

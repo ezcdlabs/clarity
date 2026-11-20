@@ -33,6 +33,11 @@ const (
 	Status_STATUS_PASSED      Status = 3
 	Status_STATUS_FAILED      Status = 4
 	Status_STATUS_SKIPPED     Status = 5
+	// The deploy ran and found production already matching the desired state —
+	// delivery complete, nothing shipped. Carried on a batch; never on a badge,
+	// which folds it into PASSED before it crosses (a badge answers "is
+	// production current?", and after a no-op it is).
+	Status_STATUS_NOOP Status = 6
 )
 
 // Enum value maps for Status.
@@ -44,6 +49,7 @@ var (
 		3: "STATUS_PASSED",
 		4: "STATUS_FAILED",
 		5: "STATUS_SKIPPED",
+		6: "STATUS_NOOP",
 	}
 	Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
@@ -52,6 +58,7 @@ var (
 		"STATUS_PASSED":      3,
 		"STATUS_FAILED":      4,
 		"STATUS_SKIPPED":     5,
+		"STATUS_NOOP":        6,
 	}
 )
 
@@ -529,14 +536,17 @@ type Batch struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Status Status                 `protobuf:"varint,1,opt,name=status,proto3,enum=clarity.v1.Status" json:"status,omitempty"`
 	// Label is the subheader the TUI writes above the batch: "deploying…",
-	// "deployed", "deploy failed", or "live on production · deployed". The time
+	// "deployed", "deploy failed", "deploy no-op", or the live forms
+	// "live on production · deployed" / "live on production · deploy no-op". The time
 	// is not part of it — deployed_ago carries that separately so a client can
 	// place it apart and keep it ticking.
 	Label               string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 	DeployedUnixSeconds int64  `protobuf:"varint,3,opt,name=deployed_unix_seconds,json=deployedUnixSeconds,proto3" json:"deployed_unix_seconds,omitempty"`
 	DeployedAgo         string `protobuf:"bytes,4,opt,name=deployed_ago,json=deployedAgo,proto3" json:"deployed_ago,omitempty"` // "4m 43s ago"
-	// Live marks the newest passing batch: what is running in production right
-	// now, as opposed to settled history. Exactly one batch in a flow has it.
+	// Live marks the newest completed batch: what is running in production
+	// right now, as opposed to settled history. Exactly one batch in a flow has
+	// it. A state claim, so a NOOP batch on top holds it — the pipeline just
+	// verified production equals that batch's tree.
 	Live bool `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
 	// Set on the first batch of a week that has not been named yet — the week
 	// divider the terminal draws above it. The current week is never repeated
@@ -1975,14 +1985,15 @@ const file_clarity_v1_view_proto_rawDesc = "" +
 	"\n" +
 	"ViewResult\x12$\n" +
 	"\x04view\x18\x01 \x01(\v2\x10.clarity.v1.ViewR\x04view\x12,\n" +
-	"\achanges\x18\x02 \x03(\v2\x12.clarity.v1.ChangeR\achanges*\x7f\n" +
+	"\achanges\x18\x02 \x03(\v2\x12.clarity.v1.ChangeR\achanges*\x90\x01\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vSTATUS_NONE\x10\x01\x12\x12\n" +
 	"\x0eSTATUS_STARTED\x10\x02\x12\x11\n" +
 	"\rSTATUS_PASSED\x10\x03\x12\x11\n" +
 	"\rSTATUS_FAILED\x10\x04\x12\x12\n" +
-	"\x0eSTATUS_SKIPPED\x10\x05*y\n" +
+	"\x0eSTATUS_SKIPPED\x10\x05\x12\x0f\n" +
+	"\vSTATUS_NOOP\x10\x06*y\n" +
 	"\vSectionKind\x12\x1c\n" +
 	"\x18SECTION_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11SECTION_KIND_HEAD\x10\x01\x12\x1a\n" +

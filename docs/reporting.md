@@ -12,7 +12,7 @@ Inside your pipelines:
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
-In GitHub Actions no additional secrets are needed, but the job must grant the token write access — `permissions: contents: write` — because clarity reports by pushing to a git ref. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, or `failed`.
+In GitHub Actions no additional secrets are needed, but the job must grant the token write access — `permissions: contents: write` — because clarity reports by pushing to a git ref. Stages are exactly two: `ci` and `deploy`. Statuses are `started`, `passed`, or `failed`, plus `noop` on `deploy` only: a deploy step that ran and found production already matching its build output (a revert pair, say) reports `git clarity report deploy noop`, which completes the commits' lead time without counting a deploy.
 
 A monorepo that deploys several things adds an optional target to its deploy
 reports — `git clarity report deploy passed ios` — and the TUI gains a selectable
@@ -62,7 +62,7 @@ Inputs:
 
 - `version` — explicit version override (e.g. `v1.1.0`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
 - `stage` — pipeline stage to report (`ci` or `deploy`). When combined with `status`, the action runs `git clarity report <stage> <status>` after install.
-- `status` — status to report (`started` / `passed` / `failed`).
+- `status` — status to report (`started` / `passed` / `failed`, or `noop` on `deploy` only).
 - `target` — which deployable a `deploy` event is about, for a repo shipping several from one trunk (e.g. `ios`). Rejected on `ci`. Omit it for the untargeted deploy.
 
 `actions/checkout` must run first so the action has a repository to push events from.

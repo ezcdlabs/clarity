@@ -237,8 +237,9 @@ func renderFlowBlock(
 	// the current week, already on the header row, would be marked a second
 	// time below it.
 	weekShown := map[int64]bool{topWeekKey: true}
+	liveIdx := g.LiveBatchIndex()
 	for i, batch := range g.Deployed {
-		if batch.Status == "passed" {
+		if batch.Status == "passed" || batch.Status == "noop" {
 			year, week := batch.Time.UTC().ISOWeek()
 			key := core.WeekKey(year, week)
 			if !weekShown[key] {
@@ -249,7 +250,7 @@ func renderFlowBlock(
 				weekShown[key] = true
 			}
 		}
-		b.WriteString(plainBatchSubheader(batch, now, i == 0))
+		b.WriteString(plainBatchSubheader(batch, now, i == liveIdx))
 		for _, c := range batch.Commits {
 			// The Deployed section obeys --limit like every other section.
 			// Without this a capped render printed the whole deploy history
@@ -314,6 +315,15 @@ func plainBatchSubheader(b core.DeployBatch, now time.Time, isLive bool) string 
 			return "  deployed" + ago + "  (live)\n"
 		}
 		return "  deployed" + ago + "\n"
+	case "noop":
+		ago := ""
+		if !now.IsZero() && !b.Time.IsZero() {
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
+		}
+		if isLive {
+			return "  deploy no-op" + ago + "  (live)\n"
+		}
+		return "  deploy no-op" + ago + "\n"
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {

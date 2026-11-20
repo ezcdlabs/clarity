@@ -16,9 +16,25 @@ Examples:
 - run: ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
 ```
 
+A pipeline that can tell its build output already matches production — a
+content hash of the artifact against the deployed one — reports that instead
+of deploying:
+
+```yaml
+- run: |
+    if unchanged_since_last_deploy; then
+      git clarity report deploy noop
+    else
+      ./deploy.sh && git clarity report deploy passed || git clarity report deploy failed
+    fi
+```
+
+`noop` completes the swept commits' lead times without counting a deploy — see
+[Event content](data-model.md#event-content) for the full semantics.
+
 ## What it does
 
-1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed` — rejects anything else (`skipped` is retired, and its error points at `report unaffected`). A `<target>` is accepted only for `deploy`, and only if declared in the clarity config when it declares any
+1. Validates that `<stage>` is `ci` or `deploy`, and `<status>` is `started`/`passed`/`failed`, plus `noop` on `deploy` only — rejects anything else (`skipped` is retired, and its error points at both `report unaffected` and `report deploy noop`). A `<target>` is accepted only for `deploy`, and only if declared in the clarity config when it declares any
 2. Resolves HEAD SHA (or reads `GITHUB_SHA` / equivalent when set)
 3. Builds the event JSON (core fields + auto-detected `ci` metadata block)
 4. Generates a unique filename: `<unix-ts>-<short-uuid>.json`

@@ -268,3 +268,47 @@ func TestWeeklyStats_UntruncatedIsUnaffected(t *testing.T) {
 		t.Fatalf("expected the oldest week to survive, got %d: %+v", len(got), got)
 	}
 }
+
+// A no-op deploy completes lead times without being a deploy. The revert
+// pair's commits stop sitting in CI Passed dragging the number up, and the
+// deploy count stays what it was — nothing shipped.
+func TestWeeklyStats_NoopBatch_LeadTimesCounted_DeploysNot(t *testing.T) {
+	c := utc(2026, 1, 5, 9)
+	n := utc(2026, 1, 8, 10) // same ISO week
+	snap := core.Snapshot{Commits: []core.CommitView{{
+		SHA: "abc", Time: c,
+		Events: []clarityrefs.Event{
+			{Stage: "ci", Status: "started", Time: c},
+			{Stage: "deploy", Status: "noop", Time: n},
+		},
+	}}}
+	got := core.WeeklyStats(snap)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 week stat, got %d: %+v", len(got), got)
+	}
+	w := got[0]
+	if w.Deploys != 0 {
+		t.Errorf("a no-op counted as a deploy: got %d", w.Deploys)
+	}
+	if w.AvgLead != n.Sub(c) {
+		t.Errorf("expected the no-op to complete the lead time (%v), got %v", n.Sub(c), w.AvgLead)
+	}
+}
+
+// CurrentWeekHasDeploys answers a layout question — "will a batch render
+// directly below the Deployed header?" — and a no-op batch renders there
+// like any completed batch, even though it counts no deploy.
+func TestCurrentWeekHasDeploys_NoopBatchRendersUnderTheHeader(t *testing.T) {
+	n := utc(2026, 1, 8, 10)
+	now := utc(2026, 1, 8, 12) // same ISO week
+	g := core.GroupCommits([]core.CommitView{{
+		SHA: "abc", Time: utc(2026, 1, 8, 9),
+		Events: []clarityrefs.Event{
+			{Stage: "ci", Status: "passed", Time: utc(2026, 1, 8, 9)},
+			{Stage: "deploy", Status: "noop", Time: n},
+		},
+	}})
+	if !core.CurrentWeekHasDeploys(g, now) {
+		t.Error("a no-op batch renders under the header, so the section does not open empty")
+	}
+}

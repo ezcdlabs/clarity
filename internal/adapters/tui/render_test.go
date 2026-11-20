@@ -522,3 +522,48 @@ func TestRenderSnapshot_UntruncatedListHasNoNotice(t *testing.T) {
 		t.Errorf("a complete list must not mention the limit:\n%s", out)
 	}
 }
+
+// A no-op batch sits in Deployed with its own subheader: the pipeline ran,
+// found production already matching, and shipped nothing. Blue like a
+// completed delivery, because it is one — of nothing.
+func TestRenderSnapshot_NoopBatch_ShowsNoopSubheader(t *testing.T) {
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
+			{SHA: "b", Author: "bob", Subject: "revert pair", Events: []clarityrefs.Event{
+				ev("ci", "passed", 300), ev("deploy", "noop", 350),
+			}},
+			{SHA: "a", Author: "alice", Subject: "real ship", Events: []clarityrefs.Event{
+				ev("ci", "passed", 50), ev("deploy", "passed", 75),
+			}},
+		},
+	}
+	out := renderSnap(view(snap), 80, time.Unix(400, 0), 0)
+	if !strings.Contains(out, "deploy no-op") {
+		t.Errorf("expected 'deploy no-op' subheader, got:\n%s", out)
+	}
+}
+
+// The live marker is a state claim — "this is production" — and a no-op on
+// top is the freshest statement of that state: the pipeline just verified
+// production equals this batch's tree. So the topmost completed batch holds
+// the marker whether it deployed or no-opped, and the passed batch below
+// becomes settled history.
+func TestRenderSnapshot_NoopOnTop_IsMarkedLive(t *testing.T) {
+	snap := core.Snapshot{
+		Commits: []core.CommitView{
+			{SHA: "b", Author: "bob", Subject: "revert pair", Events: []clarityrefs.Event{
+				ev("ci", "passed", 300), ev("deploy", "noop", 350),
+			}},
+			{SHA: "a", Author: "alice", Subject: "real ship", Events: []clarityrefs.Event{
+				ev("ci", "passed", 50), ev("deploy", "passed", 75),
+			}},
+		},
+	}
+	out := renderSnap(view(snap), 80, time.Unix(400, 0), 0)
+	if n := strings.Count(out, "live on production"); n != 1 {
+		t.Fatalf("expected exactly 1 live marker, got %d:\n%s", n, out)
+	}
+	if !strings.Contains(out, "live on production · deploy no-op") {
+		t.Errorf("expected the live marker on the no-op batch, got:\n%s", out)
+	}
+}

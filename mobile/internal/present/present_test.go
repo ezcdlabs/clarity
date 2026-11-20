@@ -568,3 +568,45 @@ func TestView_AWeekIsNamedOnlyOnce(t *testing.T) {
 		t.Errorf("two batches from one week produced %d dividers", named)
 	}
 }
+
+// TestView_ANoopDeploySaysSo carries the no-op across the boundary: a batch
+// whose pipeline ran, found production already matching, and shipped nothing.
+// It sits in Deployed — delivery is complete — and on top it IS the live
+// batch: live is a state claim, and a verified no-op is the freshest
+// statement that production equals this tree.
+func TestView_ANoopDeploySaysSo(t *testing.T) {
+	snap := core.Snapshot{RepoName: "api", Commits: []core.CommitView{
+		{SHA: "bbbbbbbbbbbb", Subject: "revert pair", Time: at(4),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: at(5)},
+				{Stage: "deploy", Status: "noop", Time: at(6)},
+			}},
+		{SHA: "aaaaaaaaaaaa", Subject: "real ship", Time: at(1),
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: at(2)},
+				{Stage: "deploy", Status: "passed", Time: at(3)},
+			}},
+	}}
+	out := mapped(t, snap, at(10))
+	batches := section(t, out.Flows[0], v1.SectionKind_SECTION_KIND_DEPLOYED).Batches
+
+	if len(batches) != 2 {
+		t.Fatalf("expected the no-op batch in Deployed, got %d batches", len(batches))
+	}
+	if batches[0].Status != v1.Status_STATUS_NOOP {
+		t.Errorf("no-op batch status = %v, want NOOP", batches[0].Status)
+	}
+	if batches[0].Label != "live on production · deploy no-op" {
+		t.Errorf("no-op live label = %q", batches[0].Label)
+	}
+	if !batches[0].Live {
+		t.Error("the topmost completed batch is the present state, no-op or not")
+	}
+	if batches[1].Live {
+		t.Error("exactly one batch is live; the passed batch below is settled history")
+	}
+	// The badge answers "is production current?" — after a no-op it is.
+	if out.Flows[0].Deploy != v1.Status_STATUS_PASSED {
+		t.Errorf("flow deploy badge = %v, want PASSED", out.Flows[0].Deploy)
+	}
+}

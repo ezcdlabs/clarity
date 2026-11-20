@@ -50,7 +50,7 @@ func CollapseStages(events []clarityrefs.Event) []StageStatus {
 
 // OverallStatus reduces a commit's events to one of:
 //   - "none"    no events
-//   - "passed"  every stage's latest is passed or skipped
+//   - "passed"  every stage's latest is passed, noop or skipped
 //   - "failed"  any stage's latest is failed
 //   - "running" any stage's latest is started (and none failed)
 //
@@ -101,13 +101,19 @@ func CIStatus(events []clarityrefs.Event) string {
 // commit carrying a resolved event for the stage; within that commit the
 // latest resolved event wins.
 //
+// This is the badge projection of CurrentStage, and it folds "noop" into
+// "passed": a badge answers "is production current?", and after a no-op it
+// is — the pipeline verified production already matched. Which kind of
+// completion it was is per-batch information, said by the batch subheader.
+//
 // Two rules are doing work here, and they pull in different directions:
 //
-//   - Only "passed" and "failed" resolve a stage. "started" and "skipped" are
-//     ignored so header badges hold their colour through transient retries
-//     instead of flickering to neutral every time a build kicks off — and so a
-//     commit whose deploy was skipped doesn't blank out the badge the commit
-//     below it earned.
+//   - Only verdicts resolve a stage: "passed", "failed", and "noop" (the
+//     deploy ran and found nothing to ship — still a verdict). "started" and
+//     "skipped" are ignored so header badges hold their colour through
+//     transient retries instead of flickering to neutral every time a build
+//     kicks off — and so a commit whose deploy was skipped doesn't blank out
+//     the badge the commit below it earned.
 //   - Recency is measured in commits, not in timestamps. Two pushes close
 //     together put two CI runs in flight at once, and the older commit's run
 //     can report *after* the newer one's: push a bad commit, revert it 60s
@@ -119,6 +125,9 @@ func CurrentStageStatus(commits []CommitView, stage string) string {
 	res, found := CurrentStage(commits, stage)
 	if !found {
 		return ""
+	}
+	if res.Status == "noop" {
+		return "passed"
 	}
 	return res.Status
 }
@@ -133,8 +142,10 @@ func CurrentStageStatus(commits []CommitView, stage string) string {
 type StageResolution struct {
 	// Commit is the newest commit that resolved the stage.
 	Commit CommitView
-	// Status is "passed" or "failed" — never "started" or "skipped", which
-	// do not resolve a stage.
+	// Status is "passed", "failed" or "noop" — never "started" or "skipped",
+	// which do not resolve a stage. Unlike the badge projection this keeps
+	// "noop" as itself: a caller naming the commit that settled a stage
+	// should be able to say how it settled.
 	Status string
 	// Time is the resolving event's timestamp, not the commit's. It answers
 	// "how long has it been like this?", which is the question that decides
@@ -160,7 +171,7 @@ func CurrentStage(commits []CommitView, stage string) (StageResolution, bool) {
 			if e.Stage != stage {
 				continue
 			}
-			if e.Status != "passed" && e.Status != "failed" {
+			if e.Status != "passed" && e.Status != "failed" && e.Status != "noop" {
 				continue
 			}
 			if !found || e.Time.After(latest.Time) {

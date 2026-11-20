@@ -42,10 +42,16 @@ var validStages = map[string]bool{
 // use of it turned out to mean "this commit does not affect this target" —
 // which is candidacy (`report unaffected`), a property of the commit rather
 // than an outcome of an attempt. Reads still tolerate it in old refs.
+//
+// "noop" is deploy-only (enforced below): the deploy ran, compared the
+// desired state against production, and found them already equal — delivery
+// complete, nothing shipped. Unlike the old "skipped" it is a verdict, which
+// is why it earned a place here and skipped lost one.
 var validStatuses = map[string]bool{
 	"started": true,
 	"passed":  true,
 	"failed":  true,
+	"noop":    true,
 }
 
 // Run resolves the SHA, attaches CI metadata, and writes one event. Returns
@@ -192,10 +198,16 @@ func validateStageStatus(stage, status string) error {
 		// Its own error rather than the generic list: the person writing
 		// "skipped" is not making a typo, they are reaching for a concept the
 		// tool spells differently, and the generic error would not say how.
-		return fmt.Errorf("the 'skipped' status is retired — a skipped deploy ships nothing, so it says nothing about the commit's lifecycle; if this commit does not affect a deploy target, report candidacy instead: git clarity report unaffected <target>")
+		// There are two concepts it could be reaching for, so name both.
+		return fmt.Errorf("the 'skipped' status is retired — a skipped deploy ships nothing, so it says nothing about the commit's lifecycle; if this commit does not affect a deploy target, report candidacy instead: git clarity report unaffected <target>; if the deploy ran and found production already up to date, report: git clarity report deploy noop")
+	}
+	if status == "noop" && stage != "deploy" {
+		// Its own error for the same reason skipped gets one: this is a
+		// reach for a real concept in the wrong place, not a typo.
+		return fmt.Errorf("%s takes no 'noop' — a no-op is a deploy outcome: the deploy ran and found production already matching the desired state. CI builds and tests; it always has something to do, so it passes or it fails", stage)
 	}
 	if !validStatuses[status] {
-		return fmt.Errorf("status must be 'started', 'passed' or 'failed', got %q", status)
+		return fmt.Errorf("status must be 'started', 'passed', 'failed' or (deploy only) 'noop', got %q", status)
 	}
 	return nil
 }

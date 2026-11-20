@@ -103,17 +103,16 @@ func flow(f core.FlowView, index map[string]int, now time.Time) *v1.Flow {
 	// tracking only the previous key would name it twice.
 	weekShown := map[int64]bool{topWeekKey: true}
 
-	live := true
-	for _, b := range g.Deployed {
-		// Exactly one batch is what is running now: the newest that passed.
-		// Everything below it is settled history, and saying so is the
-		// difference between "this is production" and "this happened".
-		isLive := live && b.Status == "passed"
-		if isLive {
-			live = false
-		}
+	liveIdx := g.LiveBatchIndex()
+	for i, b := range g.Deployed {
+		// Exactly one batch is what is running now — core's decision, shared
+		// with both terminal renderers, because "this is production" versus
+		// "this happened" is a claim three screens must agree on. A no-op on
+		// top holds it: live is a state claim, and a verified no-op is the
+		// freshest statement that production equals this batch's tree.
+		isLive := i == liveIdx
 		out := batch(b, isLive, &g, index, now)
-		if b.Status == "passed" {
+		if b.Status == "passed" || b.Status == "noop" {
 			year, week := b.Time.UTC().ISOWeek()
 			if key := core.WeekKey(year, week); !weekShown[key] {
 				if s, ok := statsByWeek[key]; ok {
@@ -145,6 +144,14 @@ func batchLabel(status string, live bool) string {
 			return "live on production · deployed"
 		}
 		return "deployed"
+	case "noop":
+		// A completed delivery that shipped nothing: the pipeline ran and
+		// found production already matching. On top it is the live batch —
+		// the freshest verified statement of the present state.
+		if live {
+			return "live on production · deploy no-op"
+		}
+		return "deploy no-op"
 	case "failed":
 		return "deploy failed"
 	default:
@@ -226,6 +233,8 @@ func Status(s string) v1.Status {
 		return v1.Status_STATUS_FAILED
 	case "started":
 		return v1.Status_STATUS_STARTED
+	case "noop":
+		return v1.Status_STATUS_NOOP
 	case "skipped":
 		return v1.Status_STATUS_SKIPPED
 	default:

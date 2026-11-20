@@ -59,19 +59,58 @@ hash to different files.
 
 The optional **`ci` block** is opaque metadata captured from the environment when available. Clarity opportunistically reads common env vars (`GITHUB_*`, `GITLAB_*`, `CI_*`) and populates the block. Renderers may surface this metadata where useful but never depend on its presence.
 
-Statuses per stage: `started`, `passed`, `failed`.
+Statuses per stage: `started`, `passed`, `failed` — plus `noop`, valid only on
+`deploy`.
+
+**`noop`: delivery completed, nothing shipped.** A deploy event answers two
+questions at once — *is this commit's tree in production?* and *did a
+deployment occur?* — and `noop` is the case where they diverge: the pipeline
+ran its deploy stage, compared the desired state against what is deployed, and
+found them already equal. The canonical producer is a revert pair: two commits
+that each modify a target's inputs (so both are genuinely *affected* — see
+below for why candidacy cannot describe this) but whose cumulative diff is
+empty. Without `noop` those commits either sit in CI Passed forever, dragging
+the lead time up until an unrelated commit ships them, or get reported as a
+deploy that never happened, inflating the deploy count. The derivations split
+along the two questions:
+
+- **State — yes.** A `noop` moves the deploy line, anchors a `Deployed` batch
+  (subheader `deploy no-op`), and stamps `deployedAt`, freezing lead times at
+  the moment convergence was verified. Those lead times enter the weekly
+  distribution: the pipeline took as long to converge as it would have to
+  deploy, and the measurement is real.
+- **Activity — no.** A `noop` batch contributes zero to the weekly deploy
+  count. The "live on production" marker, though, is a *state* claim rather
+  than an activity claim, so a `noop` batch on top holds it: the pipeline just
+  verified production equals that batch's tree, which is the freshest possible
+  statement of the present state. (Leaving the marker on the passed batch
+  below was considered and rejected — it put the noop's commits above the live
+  line, reading as "not yet live" when they are live, trivially.) Which batch
+  is live is core's decision (`Groupings.LiveBatchIndex`), shared by all three
+  renderers.
+- **Badges — green.** A badge answers "is production current?", so the badge
+  projection (`CurrentStageStatus`) folds `noop` into `passed`; which kind of
+  completion it was is per-batch information.
+
+`noop` is meant to come from the pipeline's own comparison — a content hash
+of the built artifact against the deployed one — in the step that would
+otherwise deploy, consistent with "clarity records what the build system
+says". It is rejected on `ci`: convergence is a statement about production,
+and CI ships nothing to converge.
 
 **`skipped` is retired.** It arrived with the conventional CI status set (it is
 what GitHub Actions calls a job whose condition said not to run), but an event
 that ships nothing says nothing about a commit's lifecycle, and no derivation
 ever gave it positive meaning — its only effect in practice was to anchor an
 unlabeled batch whose commit read as waiting to ship forever. Every real use
-turned out to mean "this commit does not affect this target", and that is
+turned out to mean one of two things the tool now spells properly: "this
+commit does not affect this target", which is
 [candidacy](candidacy.md#candidacy-affected--unaffected), a property of the commit rather
-than the outcome of an attempt: `git clarity report unaffected <target>`.
-`report` rejects `skipped` with an error saying exactly that. Reads still
-tolerate it — old refs carry it — and grouping treats a skipped deploy event
-as no deploy event at all.
+than the outcome of an attempt (`git clarity report unaffected <target>`); or
+"the deploy ran and had nothing to ship", which is `noop` above — a verdict,
+where `skipped` never was one. `report` rejects `skipped` with an error
+pointing at both. Reads still tolerate it — old refs carry it — and grouping
+treats a skipped deploy event as no deploy event at all.
 
 Stages are fixed at two: `ci` and `deploy`. This is deliberate — trunk-based development cares about exactly three things, latest HEAD, latest green CI, and latest production deploy, and that maps onto two state transitions. A "test" or "lint" or "integration" stage is not a separate lifecycle position; it's part of CI that either passes or doesn't. Adding more stages would dilute the "is HEAD green?" question this tool exists to answer. The `git clarity report` command rejects any other stage name with an error rather than letting custom names drift in.
 

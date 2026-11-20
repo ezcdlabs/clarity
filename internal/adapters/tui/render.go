@@ -209,9 +209,10 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	}
 	b.WriteString("\n")
 
-	// Deployed: blue lifecycle accent. Only completed (deploy:passed) batches.
-	// The first batch (newest passing deploy) is THE currently-live state in
-	// production; subsequent batches are settled history. The Deployed header
+	// Deployed: blue lifecycle accent. Only completed (passed or noop)
+	// batches. The live batch (core's LiveBatchIndex — the newest completed
+	// one) is THE currently-live state in production; the rest are settled
+	// history. The Deployed header
 	// carries the CURRENT week's DORA summary on its right side (saving a
 	// row); every other week gets a standalone divider below.
 	statsByWeek := core.IndexStatsByWeek(flow.Weekly)
@@ -238,8 +239,9 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 	// the current week, already on the header row, would be marked a second
 	// time below it.
 	weekShown := map[int64]bool{topWeekKey: true}
+	liveIdx := g.LiveBatchIndex()
 	for i, batch := range g.Deployed {
-		if batch.Status == "passed" {
+		if batch.Status == "passed" || batch.Status == "noop" {
 			year, week := batch.Time.UTC().ISOWeek()
 			key := core.WeekKey(year, week)
 			if !weekShown[key] {
@@ -249,7 +251,7 @@ func RenderSnapshot(view core.View, flow core.FlowView, width int, now time.Time
 				weekShown[key] = true
 			}
 		}
-		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == 0, width))
+		b.WriteString(renderBatchSubheader(batch, now, spinnerIdx, i == liveIdx, width))
 		for _, c := range batch.Commits {
 			b.WriteString(renderRowInGroup(c, &g, indexBySHA[c.SHA], width, now, spinnerIdx))
 			b.WriteString("\n")
@@ -483,6 +485,21 @@ func renderBatchSubheader(b core.DeployBatch, now time.Time, spinnerIdx int, isL
 		// Older deployed batches are settled history: italic blue.
 		return lipgloss.NewStyle().Foreground(colorBlue).Italic(true).
 			Render(fitLine("  deployed"+ago, width)) + "\n"
+	case "noop":
+		// A completed delivery that shipped nothing: blue like "deployed".
+		// On top it carries the live marker — live is a state claim, and a
+		// verified no-op is the freshest statement that production equals
+		// this batch's tree.
+		ago := ""
+		if !now.IsZero() && !b.Time.IsZero() {
+			ago = " " + core.FormatAge(now.Sub(b.Time)) + " ago"
+		}
+		if isLive {
+			return lipgloss.NewStyle().Foreground(colorBlue).Bold(true).
+				Render(fitLine("  live on production · deploy no-op"+ago, width)) + "\n"
+		}
+		return lipgloss.NewStyle().Foreground(colorBlue).Italic(true).
+			Render(fitLine("  deploy no-op"+ago, width)) + "\n"
 	case "failed":
 		ago := ""
 		if !now.IsZero() && !b.Time.IsZero() {

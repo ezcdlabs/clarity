@@ -815,3 +815,40 @@ func TestRunBatch_RejectsAMalformedTarget(t *testing.T) {
 		t.Fatal("a batched malformed target was accepted")
 	}
 }
+
+// A no-op is the deploy outcome for a pipeline that ran, compared the desired
+// state against production, and found nothing to ship — the revert-pair case:
+// commits that affect a target but whose cumulative diff is empty. It
+// completes their delivery without counting a deploy, which neither candidacy
+// (they ARE affected) nor a passed deploy (nothing shipped) can say honestly.
+func TestValidate_DeployNoopIsAccepted(t *testing.T) {
+	if err := report.Validate(report.Options{Stage: "deploy", Status: "noop"}); err != nil {
+		t.Fatalf("deploy noop rejected: %v", err)
+	}
+}
+
+// CI cannot no-op: convergence is a statement about production, and CI ships
+// nothing to converge. Rejected with the reason, not just the rule.
+func TestValidate_CINoopIsRejected(t *testing.T) {
+	err := report.Validate(report.Options{Stage: "ci", Status: "noop"})
+	if err == nil {
+		t.Fatal("ci noop was accepted")
+	}
+	if !strings.Contains(err.Error(), "deploy") {
+		t.Errorf("the error should say a no-op is a deploy outcome: %v", err)
+	}
+}
+
+func TestRunBatch_AcceptsDeployNoop(t *testing.T) {
+	remote := gittest.NewRemote(t)
+	clone := remote.NewClone(t)
+	err := report.RunBatch(report.BatchOptions{
+		RepoPath: clone.Path,
+		Remote:   "origin",
+	}, []report.BatchEvent{
+		{SHA: "1111111111111111111111111111111111111111", Time: time.Unix(1744120000, 0), Stage: "deploy", Status: "noop"},
+	})
+	if err != nil {
+		t.Fatalf("a deploy noop in a batch was rejected: %v", err)
+	}
+}

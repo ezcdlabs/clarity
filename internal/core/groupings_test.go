@@ -540,3 +540,98 @@ func commitSHAs(commits []core.CommitView) []string {
 }
 
 var _ = time.Time{}
+
+// --- Deploy no-op ------------------------------------------------------------
+
+// A deploy:noop event is a completed delivery that shipped nothing: the
+// pipeline ran, compared the desired state against what is in production, and
+// found them already equal — the revert-pair case, where two commits both
+// affect a target but their cumulative diff is empty. Unlike the retired
+// "skipped" it is a positive verdict, so it anchors a Deployed batch exactly
+// as a passed deploy does: the commits it carries are in production
+// (trivially — the bytes already match) and must leave CI Passed.
+func TestGroupCommits_NoopDeploy_AnchorsDeployedBatch(t *testing.T) {
+	commits := []core.CommitView{
+		cv("c", ev("ci", "passed", 300), ev("deploy", "noop", 350)),
+		cv("b", ev("ci", "passed", 200)), // swept into c's no-op batch
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
+	}
+	got := core.GroupCommits(commits)
+	if len(got.CIPassed) != 0 || len(got.InFlight) != 0 {
+		t.Fatalf("expected no idle/in-flight commits, got %+v / %+v", got.CIPassed, got.InFlight)
+	}
+	if len(got.Deployed) != 2 {
+		t.Fatalf("expected a no-op batch above a passed batch, got %+v", got.Deployed)
+	}
+	if got.Deployed[0].Status != "noop" || len(got.Deployed[0].Commits) != 2 ||
+		got.Deployed[0].Commits[1].SHA != "b" {
+		t.Errorf("expected no-op batch [c, b], got %+v", got.Deployed[0])
+	}
+	if got.Deployed[1].Status != "passed" || got.Deployed[1].Commits[0].SHA != "a" {
+		t.Errorf("expected passed batch [a], got %+v", got.Deployed[1])
+	}
+}
+
+// A no-op completes delivery, so it stops the lead-time clock the way a
+// passed deploy does: the moment the pipeline verified production already
+// matched the desired state, there was nothing left to wait for.
+func TestLeadTime_NoopDeploy_FrozenAtNoopTime(t *testing.T) {
+	commitTime := time.Unix(1000, 0)
+	noopTime := time.Unix(1300, 0)
+	commits := []core.CommitView{
+		{SHA: "a", Time: commitTime, Events: []clarityrefs.Event{
+			ev("ci", "started", 1000),
+			ev("deploy", "noop", 1300),
+		}},
+	}
+	g := core.GroupCommits(commits)
+	d, frozen, ok := g.LeadTime(0, time.Unix(9999, 0))
+	if !ok || !frozen {
+		t.Fatalf("expected a frozen lead time, got ok=%v frozen=%v", ok, frozen)
+	}
+	if want := noopTime.Sub(commitTime); d != want {
+		t.Errorf("expected lead %v frozen at the no-op, got %v", want, d)
+	}
+}
+
+// A failed deploy fix-forwards into a newer no-op batch the same way it does
+// into a passed one: production converged on a tree containing the failed
+// commits, so they are delivered.
+func TestGroupCommits_FailedDeploy_NewerNoop_MergedIntoNoopBatch(t *testing.T) {
+	commits := []core.CommitView{
+		cv("c", ev("ci", "passed", 300), ev("deploy", "noop", 350)),
+		cv("b", ev("ci", "passed", 200), ev("deploy", "failed", 220)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
+	}
+	got := core.GroupCommits(commits)
+	if len(got.Deployed) != 2 {
+		t.Fatalf("expected [noop, passed] batches, got %+v", got.Deployed)
+	}
+	if got.Deployed[0].Status != "noop" || len(got.Deployed[0].Commits) != 2 ||
+		got.Deployed[0].Commits[1].SHA != "b" {
+		t.Errorf("expected b fix-forwarded into the no-op batch, got %+v", got.Deployed[0])
+	}
+}
+
+// The live marker is a state claim — "this is production" — not an event
+// claim, so a no-op batch on top holds it: the pipeline just verified
+// production equals that batch's tree, which is the freshest possible
+// statement of the present state. Decided in core so the three renderers
+// cannot disagree about which batch is the present.
+func TestLiveBatchIndex_NoopOnTop_HoldsTheMarker(t *testing.T) {
+	commits := []core.CommitView{
+		cv("c", ev("ci", "passed", 300), ev("deploy", "noop", 350)),
+		cv("a", ev("ci", "passed", 100), ev("deploy", "passed", 150)),
+	}
+	g := core.GroupCommits(commits)
+	if got := g.LiveBatchIndex(); got != 0 {
+		t.Errorf("LiveBatchIndex = %d, want 0 (the no-op batch is the present state)", got)
+	}
+}
+
+func TestLiveBatchIndex_NothingDeployed_IsAbsent(t *testing.T) {
+	g := core.GroupCommits([]core.CommitView{cv("a", ev("ci", "passed", 100))})
+	if got := g.LiveBatchIndex(); got != -1 {
+		t.Errorf("LiveBatchIndex = %d, want -1 for an empty Deployed section", got)
+	}
+}

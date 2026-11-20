@@ -16,7 +16,7 @@ inputs:
     required: false
     default: ''
   status:
-    description: 'Status to report (started, passed, failed). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
+    description: 'Status to report (started, passed, failed, or — deploy only — noop for a deploy that ran and found production already up to date). When combined with stage, the action also runs `git clarity report <stage> <status>` after installing.'
     required: false
     default: ''
   target:

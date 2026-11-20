@@ -64,6 +64,13 @@ func TestOverallStatus_TableDriven(t *testing.T) {
 			want: "passed",
 		},
 		{
+			name: "noop counts as terminal-ok — delivery completed, nothing shipped",
+			events: []clarityrefs.Event{
+				ev("ci", "passed", 100), ev("deploy", "noop", 200),
+			},
+			want: "passed",
+		},
+		{
 			name: "later passed overrides earlier failed (collapse)",
 			events: []clarityrefs.Event{
 				ev("ci", "failed", 100), ev("ci", "passed", 200),
@@ -162,6 +169,21 @@ func TestCurrentStageStatus_TableDriven(t *testing.T) {
 			want:    "",
 		},
 		{
+			name:    "noop is a resolution, and the badge reads it as green",
+			commits: []core.CommitView{cv("head", ev("deploy", "noop", 100))},
+			stage:   "deploy",
+			want:    "passed",
+		},
+		{
+			name: "noop supersedes an older failed deploy — production converged",
+			commits: []core.CommitView{
+				cv("head", ev("deploy", "noop", 300)),
+				cv("older", ev("deploy", "failed", 100)),
+			},
+			stage: "deploy",
+			want:  "passed",
+		},
+		{
 			name:    "other stages ignored",
 			commits: []core.CommitView{cv("head", ev("deploy", "failed", 100))},
 			stage:   "ci",
@@ -227,5 +249,30 @@ func TestCurrentStageStatus_TableDriven(t *testing.T) {
 				t.Errorf("CurrentStageStatus(%q) = %q, want %q", c.stage, got, c.want)
 			}
 		})
+	}
+}
+
+// CurrentStage keeps the honest status: a no-op resolves the deploy stage —
+// the pipeline ran to a verdict — and the resolution says which verdict.
+func TestCurrentStage_NoopResolvesAsItself(t *testing.T) {
+	res, found := core.CurrentStage(
+		[]core.CommitView{cv("head", ev("deploy", "noop", 100))}, "deploy")
+	if !found {
+		t.Fatal("a no-op did not resolve the deploy stage")
+	}
+	if res.Status != "noop" {
+		t.Errorf("resolution status = %q, want noop", res.Status)
+	}
+}
+
+// CurrentStageStatus is the badge projection, and the badge answers "is
+// production current?" — after a no-op it is, so the badge reads green
+// exactly as it does after a passed deploy. The per-batch subheader is where
+// "nothing shipped" is said.
+func TestCurrentStageStatus_NoopReadsAsPassed(t *testing.T) {
+	got := core.CurrentStageStatus(
+		[]core.CommitView{cv("head", ev("deploy", "noop", 100))}, "deploy")
+	if got != "passed" {
+		t.Errorf("badge for a no-op = %q, want passed", got)
 	}
 }

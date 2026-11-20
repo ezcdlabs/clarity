@@ -39,6 +39,19 @@ use, so whoever writes that `affected` helper is using it too. The `skipped`
 event status used to be the nearest-looking tool for this job and was retired
 in candidacy's favour — see [Event content](data-model.md#event-content).
 
+**Candidacy is not convergence.** The boundary runs the other way too. Two
+commits in a row where the second reverts the first both modify the target's
+inputs, so both are honestly `affected` — yet the cumulative result is that
+the deployable's bytes match what is already in production, and no deploy
+happens. Reporting them `unaffected` would make the records per-commit lies,
+and it wouldn't help anyway: candidacy touches only lead-time attribution,
+never the deployed/not-deployed grouping, so the pair would still sit in CI
+Passed. That case is the deploy's own outcome, discovered at build time by
+comparing against what is deployed — not a property of either commit — and it
+is reported as the `noop` deploy status, which completes their lead time
+without counting a deploy. The rule of thumb: *unaffected* is knowable from
+the commit's diff alone; *noop* is only knowable by asking production.
+
 **The record.** Candidacy lives in a sibling `scope/` tree on the same ref, at
 `scope/<sha>/<unix-ts>-<hash>.json`:
 

@@ -359,3 +359,53 @@ func TestRenderSnapshot_LimitAppliesToDeployedRows(t *testing.T) {
 		}
 	}
 }
+
+// A no-op batch says so: the pipeline ran, found production already matching,
+// and shipped nothing. The commits leave CI Passed without claiming a deploy.
+func TestRenderPlain_NoopBatch_ShowsNoopSubheader(t *testing.T) {
+	snap := core.Snapshot{Commits: []core.CommitView{
+		{SHA: fakeSHA1, Author: "alice", Subject: "revert pair",
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
+				{Stage: "deploy", Status: "noop", Time: time.Unix(200, 0)},
+			}},
+	}}
+	out := plain.RenderSnapshot("clarity", view(snap), time.Unix(400, 0), plain.Options{})
+	if !strings.Contains(out, "deploy no-op") {
+		t.Errorf("expected 'deploy no-op' subheader, got:\n%s", out)
+	}
+	if !strings.Contains(out, "ago") {
+		t.Errorf("expected the no-op's age on the subheader, got:\n%s", out)
+	}
+}
+
+// The live marker is a state claim — "this is production" — and a no-op on
+// top is the freshest statement of that state, so it holds the marker and
+// the passed batch below becomes settled history.
+func TestRenderPlain_NoopOnTop_IsMarkedLive(t *testing.T) {
+	snap := core.Snapshot{Commits: []core.CommitView{
+		{SHA: fakeSHA1, Author: "alice", Subject: "revert pair",
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: time.Unix(300, 0)},
+				{Stage: "deploy", Status: "noop", Time: time.Unix(350, 0)},
+			}},
+		{SHA: fakeSHA2, Author: "bob", Subject: "real ship",
+			Events: []clarityrefs.Event{
+				{Stage: "ci", Status: "passed", Time: time.Unix(100, 0)},
+				{Stage: "deploy", Status: "passed", Time: time.Unix(200, 0)},
+			}},
+	}}
+	out := plain.RenderSnapshot("clarity", view(snap), time.Unix(400, 0), plain.Options{})
+	if n := strings.Count(out, "(live)"); n != 1 {
+		t.Fatalf("expected exactly 1 live marker, got %d:\n%s", n, out)
+	}
+	var liveLine string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "(live)") {
+			liveLine = l
+		}
+	}
+	if !strings.Contains(liveLine, "deploy no-op") {
+		t.Errorf("expected the live marker on the no-op batch, got: %q in\n%s", liveLine, out)
+	}
+}

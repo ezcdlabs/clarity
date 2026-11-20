@@ -24,18 +24,20 @@ type Groupings struct {
 	// merged into that newer batch.
 	InFlight []DeployBatch
 
-	// Deployed: only completed deploys (deploy:passed). Each batch is one
-	// successful deploy event, with the commits it pushed to production.
+	// Deployed: only completed deliveries (deploy:passed, or deploy:noop —
+	// the pipeline found production already matching). Each batch is one
+	// terminal deploy event, with the commits it carried to production.
 	Deployed []DeployBatch
 
 	// indices into the original commits slice; -1 if absent.
 	ciLine           int // newest commit with ci:passed
-	deployPassedLine int // newest commit with deploy:passed
+	deployPassedLine int // newest commit with a completed deploy (passed or noop)
 
 	// deployedAt[i] is the deploy time at which commit i first reached
-	// production — its own deploy:passed time, or the oldest newer commit's
-	// deploy:passed time if fix-forwarded. Zero when commit i has not yet
-	// been deployed.
+	// production — its own completed deploy's time (passed, or noop: the
+	// pipeline verified production already matched), or the oldest newer
+	// commit's if fix-forwarded. Zero when commit i has not yet been
+	// deployed.
 	deployedAt []time.Time
 
 	// leadStart[i] is the instant commit i's lead time is measured from,
@@ -56,9 +58,18 @@ type Groupings struct {
 // attempt's commits plus the status and time of the deploy event that
 // anchors it.
 type DeployBatch struct {
-	Status  string // "started" | "passed" | "failed"
+	Status  string // "started" | "passed" | "failed" | "noop"
 	Time    time.Time
 	Commits []CommitView
+}
+
+// deployCompleted reports whether a deploy status is a completed delivery:
+// "passed" shipped the commit's tree, "noop" found production already holding
+// it. The distinction matters where deploys are counted — a noop is not a
+// deploy — but not where delivery is the question: both stop the lead-time
+// clock and both put their batch in the Deployed section.
+func deployCompleted(status string) bool {
+	return status == "passed" || status == "noop"
 }
 
 // GroupCommits classifies commits (newest-first) into lifecycle groups. The
@@ -82,26 +93,29 @@ func GroupCommitsMode(commits []CommitView, mode LeadTimeMode) Groupings {
 		leadStart:        leadStarts(commits, mode),
 	}
 
-	// Pass 1 — compute the lines and per-commit deployedAt.
-	var lastSeenDeployPassed time.Time
+	// Pass 1 — compute the lines and per-commit deployedAt. A noop completes
+	// delivery the way a passed deploy does — the pipeline verified production
+	// already held this commit's tree — so both move the deploy line and both
+	// stamp deployedAt, which is what freezes the lead-time clock.
+	var lastSeenDeployDone time.Time
 	for i, c := range commits {
-		var ownDeployPassed time.Time
+		var ownDeployDone time.Time
 		for _, e := range c.Events {
-			if e.Stage == "deploy" && e.Status == "passed" && e.Time.After(ownDeployPassed) {
-				ownDeployPassed = e.Time
+			if e.Stage == "deploy" && deployCompleted(e.Status) && e.Time.After(ownDeployDone) {
+				ownDeployDone = e.Time
 			}
 		}
-		if !ownDeployPassed.IsZero() {
-			g.deployedAt[i] = ownDeployPassed
-			lastSeenDeployPassed = ownDeployPassed
-		} else if !lastSeenDeployPassed.IsZero() {
-			g.deployedAt[i] = lastSeenDeployPassed
+		if !ownDeployDone.IsZero() {
+			g.deployedAt[i] = ownDeployDone
+			lastSeenDeployDone = ownDeployDone
+		} else if !lastSeenDeployDone.IsZero() {
+			g.deployedAt[i] = lastSeenDeployDone
 		}
 		latest := latestPerStage(c.Events)
 		if g.ciLine == -1 && latest["ci"] == "passed" {
 			g.ciLine = i
 		}
-		if g.deployPassedLine == -1 && latest["deploy"] == "passed" {
+		if g.deployPassedLine == -1 && deployCompleted(latest["deploy"]) {
 			g.deployPassedLine = i
 		}
 	}
@@ -186,6 +200,35 @@ func computeBatches(commits []CommitView) []DeployBatch {
 		batches = append(batches, *current)
 	}
 	return batches
+}
+
+// LiveBatchIndex returns the index into Deployed of the batch that is the
+// present state of production — the newest completed batch — or -1 when
+// nothing has completed.
+//
+// "Live" is a state claim ("this is production"), not an event claim ("this
+// deploy shipped bytes"), so a noop batch on top holds it: the pipeline just
+// verified production equals that batch's tree, which is the freshest
+// possible statement of the present state. Leaving the marker on the passed
+// batch below would put the noop's commits above the live line, reading as
+// "not live yet" — and they are live, trivially.
+//
+// Decided here rather than in each renderer because three independent copies
+// of "which batch is the present" would be three chances to disagree, and the
+// disagreement would surface as two screens calling different batches live.
+//
+// Today this is always 0 when Deployed is non-empty — the deploy line is, by
+// construction, a commit whose latest deploy completed, so the newest batch's
+// anchor is never failed — but the walk stays, so the rule survives a future
+// grouping change rather than silently becoming "the first batch, whatever it
+// is".
+func (g Groupings) LiveBatchIndex() int {
+	for i, b := range g.Deployed {
+		if deployCompleted(b.Status) {
+			return i
+		}
+	}
+	return -1
 }
 
 // DeployedAtIndex returns the deploy time the commit at index will appear

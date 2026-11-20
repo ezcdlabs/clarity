@@ -11,6 +11,7 @@ clarity (`git clarity`) is a commit-centric pipeline status TUI for trunk-based 
 - [Checking before you push](check.md) — `git clarity check && git push`
 - [Reporting from CI](reporting.md) — `git clarity report <stage> <status>` from any CI, and the `ezcdlabs/clarity` GitHub Action
 - [Weekly metrics](design/metrics.md) — `git clarity metrics`: weekly lead-time box plots and deploy counts
+- [The phone apps](phone-apps.md) — installing on Android (self-updating APK) and iOS (AltStore)
 - [Troubleshooting](troubleshooting.md) — known failure modes and their fixes
 
 ## Design

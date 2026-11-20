@@ -93,3 +93,111 @@ jobs:
           cp mobile/apps/android/app/build/outputs/apk/release/app-release.apk clarity-android.apk
           sha256sum clarity-android.apk > clarity-android.apk.sha256
           gh release upload "$TAG" clarity-android.apk clarity-android.apk.sha256 --clobber
+
+  # The IPA is unsigned on purpose: AltStore re-signs whatever it installs
+  # with the user's own Apple ID, so a signature from us would be stripped
+  # anyway, and shipping without one means no Apple Developer account in CI.
+  ios:
+    name: iOS IPA
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the toolchain
+        run: brew install xcodegen protobuf swift-protobuf
+
+      - name: Generate the Swift protobuf
+        run: ./scripts/gen-ios-proto.sh
+
+      - name: Bind the Go core
+        run: ./scripts/bind-ios.sh
+
+      - name: Generate the Xcode project
+        working-directory: mobile/apps/ios
+        run: xcodegen generate
+
+      # MARKETING_VERSION / CURRENT_PROJECT_VERSION land in the generated
+      # Info.plist as CFBundleShortVersionString / CFBundleVersion, which the
+      # AltStore source's version/buildVersion must match exactly — AltStore
+      # refuses an IPA that disagrees with its source entry. The code is the
+      # same monotonic formula the Android versionCode uses; one formula on
+      # both sides (see internal/altsource) or they drift.
+      - name: Archive, unsigned
+        working-directory: mobile/apps/ios
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VER="${TAG#v}"
+          IFS=. read -r MA MI PA <<< "$VER"
+          CODE=$((MA * 1000000 + MI * 1000 + PA))
+          xcodebuild archive \
+            -project Clarity.xcodeproj \
+            -scheme Clarity \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Clarity.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION="$VER" CURRENT_PROJECT_VERSION="$CODE"
+
+      # An IPA is a zip with the .app under Payload/ — that is the whole
+      # packaging step when nothing is being signed.
+      - name: Package and attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir Payload
+          cp -R mobile/apps/ios/build/Clarity.xcarchive/Products/Applications/Clarity.app Payload/
+          zip -qry clarity-ios.ipa Payload
+          shasum -a 256 clarity-ios.ipa > clarity-ios.ipa.sha256
+          gh release upload "$TAG" clarity-ios.ipa clarity-ios.ipa.sha256 --clobber
+
+  # The AltStore source: the JSON feed users add once, which AltStore then
+  # watches for updates. Regenerated from the releases that actually carry an
+  # IPA and published to GitHub Pages, so its URL never changes.
+  source:
+    name: AltStore source
+    needs: [ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate the source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir site
+          go run ./cmd/altstore-source > site/apps.json
+          cat > site/index.html <<'EOF'
+          <!doctype html><meta charset="utf-8">
+          <title>clarity AltStore source</title>
+          <p>This is the AltStore source for
+          <a href="https://github.com/ezcdlabs/clarity">clarity</a>.
+          Add <code>apps.json</code> at this address as a source in AltStore;
+          install instructions live in the repository's docs.</p>
+          EOF
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

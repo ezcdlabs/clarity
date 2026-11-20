@@ -75,10 +75,45 @@ second signing identity for an app whose whole feed is `git fetch`. Users who
 prefer a store-shaped updater can point Obtainium at the repository — it reads
 the same releases.
 
-## iOS
+## iOS: AltStore
 
-iOS cannot self-update — there is no side-loadable installer to hand a file
-to. Distribution goes through AltStore instead: an unsigned IPA attached to
-each release (AltStore re-signs it with the user's own Apple ID) and a source
-JSON that AltStore watches for updates. Not implemented yet; this section is
-the placeholder the implementation will replace.
+iOS cannot self-update — nothing side-loadable can hand a file to an
+installer — so updating has to live outside the app. Distribution goes
+through AltStore Classic: each release carries `clarity-ios.ipa`, and a
+**source** (the JSON feed users add to AltStore once) is regenerated from the
+releases and published to GitHub Pages at a URL that never changes:
+
+    https://ezcdlabs.github.io/clarity/apps.json
+
+**The IPA is unsigned on purpose.** AltStore re-signs whatever it installs
+with the user's own Apple ID, so a signature from us would be stripped
+anyway — and shipping unsigned means no Apple Developer account, no
+certificates in CI, and no signing identity to lose. The archive is built
+with `CODE_SIGNING_ALLOWED=NO` and zipped as `Payload/Clarity.app`, which is
+all an IPA is when nothing is being signed.
+
+**The source is derived, never edited.** `internal/altsource` builds it from
+the releases that actually carry the IPA (one version each, newest first —
+AltStore reads `versions[0]` as latest and compares by equality, not by date
+or semver), and `cmd/altstore-source` prints it in CI. Three details are
+load-bearing:
+
+- `buildVersion` must equal the IPA's `CFBundleVersion`, so both sides derive
+  it from the tag with the same formula the Android versionCode uses
+  (`major·10⁶ + minor·10³ + patch`). AltStore refuses an IPA that disagrees
+  with its source entry.
+- `appPermissions` is present and empty — no entitlements, no privacy-usage
+  keys — because AltStore validates it against the IPA and refuses on
+  mismatch. Adding an entitlement to the app means adding it to the source in
+  the same change.
+- A release without the IPA asset is not a version (its downloadURL would
+  404), and *no* IPA anywhere is a generator error rather than an empty feed.
+
+**What users accept by sideloading** (documented in the install doc): apps
+signed with a free Apple ID expire every 7 days and refresh through AltServer
+on the same network; a free account holds 3 sideloaded apps; and there is no
+push-notification entitlement, so the background "pipeline went red"
+notifications the Android app gets are structurally unavailable on iOS this
+way. AltStore PAL — the EU marketplace flavour, with notarization and
+`marketplaceID` — is deliberately out of scope. SideStore reads the same
+source format, so one feed serves both.

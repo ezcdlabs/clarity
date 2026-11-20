@@ -31,6 +31,14 @@ func TestPrompt_IsSelfContained(t *testing.T) {
 		"git clarity init",
 		// init writes the file; landing it is a commit the agent must make
 		"commit",
+		// the source choice is the human's: events-ref's simplicity vs exec
+		// keeping the repo read-only for CI — the prompt must surface it,
+		// the trade-off, and the trust gate, not silently default
+		"ask your human",
+		"events-ref",
+		"source = exec",
+		"read-only",
+		"git clarity trust",
 		// the full report grammar, exactly as this build parses it
 		"git clarity report",
 		"started", "passed", "failed",

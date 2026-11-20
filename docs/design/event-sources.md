@@ -76,6 +76,8 @@ same lines: an approved helper answers it through the strict one-shot
 read (a helper failure is "could not tell", which lets the push through —
 never a stale green), while an unapproved one simply never runs.
 
+**Onboarding surfaces the choice.** The briefing `git clarity onboard` prints puts the source decision to the agent's human instead of silently configuring the default: events-ref's simplicity against exec keeping the repo read-only for the pipeline. An agent that chose on its own would be making the team's infrastructure and trust decision for them.
+
 **Writes are out of scope for the helper.** CI writes to its own
 authenticated store through whatever path that store requires;
 `git clarity report` and the events ref keep working for teams that use

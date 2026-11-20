@@ -76,16 +76,33 @@ func Prompt(f Facts) string {
 	fmt.Fprintf(&b, "- GitHub Actions workflows present: %s\n\n", yesNo(f.HasGitHubWorkflows))
 
 	b.WriteString("Do the following:\n\n")
+	b.WriteString("1. Choose where clarity reads events from — ask your human, since this is\n")
+	b.WriteString("   an infrastructure decision with a real trade-off:\n")
+	b.WriteString("   - `events-ref` (the default): pipelines report with `git clarity report`,\n")
+	b.WriteString("     which pushes events to refs/clarity/events in this repo. Simplest —\n")
+	b.WriteString("     no infrastructure beyond the repo itself — but the reporter needs\n")
+	b.WriteString("     push access (on GitHub Actions, `contents: write`), and anyone with\n")
+	b.WriteString("     push access can write events.\n")
+	b.WriteString("   - `exec`: clarity runs a helper command the team provides, which reads\n")
+	b.WriteString("     events from a store with authenticated writers (a database, check\n")
+	b.WriteString("     runs, an internal API). The repo stays read-only for the pipeline —\n")
+	b.WriteString("     no write permission granted — in exchange for writing and maintaining\n")
+	b.WriteString("     the helper, and each human approving the exact command once per clone\n")
+	b.WriteString("     with `git clarity trust`. Helper protocol: docs/design/event-sources.md\n")
+	b.WriteString("     in github.com/ezcdlabs/clarity.\n")
+	b.WriteString("   Steps 3 and 4 below assume `events-ref`. Under `exec`, instead set\n")
+	b.WriteString("   `source = exec` and the `[source]` arg lines in .clarity, skip steps 3\n")
+	b.WriteString("   and 4, and verify the same way.\n\n")
 	if f.SetUp {
-		b.WriteString("1. Setup is already done — skip init.\n\n")
+		b.WriteString("2. Setup is already done — skip init.\n\n")
 	} else {
-		b.WriteString("1. Run `git clarity init`. It writes a .clarity file with defaults;\n")
+		b.WriteString("2. Run `git clarity init`. It writes a .clarity file with defaults;\n")
 		b.WriteString("   commit it and push it to the trunk — that file on the trunk marks the\n")
 		b.WriteString("   repo as onboarded, and landing it may need a pull request if the trunk\n")
 		b.WriteString("   is protected. Idempotent.\n\n")
 	}
 
-	b.WriteString("2. Instrument the pipeline so runs on the trunk report events:\n")
+	b.WriteString("3. Instrument the pipeline so runs on the trunk report events:\n")
 	b.WriteString("   - stages are exactly `ci` and `deploy`; statuses are `started`, `passed`\n")
 	b.WriteString("     or `failed`. There is no `skipped` — a deploy step that runs nothing\n")
 	b.WriteString("     reports nothing; a commit that does not affect a deploy target is\n")
@@ -106,7 +123,7 @@ func Prompt(f Facts) string {
 	}
 	b.WriteString("\n")
 
-	b.WriteString("3. Backfill history so the dashboard is useful immediately. Walk the CI\n")
+	b.WriteString("4. Backfill history so the dashboard is useful immediately. Walk the CI\n")
 	b.WriteString("   provider's recorded runs for the trunk (on GitHub: `gh run list` /\n")
 	b.WriteString("   `gh api`) and emit one JSON line per event, then pipe them through the\n")
 	b.WriteString("   batch form — it makes a single commit and push for the whole backfill:\n\n")
@@ -116,7 +133,7 @@ func Prompt(f Facts) string {
 	b.WriteString("   Do not invent history: use only runs the provider actually recorded,\n")
 	b.WriteString("   with their real commit SHAs and completion times.\n\n")
 
-	b.WriteString("4. Verify with `git clarity --plain`: commits should now sit under their\n")
+	b.WriteString("5. Verify with `git clarity --plain`: commits should now sit under their\n")
 	b.WriteString("   CI/deploy dividers instead of all waiting \"before CI Passed\".\n")
 
 	return b.String()

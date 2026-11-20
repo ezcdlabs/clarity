@@ -28,6 +28,10 @@ This is the canonical path, for agents and humans alike. One path, no alternativ
 
 3. **Backfill only real history.** The briefing instructs the agent to backfill only runs the CI provider actually recorded — with their real SHAs and timestamps — never invented history.
 
+## The one decision the briefing asks of you
+
+The briefing tells the agent to ask rather than choose: should clarity read events from the default **events ref**, or from an **`exec` helper**? The events ref is the simple path — no infrastructure beyond the repo — but your pipeline gets push access (on GitHub Actions, `contents: write`) and anyone with push access can write events. The `exec` source keeps the repo read-only for CI by reading events from a store with authenticated writers, at the cost of writing that helper and each person approving it per clone with `git clarity trust`. See [Event sources](design/event-sources.md) for the helper protocol and the trust model.
+
 ## Why the briefing lives in the binary
 
 The prompt lives in the binary rather than in these docs on purpose: it is versioned with the binary, so it always describes the event format this exact build reads instead of drifting independently; it works offline; and it opens with repo-specific facts a hosted document would make the agent rediscover.

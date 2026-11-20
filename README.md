@@ -47,8 +47,9 @@ scoop install git-clarity
 Download the latest release from [github.com/ezcdlabs/clarity/releases](https://github.com/ezcdlabs/clarity/releases), extract, and place `git-clarity` somewhere on your `$PATH`:
 
 ```sh
-# example — adjust version and platform
-curl -sSL https://github.com/ezcdlabs/clarity/releases/latest/download/git-clarity_linux_amd64.tar.gz \
+# adjust the platform to taste: linux_amd64, linux_arm64, darwin_amd64, darwin_arm64
+VERSION=$(curl -s https://api.github.com/repos/ezcdlabs/clarity/releases/latest | sed -n 's/.*"tag_name": "v\(.*\)".*/\1/p')
+curl -sSL "https://github.com/ezcdlabs/clarity/releases/download/v${VERSION}/git-clarity_${VERSION}_linux_amd64.tar.gz" \
   | tar -xz git-clarity && sudo mv git-clarity /usr/local/bin/
 ```
 

@@ -31,7 +31,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: ezcdlabs/clarity@v0.1.1
+  - uses: ezcdlabs/clarity@v1.1.0
   - run: ./build.sh && git clarity report ci passed
 ```
 
@@ -43,7 +43,7 @@ permissions:
 
 steps:
   - uses: actions/checkout@v4
-  - uses: ezcdlabs/clarity@v0.1.1
+  - uses: ezcdlabs/clarity@v1.1.0
     with:
       stage: ci
       status: started
@@ -51,7 +51,7 @@ steps:
   - run: ./build.sh
 
   - if: always()
-    uses: ezcdlabs/clarity@v0.1.1
+    uses: ezcdlabs/clarity@v1.1.0
     with:
       stage: ci
       status: ${{ job.status == 'success' && 'passed' || 'failed' }}
@@ -59,7 +59,7 @@ steps:
 
 Inputs:
 
-- `version` — explicit version override (e.g. `v0.1.1`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
+- `version` — explicit version override (e.g. `v1.1.0`, `latest`). Defaults to the action's own ref when that's a semver tag, otherwise to the latest GitHub release.
 - `stage` — pipeline stage to report (`ci` or `deploy`). When combined with `status`, the action runs `git clarity report <stage> <status>` after install.
 - `status` — status to report (`started` / `passed` / `failed`).
 - `target` — which deployable a `deploy` event is about, for a repo shipping several from one trunk (e.g. `ios`). Rejected on `ci`. Omit it for the untargeted deploy.

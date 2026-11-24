@@ -349,11 +349,11 @@ func TestGroupCommitsForFlow_CandidacyByMode(t *testing.T) {
 }
 
 // TestGroupCommitsForFlow_ExposesUnaffected: renderers must tell a commit
-// with no measurement from one resolved unaffected — blank and the ∅ marker
-// are different answers. The exposure is per-commit truth (its own record),
-// not the per-run OR that lead-time survival uses: the marker marks the
-// commit itself. Without a flow there is no target to be unaffected for, so
-// flow-less groupings mark nothing.
+// with no measurement from one resolved unaffected — "unknown" and "resolved
+// — nothing to deliver" are different answers. The exposure is per-commit
+// truth (its own record), not the per-run OR that lead-time survival uses:
+// the rendering marks the commit itself. Without a flow there is no target
+// to be unaffected for, so flow-less groupings mark nothing.
 func TestGroupCommitsForFlow_ExposesUnaffected(t *testing.T) {
 	x := core.Flow{Name: "x", Targets: []string{"x"}}
 	commits := []core.CommitView{

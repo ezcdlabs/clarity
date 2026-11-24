@@ -428,8 +428,9 @@ func GroupCommitsForFlow(commits []CommitView, mode LeadTimeMode, f Flow) Groupi
 // itself. False for a grouping derived without a flow (GroupCommits /
 // GroupCommitsMode): with no flow there is no target to be unaffected for.
 // Renderers need this because a commit with no measurement and a commit
-// resolved unaffected both have no lead time, and blank and the ∅ marker
-// are different answers.
+// resolved unaffected both have no lead time, and "unknown" and "resolved —
+// nothing to deliver" are different answers (the TUI dims the row, plain
+// spells it out).
 func (g Groupings) Unaffected(index int) bool {
 	if index < 0 || index >= len(g.unaffected) {
 		return false

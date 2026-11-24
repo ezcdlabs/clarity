@@ -421,13 +421,13 @@ func renderSnap(v core.View, width int, now time.Time, spinnerIdx int) string {
 
 // --- Unaffected rows ----------------------------------------------------------
 
-// An unaffected commit answers "do I need to deploy this?" with no: a gray ∅
-// in the lead-time slot where a ticking timer would otherwise imply waiting,
-// and a dimmed subject so a stretch of unaffected commits recedes and the one
-// genuinely waiting commit is the bright row. Both signals on purpose — gray
-// alone is relative (light themes, colour-blindness), the glyph alone is a
-// single character; together one says "skim past me" and the other says why.
-func TestRenderSnapshot_UnaffectedRow_NullSetAndDimmedSubject(t *testing.T) {
+// An unaffected commit answers "do I need to deploy this?" with no: a dimmed
+// subject and an empty lead-time slot, so a stretch of unaffected commits
+// recedes and the one genuinely waiting commit — bright, with a ticking
+// timer — is the figure against that ground. In a monorepo flow unaffected is
+// the common case, so a per-row glyph would repeat down the column until it
+// marked nothing; the measured rows' numbers are the signal.
+func TestRenderSnapshot_UnaffectedRow_DimmedWithEmptySlot(t *testing.T) {
 	snap := core.Snapshot{Commits: []core.CommitView{
 		{SHA: "b", Author: "bob", Subject: "web only polish", Time: time.Unix(90, 0),
 			Events: []clarityrefs.Event{ev("ci", "passed", 200)},
@@ -451,8 +451,8 @@ func TestRenderSnapshot_UnaffectedRow_NullSetAndDimmedSubject(t *testing.T) {
 		t.Fatalf("fixture rows missing from output:\n%s", out)
 	}
 
-	if !strings.Contains(unaffLine, "∅") {
-		t.Errorf("unaffected row should carry ∅ in the lead-time slot: %q", unaffLine)
+	if strings.Contains(unaffLine, "∅") {
+		t.Errorf("unaffected row's lead-time slot should be empty, not ∅: %q", unaffLine)
 	}
 	if !strings.Contains(unaffLine, "\x1b[90mweb only polish") {
 		t.Errorf("unaffected row's subject should be dimmed gray: %q", unaffLine)

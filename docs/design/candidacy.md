@@ -117,23 +117,27 @@ The CI recipe that follows: evaluate each commit's own diff rather than the
 push's, e.g. loop `git rev-list $BASE..$HEAD` and report `affected` /
 `unaffected` per commit against each target's scope.
 
-**Rendering: one deliberate new concept.** A commit resolved unaffected keeps
-its place in the flow's log (never reordered, never hidden) but renders as
-resolved: a gray italic `∅` in the lead-time slot — where a ticking timer
-would otherwise imply "waiting to ship" — and a dimmed subject, so a stretch
-of unaffected commits recedes and the one genuinely waiting commit is the
-bright row. Both signals on purpose: gray is relative (light themes,
-colour-blindness), so the glyph is the explicit answer sitting in the column
-where the eye looks for a number — one says "skim past me", the other says
-why. `∅` rather than a dash (which collides with the idle `·` and the rules
-and is nearly invisible) or the word (which dominates the section when most
-commits are unaffected, which is the monorepo norm). Blank stays distinct:
-blank means "no measurement", `∅` means "resolved — nothing to deliver here".
+**Rendering: recede, don't mark.** A commit resolved unaffected keeps its
+place in the flow's log (never reordered, never hidden) but renders dimmed,
+with an empty lead-time slot, so a stretch of unaffected commits recedes and
+the one genuinely waiting commit is the bright row. The dim is the only
+signal, and that is a revision: the first design also put a gray italic `∅`
+in the slot, reasoning that gray is relative (light themes, colour-blindness)
+and the glyph was the explicit answer in the column where the eye looks for a
+number. The first real monorepo flow overturned that: per-flow candidacy
+makes unaffected the *common* case, so the glyph appeared on nearly every
+row — a column of `∅` repeated down the screen is texture, not signal, and
+the information it claimed to carry was already carried by the bright rows'
+actual numbers. A marker earns its ink by being the exception; this one was
+the rule. The theme-robustness worry stands down for the same reason: if the
+dim fails, an unaffected row degrades to an ordinary-looking row with no
+timer, and the left-column icons still distinguish every row without colour.
 A commit that is itself unaffected but holds its run's surviving sample keeps
 its timer and stays bright: that row carries a real measurement. `--plain`
-spells `unaffected` in full — that renderer exists for grep and for agents,
-where a word is searchable and a glyph is a trap. The intent is unchanged:
-stop the commit skewing the number, not hide that it shipped.
+still spells `unaffected` in full — that renderer exists for grep and for
+agents, dimming doesn't survive a pipe, and there the word is the whole
+signal, not a per-row decoration. The intent is unchanged: stop the commit
+skewing the number, not hide that it shipped.
 
 **Candidacy records are not pipeline events.** The `reported` and `pipeline` lead
 time modes count "commits carrying at least one pipeline event"; a commit whose

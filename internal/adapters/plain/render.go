@@ -354,8 +354,9 @@ func plainRow(view core.CommitView, group *core.Groupings, index int, now time.T
 			b.WriteString("  ")
 			b.WriteString(core.FormatElapsed(d))
 		} else if group.Unaffected(index) {
-			// The TUI's ∅, spelled out: plain output exists for grep and for
-			// agents, where a word is searchable and a glyph is a trap.
+			// Where the TUI dims the row, plain spells it out: this output
+			// exists for grep and for agents, and dimming doesn't survive a
+			// pipe — the word is the whole signal here.
 			b.WriteString("  unaffected")
 		}
 	}

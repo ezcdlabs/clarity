@@ -536,16 +536,16 @@ func renderRowInGroup(view core.CommitView, group *core.Groupings, index int, wi
 			}
 			timer = lipgloss.NewStyle().Foreground(color).Render(core.FormatElapsed(d))
 		} else if group.Unaffected(index) {
-			// No measurement AND resolved unaffected for this flow: ∅ in the
-			// slot where a ticking timer would imply waiting, and a dimmed
-			// subject so a stretch of these recedes and the one genuinely
-			// waiting commit is the bright row. Two signals on purpose: gray
-			// is relative (light themes, colour-blindness), so the glyph is
-			// the explicit answer in the column where the eye looks for a
-			// number — one says "skim past me", the other says why. A commit
-			// that is unaffected but carries its run's surviving sample keeps
-			// its timer and stays bright: that row holds a real measurement.
-			timer = lipgloss.NewStyle().Foreground(colorGray).Italic(true).Render("∅")
+			// No measurement AND resolved unaffected for this flow: a dimmed
+			// subject and an empty lead-time slot, so a stretch of these
+			// recedes and the one genuinely waiting commit is the bright row.
+			// This used to also render a gray ∅ in the slot, until a real
+			// monorepo flow showed the glyph on nearly every row: unaffected
+			// is the common case there, and a marker that dense is texture,
+			// not signal — the measured rows' numbers carry the information.
+			// A commit that is unaffected but carries its run's surviving
+			// sample keeps its timer and stays bright: that row holds a real
+			// measurement.
 			dim = true
 		}
 	}

@@ -270,9 +270,9 @@ func view(snap core.Snapshot) core.View {
 	return core.DeriveView(snap, core.DefaultLeadTimeMode, nil)
 }
 
-// TestRenderPlain_UnaffectedRow_SaysSo mirrors the TUI's ∅ marker, spelled
-// out: plain output exists for grep and for agents, where a word is
-// searchable and a glyph is a trap.
+// TestRenderPlain_UnaffectedRow_SaysSo: where the TUI dims the row, plain
+// spells it out — this output exists for grep and for agents, and dimming
+// doesn't survive a pipe, so the word is the whole signal.
 func TestRenderPlain_UnaffectedRow_SaysSo(t *testing.T) {
 	c := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 	snap := core.Snapshot{Commits: []core.CommitView{
